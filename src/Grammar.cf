@@ -1,0 +1,41 @@
+entrypoints Defs;
+
+comment "--";
+comment "{-" "-}";
+
+layout toplevel;
+
+Defs.      Defs    ::= [Def];
+Def.       Def     ::= DefType ";" DefFun;
+DefType.   DefType ::= PIdent ":" Expr;
+DefFun.    DefFun  ::= PIdent [Arg] "=" Expr;
+
+separator  Def ";";
+
+Lam.      Expr  ::= PLam [Binder] "->" Expr;
+Arr.      Expr1 ::= Expr2 "->" Expr1;
+Pi.       Expr1 ::= [TypedVar] "->" Expr1;
+App.      Expr2 ::= Expr2 Expr3;
+Var.      Expr3 ::= Arg;
+Universe. Expr3 ::= U;
+_.        Expr  ::= Expr1;
+_.        Expr1 ::= Expr2;
+_.        Expr2 ::= Expr3;
+Paren.    Expr3 ::= PPar Expr ")";
+
+Arg.       Arg ::= PIdent;
+NoArg.     Arg ::= Pus;
+terminator Arg "";
+
+-- Like Arg, but cannot be empty
+Binder.   Binder ::= Arg;
+separator nonempty Binder "";
+
+TypedVar. TypedVar ::= PPar Expr ":" Expr ")";
+terminator nonempty TypedVar "";
+
+position token U ('T' 'y' 'p' 'e' digit*);
+position token PLam '\\';
+position token PPar '(';
+position token Pus '_';
+position token PIdent (letter(letter|digit|'\''|'_'|'-')*);

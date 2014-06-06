@@ -2,21 +2,29 @@ name:                hoq
 version:             0.1.0.0
 synopsis:            A language based on homotopy type theory with an interval
 -- description:         
+tested-with:         GHC == 7.6.3
 homepage:            http://github.com/valis/hoq
 license:             GPL-2
 license-file:        LICENSE
 author:              isaev
 maintainer:          valery.isaev@gmail.com
--- copyright:           
 category:            Dependent Types
-build-type:          Simple
+build-type:          Custom
 extra-source-files:  README.md
 cabal-version:       >=1.10
 
+source-repository head
+  type:     git
+  location: git://github.com/valis/hoq.git
+
 executable hoq
   main-is:             Main.hs
-  -- other-modules:       
+  other-modules:       Syntax.BNFC.ParGrammar,
+                       Syntax.BNFC.LexGrammar
   -- other-extensions:    
-  build-depends:       base >=4.6 && <4.7, bound >=1.0 && <1.1
+  build-depends:       base >=4.6 && <4.7, bound >=1.0 && <1.1,
+                       BNFC >= 2.5, array >= 0.4
+  build-tools:         happy >= 1.15 && < 2,
+                       alex >= 2.3.1 && < 3.1
   hs-source-dirs:      src
   default-language:    Haskell2010
