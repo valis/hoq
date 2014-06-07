@@ -12,6 +12,9 @@ category:            Dependent Types
 build-type:          Custom
 extra-source-files:  README.md
 cabal-version:       >=1.10
+data-dir:            data
+data-files:          hoq.vim
+extra-source-files:  src/Syntax/Grammar.cf
 
 source-repository head
   type:     git
@@ -20,7 +23,8 @@ source-repository head
 executable hoq
   main-is:             Main.hs
   other-modules:       Syntax.BNFC.ParGrammar,
-                       Syntax.BNFC.LexGrammar
+                       Syntax.BNFC.LexGrammar,
+                       Syntax.Term
   -- other-extensions:    
   build-depends:       base >=4.6 && <4.7, bound >=1.0 && <1.1,
                        BNFC >= 2.5, array >= 0.4

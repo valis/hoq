@@ -12,7 +12,7 @@ main = do
     t2 <- getModificationTime "src/Syntax/BNFC"
     if t1 > t2 then bnfc else defaultMain
   where
-    grammar = "Grammar.cf"
+    grammar = "Syntax/Grammar.cf"
     bnfc = do
         dir <- getCurrentDirectory
         setCurrentDirectory "src"

@@ -1,0 +1,12 @@
+-- Pi types
+id : (A : Type) -> A -> A
+id A a = a
+
+-- Universes
+-- Type and Type0 are synonyms
+id100 : (A : Type100) -> A -> A
+id100 A a = a
+
+-- Lambdas
+id-lam : (A : Type) -> A -> A
+id-lam A = \a -> a
