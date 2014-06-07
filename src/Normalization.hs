@@ -1,7 +1,6 @@
 module Normalization where
 
 import Syntax.Term
-import Syntax.Name
 
 whnf :: Term a -> Term a
 whnf e@Var{}      = e

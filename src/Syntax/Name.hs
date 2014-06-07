@@ -18,6 +18,9 @@ instance (Eq b, Monad f, Eq1 f, Eq a) => Eq (Name n b f a) where
 instance Bound (Name n b) where
     Name n s >>>= k = Name n (s >>>= k)
 
+instance Functor f => Functor (Name n b f) where
+    fmap f (Name n s) = Name n (fmap f s)
+
 type Ctx n = [(n,Int)]
 
 names :: Names n f a -> [n]

@@ -25,6 +25,7 @@ executable hoq
   other-modules:       Syntax.BNFC.ParGrammar,
                        Syntax.BNFC.LexGrammar,
                        Syntax.Term, Syntax.Name
+                       Syntax.Expr, Syntax.ExprToTerm
                        Normalization
   -- other-extensions:    
   build-depends:       base >=4.6 && <4.7, bound >=1.0 && <1.1,
