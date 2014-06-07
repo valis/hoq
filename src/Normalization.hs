@@ -13,6 +13,12 @@ whnf (App e1 e2)  = go e1 [e2]
     go (App a b) t = go a (b:t)
     go e t = case whnf e of
         Lam (Name vars e') ->
-            let (t1,t2) = splitAt (length vars) t
-            in whnf $ apps (instantiate (t1 !!) e') t2
-        e'    -> apps e' t
+            let lvars = length vars
+                (t1,t2) = splitAt lvars t
+                lt1 = length t1
+            in if lt1 < lvars
+                then Lam $ Name (drop lt1 vars) $ Scope $ flip fmap (unscope e') $ \var -> case var of
+                    B b | b >= lvars - lt1 -> F $ t1 !! (lvars - b - 1)
+                    _ -> var
+                else whnf $ apps (instantiate (t1 !!) e') t2
+        e' -> apps e' t
