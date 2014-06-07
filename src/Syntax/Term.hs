@@ -1,5 +1,9 @@
+{-# LANGUAGE Rank2Types #-}
+
 module Syntax.Term
-    ( Term(..)
+    ( Term(..), ClosedTerm
+    , module Bound
+    , apps
     , ppTerm
     ) where
 
@@ -30,6 +34,7 @@ data Term a
     | Pi (Term a) (Names String Term a)
     | Universe Level
     deriving Eq
+type ClosedTerm = forall a. Term a
 
 instance Eq1 Term where (==#) = (==)
 
@@ -42,8 +47,12 @@ instance Monad Term where
     Pi e1 e2   >>= k = Pi  (e1 >>= k) (e2 >>>= k)
     Universe l >>= _ = Universe l
 
-ppTerm :: Term Doc -> Doc
-ppTerm = ppTermCtx []
+apps :: Term a -> [Term a] -> Term a
+apps e [] = e
+apps e1 (e2:es) = apps (App e1 e2) es
+
+ppTerm :: ClosedTerm -> Doc
+ppTerm t = ppTermCtx [] t
 
 ppTermCtx :: [(String,Int)] -> Term Doc -> Doc
 ppTermCtx _ (Var d) = d

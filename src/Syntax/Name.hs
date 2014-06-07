@@ -1,5 +1,5 @@
 module Syntax.Name
-    ( Name(..), Names
+    ( Name(..), Names, names
     , abstractName, abstractNames
     , instantiateName, instantiateNames
     ) where
@@ -19,6 +19,9 @@ instance Bound (Name n b) where
     Name n s >>>= k = Name n (s >>>= k)
 
 type Ctx n = [(n,Int)]
+
+names :: Names n f a -> [n]
+names = name
 
 renameName :: Eq n => n -> Ctx n -> (Ctx n, Maybe Int)
 renameName n0 = go

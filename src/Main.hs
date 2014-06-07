@@ -11,6 +11,7 @@ import Syntax.BNFC.AbsGrammar
 import Syntax.BNFC.ParGrammar
 import Syntax.BNFC.LayoutGrammar
 import Syntax.BNFC.PrintGrammar
+import Normalization
 
 parser :: String -> Err Defs
 parser = pDefs . resolveLayout True . myLexer
