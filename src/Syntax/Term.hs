@@ -70,20 +70,26 @@ instance Monad Term where
 
 data Def f a = Def
     { defType :: f a
-    , defArgs :: [String]
-    , defTerm :: f a
+    , defTerm :: Names String f a
+    } | Syn
+    { defType :: f a
+    , synTerm :: f a
     }
 
 instance Bound Def where
-    Def ty args term >>>= k = Def (ty >>= k) args (term >>= k)
+    Def ty term >>>= k = Def (ty >>= k) $ Name (names term) (scope term >>>= k)
+    Syn ty term >>>= k = Syn (ty >>= k)                     (term >>= k)
 
 apps :: Term a -> [Term a] -> Term a
 apps e [] = e
 apps e1 (e2:es) = apps (App e1 e2) es
 
 ppDef :: String -> Def Term String -> Doc
-ppDef name d = text name                                 <+> colon  <+> ppTerm (defType d)
-            $$ text name <+> hsep (map text $ defArgs d) <+> equals <+> ppTerm (defTerm d)
+ppDef name d = text name <+>  colon  <+> ppTerm (defType d)
+            $$ text name <+>  case d of
+                Def _ term -> hsep (map text $ names term) <+>
+                              equals <+> ppTerm (instantiate (map return (names term) !!) $ scope term)
+                Syn _ term -> equals <+> ppTerm term
 
 ppClosedTerm :: ClosedTerm -> Doc
 ppClosedTerm t = ppTermCtx [] t

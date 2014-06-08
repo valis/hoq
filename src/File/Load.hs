@@ -7,6 +7,7 @@ import Control.Monad
 import Control.Monad.Trans
 import Control.Exception
 import Data.Traversable(sequenceA)
+import Data.List
 
 import Eval
 import Syntax.Term
@@ -29,16 +30,19 @@ loadFile filename = do
 parseDefs :: Monad m => String -> EvalT String Def Term m [String]
 parseDefs s = case parser s of
     Bad e -> return [e]
-    Ok (E.Defs defs) -> liftM concat (mapM evalDef defs)
+    Ok (E.Defs defs) -> liftM concat (mapM evalExprDef defs)
   where
     parser :: String -> Err E.Defs
     parser = pDefs . resolveLayout True . myLexer
 
-evalDef :: Monad m => E.Def -> EvalT String Def Term m [String]
-evalDef (E.Def (E.DefType (E.PIdent (_,name)) ty) (E.DefFun (E.PIdent (_,name')) args expr)) =
+evalExprDef :: Monad m => E.Def -> EvalT String Def Term m [String]
+evalExprDef (E.Def (E.DefType (E.PIdent (_,name)) ty) (E.DefFun (E.PIdent (_,name')) args expr)) =
     case (sequenceA (exprToTerm ty), sequenceA (exprToTerm expr), name == name') of
         (Right ty', Right term, True) -> do
-            definition name $ Def ty' (map E.unArg args) term
+            let vars = map E.unArg args
+            if null vars
+                then evalDef name (Syn ty' term)
+                else evalDef name $ Def ty' $ Name vars $ abstract (\v -> v `elemIndex` vars) term
             return []
         (r1, r2, r3) -> return $ either return (const []) r1 ++ either return (const []) r2 ++ if r3 then [] else [msg]
   where
