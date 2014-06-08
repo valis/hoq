@@ -2,10 +2,11 @@
 
 module Syntax.Term
     ( Term(..), ClosedTerm
+    , Def(..)
     , Level(..), level
     , module Syntax.Name, module Bound
     , apps
-    , ppTerm, ppOpenTerm
+    , ppClosedTerm, ppTerm, ppDef
     ) where
 
 import Prelude.Extras
@@ -67,15 +68,28 @@ instance Monad Term where
     Pi b e1 e2 >>= k = Pi b (e1 >>= k) (e2 >>>= k)
     Universe l >>= _ = Universe l
 
+data Def f a = Def
+    { defType :: f a
+    , defArgs :: [String]
+    , defTerm :: f a
+    }
+
+instance Bound Def where
+    Def ty args term >>>= k = Def (ty >>= k) args (term >>= k)
+
 apps :: Term a -> [Term a] -> Term a
 apps e [] = e
 apps e1 (e2:es) = apps (App e1 e2) es
 
-ppTerm :: ClosedTerm -> Doc
-ppTerm t = ppTermCtx [] t
+ppDef :: String -> Def Term String -> Doc
+ppDef name d = text name                                 <+> colon  <+> ppTerm (defType d)
+            $$ text name <+> hsep (map text $ defArgs d) <+> equals <+> ppTerm (defTerm d)
 
-ppOpenTerm :: Term String -> Doc
-ppOpenTerm t = ppTermCtx (map (\s -> (s,0)) (toList t)) (fmap text t)
+ppClosedTerm :: ClosedTerm -> Doc
+ppClosedTerm t = ppTermCtx [] t
+
+ppTerm :: Term String -> Doc
+ppTerm t = ppTermCtx (map (\s -> (s,0)) (toList t)) (fmap text t)
 
 ppTermCtx :: [(String,Int)] -> Term Doc -> Doc
 ppTermCtx _ (Var d) = d
