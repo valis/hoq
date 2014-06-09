@@ -4,9 +4,31 @@ id A a = a
 
 -- Universes
 -- Type and Type0 are synonyms
-id100 : (A : Type100) -> A -> A
-id100 A a = a
+universes : (f : Type1 -> Type0) -> f Type0 -> f Type0
+universes f = id (f Type0)
+
+-- Universes are cumulative
+cumlative : Type3 -> Type8
+cumlative A = A
 
 -- Lambdas
-id-lam : (A : Type) -> A -> A
-id-lam A = \a -> a
+compose : (A B C : Type) -> (B -> C) -> (A -> B) -> A -> C
+compose A B C = \g f a -> g (f a)
+
+-- Pattern matching
+plus : Nat -> Nat -> Nat
+plus (zero t) y = y
+plus (suc x) y = suc (plus x y)
+
+mul : Nat -> Nat -> Nat
+mul (zero t) y = zero t
+mul (suc x) y = plus y (mul x y)
+
+fac : Nat -> Nat
+fac (zero t) = suc (zero t)
+fac (suc x) = mul (suc x) (fac x)
+
+one = suc (zero t)
+two = plus one one
+four = plus two two
+eight = plus four four

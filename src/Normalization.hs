@@ -1,12 +1,15 @@
 module Normalization where
 
+import Data.Maybe
+import Control.Monad
+
 import Syntax.Term
 import Eval
 
 data NF = NF | WNF | WHNF
 
-nf :: NF -> Term (v, Maybe (Ref v Def Term)) -> Term (v, Maybe (Ref v Def Term))
-nf _ (Var (_, Just (Ref (Syn _ t)))) = t
+nf :: NF -> Term (String, Maybe (Ref String Def Term)) -> Term (String, Maybe (Ref String Def Term))
+nf mode (Var (_, Just (Ref (Syn _ t)))) = nf mode t
 nf _ e@Var{}              = e
 nf _ e@Universe{}         = e
 nf WHNF e@Lam{}           = e
@@ -29,11 +32,30 @@ nf mode (App e1 e2)       = go e1 [e2]
                     _ -> var
                 else nf mode $ apps (instantiate (t1 !!) e') t2
         v@(Var (_, Just (Ref (Syn _ term)))) -> nf mode (apps term t)
-        v@(Var (_, Just (Ref (Def _ (Name args term))))) ->
-            let largs = length args
-                (t1,t2) = splitAt largs t
+        v@(Var (_, Just (Ref (Def _ cases@(Name pats _ : _))))) ->
+            let lpats = length pats
+                (t1,t2) = splitAt lpats t
                 lt1 = length t1
-            in if lt1 < largs
-                then apps v t
-                else nf mode $ apps (instantiate (t1 !!) term) t2
-        e' -> apps e' t
+            in if lt1 < lpats
+                then apps v (nfs mode t)
+                else nf mode $ nf mode $ apps (instantiateCases cases $ map (nf mode) t1) t2
+        e' -> apps e' (nfs mode t)
+
+nfs :: NF -> [Term (String, Maybe (Ref String Def Term))] -> [Term (String, Maybe (Ref String Def Term))]
+nfs WHNF terms = terms
+nfs mode terms = map (nf mode) terms
+
+instantiatePat :: Eq v => [Pattern v] -> [Term (v,a)] -> Maybe [Term (v,a)]
+instantiatePat [] [] = Just []
+instantiatePat (Pattern _ [] : pats) (term:terms) = fmap (term:) (instantiatePat pats terms)
+instantiatePat (Pattern con pats1 : pats) (term:terms) = case collect [] term of
+    (Var (v,_), terms1) | v == con -> liftM2 (++) (instantiatePat pats1 terms1) (instantiatePat pats terms)
+    _ -> Nothing
+  where
+    collect acc (App e1 e2) = collect (e2:acc) e1
+    collect acc e = (e, reverse acc)
+instantiatePat _ _ = Nothing
+
+instantiateCases :: Eq v => [Name [Pattern v] Int Term (v,a)] -> [Term (v,a)] -> Term (v,a)
+instantiateCases cases terms = fromJust $ msum $ flip map cases $ \(Name pats term) ->
+    fmap (\ts -> instantiate (ts !!) term) (instantiatePat pats terms)

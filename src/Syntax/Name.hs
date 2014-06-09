@@ -9,7 +9,7 @@ import Bound
 import Data.List
 import Data.Maybe
 
-data Name n b f a = Name { name :: n, scope :: Scope b f a }
+data Name n b f a = Name { name :: n, scope :: Scope b f a } deriving Show
 type Names n = Name [n] Int
 
 instance (Eq b, Monad f, Eq1 f, Eq a) => Eq (Name n b f a) where

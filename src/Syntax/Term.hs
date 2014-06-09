@@ -4,19 +4,22 @@ module Syntax.Term
     ( Term(..), ClosedTerm
     , Def(..)
     , Level(..), level
+    , Pattern(..)
     , module Syntax.Name, module Bound
     , apps
-    , ppClosedTerm, ppTerm, ppDef
+    , ppClosedTerm, ppTerm, ppDef, ppPattern
     ) where
 
 import Prelude.Extras
 import Data.Function
 import Bound
 import Text.PrettyPrint
-import Data.Traversable
-import Data.Foldable
+import Data.Traversable hiding (mapM)
+import Data.Foldable hiding (msum)
+import Data.Monoid(mappend)
 import Control.Applicative hiding (empty)
 import Control.Monad
+import Control.Monad.State
 
 import Syntax.Name
 
@@ -39,10 +42,11 @@ data Term a
     | Arr (Term a) (Term a)
     | Pi Bool (Term a) (Names String Term a)
     | Universe Level
-    deriving Eq
+    deriving (Eq,Show)
 type ClosedTerm = forall a. Term a
 
 instance Eq1 Term where (==#) = (==)
+instance Show1 Term    where showsPrec1 = showsPrec
 
 instance Functor  Term where fmap    = fmapDefault
 instance Foldable Term where foldMap = foldMapDefault
@@ -70,26 +74,42 @@ instance Monad Term where
 
 data Def f a = Def
     { defType :: f a
-    , defTerm :: Names String f a
+    , defTerm :: [Name [Pattern String] Int f a]
     } | Syn
     { defType :: f a
     , synTerm :: f a
     }
 
 instance Bound Def where
-    Def ty term >>>= k = Def (ty >>= k) $ Name (names term) (scope term >>>= k)
-    Syn ty term >>>= k = Syn (ty >>= k)                     (term >>= k)
+    Def ty cases >>>= k = Def (ty >>= k) $ map (\(Name name term) -> Name name (term >>>= k)) cases
+    Syn ty term  >>>= k = Syn (ty >>= k) (term >>= k)
+
+data Pattern v = Pattern v [Pattern v]
+
+instance Functor  Pattern where
+    fmap f (Pattern v pats) = Pattern (f v) $ map (fmap f) pats
+
+instance Foldable Pattern where
+    foldMap f (Pattern v []) = f v
+    foldMap f (Pattern _ [pat]) = foldMap f pat
+    foldMap f (Pattern v (pat:pats)) = foldMap f pat `mappend` foldMap f (Pattern v pats)
 
 apps :: Term a -> [Term a] -> Term a
 apps e [] = e
 apps e1 (e2:es) = apps (App e1 e2) es
 
+-- Pretty printers
+
+ppPattern :: Pattern Doc -> Doc
+ppPattern (Pattern v pats) = v <+> hsep (map (parens . ppPattern) pats)
+
 ppDef :: String -> Def Term String -> Doc
-ppDef name d = text name <+>  colon  <+> ppTerm (defType d)
-            $$ text name <+>  case d of
-                Def _ term -> hsep (map text $ names term) <+>
-                              equals <+> ppTerm (instantiate (map return (names term) !!) $ scope term)
-                Syn _ term -> equals <+> ppTerm term
+ppDef n d = text n <+>     colon  <+> ppTerm (defType d)
+         $$ text n <+> case d of
+            Def _ cases -> vcat $ flip map cases $ \(Name pats term) ->
+                           hsep (map (parens . ppPattern . fmap text) pats) <+>
+                           equals <+> ppTerm (instantiate (\i -> Var $ toList (Pattern n pats) !! i) term)
+            Syn _ term  -> equals <+> ppTerm term
 
 ppClosedTerm :: ClosedTerm -> Doc
 ppClosedTerm t = ppTermCtx [] t

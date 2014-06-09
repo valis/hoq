@@ -6,8 +6,10 @@ import System.IO
 import Control.Monad
 import Control.Monad.Trans
 import Control.Exception
+import Data.Foldable(toList)
 import Data.Traversable(sequenceA)
 import Data.List
+import Data.Either
 
 import Eval
 import Syntax.Term
@@ -30,20 +32,39 @@ loadFile filename = do
 parseDefs :: Monad m => String -> EvalT String Def Term m [String]
 parseDefs s = case parser s of
     Bad e -> return [e]
-    Ok (E.Defs defs) -> liftM concat (mapM evalExprDef defs)
+    Ok (E.Defs defs) -> evalExprDefs defs
   where
     parser :: String -> Err E.Defs
     parser = pDefs . resolveLayout True . myLexer
 
-evalExprDef :: Monad m => E.Def -> EvalT String Def Term m [String]
-evalExprDef (E.Def (E.DefType (E.PIdent (_,name)) ty) (E.DefFun (E.PIdent (_,name')) args expr)) =
-    case (sequenceA (exprToTerm ty), sequenceA (exprToTerm expr), name == name') of
-        (Right ty', Right term, True) -> do
-            let vars = map E.unArg args
-            if null vars
-                then evalDef name (Syn ty' term)
-                else evalDef name $ Def ty' $ Name vars $ abstract (\v -> v `elemIndex` vars) term
-            return []
-        (r1, r2, r3) -> return $ either return (const []) r1 ++ either return (const []) r2 ++ if r3 then [] else [msg]
+exprPatToPattern :: E.Pattern -> Pattern String
+exprPatToPattern (E.Pattern (E.PIdent (_,name)) pats) = Pattern name (map parPatToPattern pats)
+
+parPatToPattern :: E.ParPat -> Pattern String
+parPatToPattern (E.ParVar (E.PIdent (_,name))) = Pattern name []
+parPatToPattern (E.ParPat _ p) = exprPatToPattern p
+
+evalExprDefs :: Monad m => [E.Def] -> EvalT String Def Term m [String]
+evalExprDefs [] = return []
+evalExprDefs (E.DefType (E.PIdent (_,name)) ty : defs) = do
+    let (funs,defs') = splitDefs defs
+        (errs,names) = partitionEithers $ map (uncurry $ evalDefFuns name) funs
+    errs' <- case sequenceA (exprToTerm ty) of
+        Right ty' -> evalDef name (Def ty' names) >> return errs
+        Left err -> return (err:errs)
+    liftM (errs' ++) (evalExprDefs defs')
   where
-    msg = "The name of type signature '" ++ name ++ "' does not match the name of function '" ++ name' ++ "'"
+    splitDefs :: [E.Def] -> ([([E.ParPat],E.Expr)],[E.Def])
+    splitDefs (E.DefFun (E.Pattern (E.PIdent (_,name')) pats) expr : defs) | name == name' =
+        let (funs,defs') = splitDefs defs
+        in ((pats,expr):funs,defs')
+    splitDefs defs = ([],defs)
+    evalDefFuns :: String -> [E.ParPat] -> E.Expr -> Either String (Name [Pattern String] Int Term String)
+    evalDefFuns name pats expr =
+        let pats' = map parPatToPattern pats
+        in fmap (Name pats' . abstract (`elemIndex` toList (Pattern name pats'))) $ sequenceA (exprToTerm expr)
+evalExprDefs (E.DefFun (E.Pattern (E.PIdent (_,name)) []) expr : defs) = case sequenceA (exprToTerm expr) of
+    Right term -> evalDef name (Syn (error "TODO") term) >> evalExprDefs defs
+    Left err -> liftM (err:) (evalExprDefs defs)
+evalExprDefs (E.DefFun (E.Pattern (E.PIdent ((l,c),_)) _) expr : defs) = liftM (msg:) (evalExprDefs defs)
+  where msg = show l ++ ": " ++ show c ++ ": Cannot infer type of arguments"

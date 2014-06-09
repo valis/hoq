@@ -11,8 +11,8 @@ bindEitherMaybe Left{} _ = Nothing
 bindEitherMaybe (Right b) k = k b
 
 exprToTerm :: E.Expr -> Term (Either String String)
-exprToTerm (E.Lam _ bs e) =
-    let vars = map E.unBinder bs
+exprToTerm (E.Lam _ args e) =
+    let vars = map E.unArg args
     in Lam $ Name vars $ abstract (\x -> x `bindEitherMaybe` \v -> v `elemIndex` vars) (exprToTerm e)
 exprToTerm (E.Arr e1 e2) = Arr (exprToTerm e1) (exprToTerm e2)
 exprToTerm (E.Pi [] e) = exprToTerm e
