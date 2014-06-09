@@ -50,7 +50,7 @@ evalExprDefs (E.DefType (E.PIdent (_,name)) ty : defs) = do
     let (funs,defs') = splitDefs defs
         (errs,names) = partitionEithers $ map (uncurry $ evalDefFuns name) funs
     errs' <- case sequenceA (exprToTerm ty) of
-        Right ty' -> evalDef name (Def ty' names) >> return errs
+        Right ty' -> evalDefRec name (Def ty' names) >> return errs
         Left err -> return (err:errs)
     liftM (errs' ++) (evalExprDefs defs')
   where

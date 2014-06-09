@@ -4,7 +4,7 @@ module Eval
     ( EvalT, runEvalT
     , Eval, runEval
     , Ref(..)
-    , evalDef, evalTerm
+    , evalDef, evalDefRec, evalTerm
     , getEntry, getEntries
     ) where
 
@@ -19,6 +19,11 @@ newtype Ref v d (f :: * -> *) = Ref { unRef :: d f (v, Maybe (Ref v d f)) }
 
 evalDef :: (Eq v, Bound d, Monad f, Monad m) => v -> d f v -> EvalT v d f m ()
 evalDef v d = EvalT $ modify $ \list -> (v, Ref $ d >>>= \v -> return $ (v, lookup v list)) : list
+
+evalDefRec :: (Eq v, Bound d, Monad f, Monad m) => v -> d f v -> EvalT v d f m ()
+evalDefRec v d = EvalT $ modify $ \list ->
+    let list' = (v, Ref $ d >>>= \v -> return $ (v, lookup v list')) : list
+    in list'
 
 evalTerm :: (Eq v, Monad f, Monad m) => f v -> EvalT v d f m (f (v, Maybe (Ref v d f)))
 evalTerm t = EvalT $ liftM (\list -> liftM (\v -> (v, lookup v list)) t) get
