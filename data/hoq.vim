@@ -5,6 +5,7 @@ elseif exists("b:current_syntax")
 endif
 
 " syn keyword hoqKeyword         lift
+syn keyword hoqType            data
 syn match   hoqLineComment     "---*\([^-!#$%&\*\+./<=>\?@\\^|~].*\)\?$"
 syn region  hoqBlockComment    start="{-"  end="-}" contains=hoqBlockComment
 syn match   hoqNumber          "\<[0-9]\+\>"

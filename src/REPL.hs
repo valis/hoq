@@ -14,21 +14,21 @@ import Syntax.BNFC.ParGrammar
 import Syntax.BNFC.ErrM
 import qualified Syntax.Expr as E
 import Syntax.Term
-import Syntax.ExprToTerm
-import Eval
-import Normalization
+import TypeChecking
+import Evaluation.Monad
+import Evaluation.Normalization
 
-parseExpr :: Monad m => String -> EvalT String Def Term m (Either String (Term (String, Maybe (Ref String Def Term))))
+parseExpr :: Monad m => String -> EvalT String RTDef Term m (Either String (Term (String, Maybe (Ref String RTDef Term))))
 parseExpr s = case parser s of
     Bad err -> return (Left err)
-    Ok expr -> case sequenceA (exprToTerm expr) of
+    Ok expr -> case sequenceA (typeCheck expr) of
         Left err -> return (Left err)
-        Right term -> liftM Right (evalTerm term)
+        Right term -> liftM Right (substInTerm term)
   where
     parser :: String -> Err E.Expr
     parser = pExpr . myLexer
 
-processCmd :: String -> String -> EvalT String Def Term IO ()
+processCmd :: String -> String -> EvalT String RTDef Term IO ()
 processCmd "quit" _ = liftIO exitSuccess
 processCmd cmd str | Just mode <- nfMode cmd = do
     res <- parseExpr str
@@ -42,7 +42,7 @@ processCmd cmd str | Just mode <- nfMode cmd = do
     nfMode _      = Nothing
 processCmd cmd _ = liftIO $ hPutStrLn stderr $ "Unknown command " ++ cmd
 
-repl :: EvalT String Def Term IO ()
+repl :: EvalT String RTDef Term IO ()
 repl = go ""
   where
     go last = do

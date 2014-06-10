@@ -41,12 +41,21 @@ data Term a
     | Lam (Names String Term a)
     | Arr (Term a) (Term a)
     | Pi Bool (Term a) (Names String Term a)
+    | Con Int String [Term a]
     | Universe Level
-    deriving (Eq,Show)
+    deriving Show
 type ClosedTerm = forall a. Term a
 
-instance Eq1 Term where (==#) = (==)
-instance Show1 Term    where showsPrec1 = showsPrec
+instance Eq a => Eq (Term a) where
+    Var a == Var a' = a == a'
+    Lam n == Lam n' = n == n'
+    Arr a b == Arr a' b' = a == a' && b == b'
+    Pi _ a b == Pi _ a' b' = a == a' && b == b'
+    Con c _ a == Con c' _ a' = c == c' && a == a'
+    Universe u == Universe u' = u == u'
+
+instance Eq1   Term where (==#) = (==)
+instance Show1 Term where showsPrec1 = showsPrec
 
 instance Functor  Term where fmap    = fmapDefault
 instance Foldable Term where foldMap = foldMapDefault
@@ -57,10 +66,11 @@ instance Applicative Term where
 
 instance Traversable Term where
   traverse f (Var a)               = Var                         <$> f a
-  traverse f (App e1 e2)           = App                         <$> traverse f e1 <*> traverse f e2
+  traverse f (App e1 e2)           = app                         <$> traverse f e1 <*> traverse f e2
   traverse f (Lam (Name n e))      = (Lam . Name n)              <$> traverse f e
   traverse f (Arr e1 e2)           = Arr                         <$> traverse f e1 <*> traverse f e2
   traverse f (Pi b e1 (Name n e2)) = (\e1' -> Pi b e1' . Name n) <$> traverse f e1 <*> traverse f e2
+  traverse f (Con c n as)          = Con c n                     <$> sequenceA (map (traverse f) as)
   traverse f (Universe l)          = pure (Universe l)
 
 instance Monad Term where
@@ -70,6 +80,7 @@ instance Monad Term where
     Lam e      >>= k = Lam  (e >>>= k)
     Arr e1 e2  >>= k = Arr  (e1 >>= k) (e2 >>= k)
     Pi b e1 e2 >>= k = Pi b (e1 >>= k) (e2 >>>= k)
+    Con c n as >>= k = Con c n $ map (>>= k) as
     Universe l >>= _ = Universe l
 
 data Def f a = Def
@@ -94,8 +105,13 @@ instance Foldable Pattern where
     foldMap f (Pattern _ [pat]) = foldMap f pat
     foldMap f (Pattern v (pat:pats)) = foldMap f pat `mappend` foldMap f (Pattern v pats)
 
+app :: Term a -> Term a -> Term a
+app (Con c n as) a = Con c n $ as ++ [a]
+app b a = App b a
+
 apps :: Term a -> [Term a] -> Term a
 apps e [] = e
+apps (Con c n as) es = Con c n (as ++ es)
 apps e1 (e2:es) = apps (App e1 e2) es
 
 -- Pretty printers
@@ -128,6 +144,7 @@ ppTermCtx ctx t@(Pi b e n) =
 ppTermCtx ctx t@(Lam n) =
     let (as, t') = ppNamesPrec (prec t) ctx n
     in text "\\" <> hsep as <+> arrow <+> t'
+ppTermCtx ctx t@(Con _ n as) = text n <+> hsep (map (ppTermPrec (prec t + 1) ctx) as)
 
 ppNamesPrec :: Int -> [(String,Int)] -> Names String Term Doc -> ([Doc], Doc)
 ppNamesPrec p ctx n =
@@ -144,6 +161,7 @@ prec :: Term a -> Int
 prec Var{}      = 10
 prec Universe{} = 10
 prec App{}      = 9
+prec Con{}      = 9
 prec Arr{}      = 8
 prec Pi{}       = 8
 prec Lam{}      = 8

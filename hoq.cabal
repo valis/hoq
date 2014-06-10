@@ -14,7 +14,8 @@ cabal-version:       >=1.10
 data-dir:            data
 data-files:          hoq.vim
 extra-source-files:  README.md,
-                     src/Syntax/Grammar.cf
+                     src/Syntax/Grammar.cf,
+                     examples/basics.hoq
 
 source-repository head
   type:     git
@@ -24,9 +25,11 @@ executable hoq
   main-is:             Main.hs
   other-modules:       Syntax.BNFC.ParGrammar,
                        Syntax.BNFC.LexGrammar,
-                       Syntax.Term, Syntax.Name
-                       Syntax.Expr, Syntax.ExprToTerm
-                       Normalization, Eval, REPL,
+                       Syntax.Term, Syntax.Name,
+                       Syntax.Expr,
+                       Evaluation.Normalization,
+                       Evaluation.Monad,
+                       REPL, TypeChecking,
                        File.Load
   -- other-extensions:    
   build-depends:       base >=4.6 && <4.7, bound >=1.0 && <1.1,

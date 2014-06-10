@@ -15,20 +15,36 @@ cumlative A = A
 compose : (A B C : Type) -> (B -> C) -> (A -> B) -> A -> C
 compose A B C = \g f a -> g (f a)
 
+-- Data types
+data Bool = false | true
+
+data Nat = zero | suc Nat
+
+data List (A : Type) = nil | cons A (List A)
+
 -- Pattern matching
+not : Bool -> Bool
+not true = false
+not false = true
+
+and : Bool -> Bool -> Bool
+and true true = true
+and _ _ = false
+
+-- Recursive functions
 plus : Nat -> Nat -> Nat
-plus (zero t) y = y
+plus zero y = y
 plus (suc x) y = suc (plus x y)
 
 mul : Nat -> Nat -> Nat
-mul (zero t) y = zero t
+mul zero y = zero t
 mul (suc x) y = plus y (mul x y)
 
 fac : Nat -> Nat
-fac (zero t) = suc (zero t)
+fac zero = suc zero
 fac (suc x) = mul (suc x) (fac x)
 
-one = suc (zero t)
+one = suc zero
 two = plus one one
 four = plus two two
 eight = plus four four

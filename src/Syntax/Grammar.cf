@@ -5,33 +5,47 @@ comment "{-" "-}";
 
 layout toplevel;
 
-Defs.      Defs    ::= [Def];
-DefType.   Def     ::= PIdent ":" Expr;
-DefFun.    Def     ::= Pattern "=" Expr;
-Pattern.   Pattern ::= PIdent [ParPat];
-ParVar.    ParPat  ::= PIdent;
-ParPat.    ParPat  ::= PPar Pattern ")";
+Defs.      Defs     ::= [Def];
+DefType.   Def      ::= PIdent ":" Expr;
+DefFun.    Def      ::= Pattern "=" Expr;
+DefData.   Def      ::= "data" PIdent [DataTele] Cons;
+separator  Def      ";";
 
-terminator ParPat "";
-separator  Def ";";
+Pattern.   Pattern  ::= PIdent [ParPat];
+ParVar.    ParPat   ::= Arg;
+ParPat.    ParPat   ::= PPar Pattern ")";
+terminator ParPat   "";
 
-Lam.      Expr  ::= PLam [Arg] "->" Expr;
-Arr.      Expr1 ::= Expr2 "->" Expr1;
-Pi.       Expr1 ::= [TypedVar] "->" Expr1;
-App.      Expr2 ::= Expr2 Expr3;
-Var.      Expr3 ::= Arg;
-Universe. Expr3 ::= U;
-_.        Expr  ::= Expr1;
-_.        Expr1 ::= Expr2;
-_.        Expr2 ::= Expr3;
-Paren.    Expr3 ::= PPar Expr ")";
+Cons.      Cons     ::= "=" [Con];
+NoCons.    Cons     ::= ;
 
-Arg.       Arg ::= PIdent;
-NoArg.     Arg ::= Pus;
-separator nonempty Arg "";
+Con.       Con      ::= PIdent [ConTele];
+separator  nonempty Con "|";
 
-TypedVar. TypedVar ::= PPar Expr ":" Expr ")";
-terminator nonempty TypedVar "";
+VarTele.   ConTele  ::= PPar Expr ":" Expr ")";
+TypeTele.  ConTele  ::= Expr3;
+terminator ConTele  "";
+
+DataTele.  DataTele ::= PPar Expr ":" Expr ")";
+terminator DataTele "";
+
+PiTele.    PiTele   ::= PPar Expr ":" Expr ")";
+terminator nonempty PiTele "";
+
+Lam.       Expr     ::= PLam [Arg] "->" Expr;
+Arr.       Expr1    ::= Expr2 "->" Expr1;
+Pi.        Expr1    ::= [PiTele] "->" Expr1;
+App.       Expr2    ::= Expr2 Expr3;
+Var.       Expr3    ::= Arg;
+Universe.  Expr3    ::= U;
+_.         Expr     ::= Expr1;
+_.         Expr1    ::= Expr2;
+_.         Expr2    ::= Expr3;
+Paren.     Expr3    ::= PPar Expr ")";
+
+Arg.       Arg      ::= PIdent;
+NoArg.     Arg      ::= Pus;
+separator  nonempty Arg "";
 
 position token U ('T' 'y' 'p' 'e' digit*);
 position token PLam '\\';

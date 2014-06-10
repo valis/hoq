@@ -10,7 +10,7 @@ getPos :: Expr -> (Int,Int)
 getPos (Lam (PLam (p,_)) _ _) = p
 getPos (Arr e _) = getPos e
 getPos (Pi [] e) = getPos e
-getPos (Pi (TypedVar (PPar (p,_)) _ _ : _) _) = p
+getPos (Pi (PiTele (PPar (p,_)) _ _ : _) _) = p
 getPos (App e _) = getPos e
 getPos (Var (Arg (PIdent (p,_)))) = p
 getPos (Var (NoArg (Pus (p,_)))) = p
