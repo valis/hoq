@@ -4,7 +4,7 @@ module Syntax.Term
     ( Term(..), ClosedTerm
     , Def(..)
     , Level(..), level
-    , Pattern(..)
+    , Pattern(..), RTPattern(..)
     , module Syntax.Name, module Bound
     , apps
     , ppClosedTerm, ppTerm, ppDef, ppPattern
@@ -42,20 +42,23 @@ data Term a
     | Arr (Term a) (Term a)
     | Pi Bool (Term a) (Names String Term a)
     | Con Int String [Term a]
+    | FunCall String [Names RTPattern Term a]
+    | FunSyn  String (Term a)
     | Universe Level
-    deriving Show
 type ClosedTerm = forall a. Term a
+data RTPattern = RTPattern Int [RTPattern] | RTPatternVar
 
 instance Eq a => Eq (Term a) where
-    Var a == Var a' = a == a'
-    Lam n == Lam n' = n == n'
-    Arr a b == Arr a' b' = a == a' && b == b'
-    Pi _ a b == Pi _ a' b' = a == a' && b == b'
-    Con c _ a == Con c' _ a' = c == c' && a == a'
-    Universe u == Universe u' = u == u'
+    Var a       == Var a'       = a == a'
+    Lam n       == Lam n'       = n == n'
+    Arr a b     == Arr a' b'    = a == a' && b == b'
+    Pi _ a b    == Pi _ a' b'   = a == a' && b == b'
+    Con c _ a   == Con c' _ a'  = c == c' && a == a'
+    FunCall n _ == FunCall n' _ = n == n'
+    FunSyn n _  == FunSyn n' _  = n == n'
+    Universe u  == Universe u'  = u == u'
 
 instance Eq1   Term where (==#) = (==)
-instance Show1 Term where showsPrec1 = showsPrec
 
 instance Functor  Term where fmap    = fmapDefault
 instance Foldable Term where foldMap = foldMapDefault
@@ -66,34 +69,34 @@ instance Applicative Term where
 
 instance Traversable Term where
   traverse f (Var a)               = Var                         <$> f a
-  traverse f (App e1 e2)           = app                         <$> traverse f e1 <*> traverse f e2
+  traverse f (App e1 e2)           = App                         <$> traverse f e1 <*> traverse f e2
   traverse f (Lam (Name n e))      = (Lam . Name n)              <$> traverse f e
   traverse f (Arr e1 e2)           = Arr                         <$> traverse f e1 <*> traverse f e2
   traverse f (Pi b e1 (Name n e2)) = (\e1' -> Pi b e1' . Name n) <$> traverse f e1 <*> traverse f e2
-  traverse f (Con c n as)          = Con c n                     <$> sequenceA (map (traverse f) as)
+  traverse f (Con c n as)          = Con c n                     <$> traverse (traverse f) as
+  traverse f (FunCall n cs)        = FunCall n                   <$> traverse (\(Name p c) -> Name p <$> traverse f c) cs
+  traverse f (FunSyn n e)          = FunSyn n                    <$> traverse f e
   traverse f (Universe l)          = pure (Universe l)
 
 instance Monad Term where
     return = Var
-    Var a      >>= k = k a
-    App e1 e2  >>= k = App  (e1 >>= k) (e2 >>= k)
-    Lam e      >>= k = Lam  (e >>>= k)
-    Arr e1 e2  >>= k = Arr  (e1 >>= k) (e2 >>= k)
-    Pi b e1 e2 >>= k = Pi b (e1 >>= k) (e2 >>>= k)
-    Con c n as >>= k = Con c n $ map (>>= k) as
-    Universe l >>= _ = Universe l
+    Var a        >>= k = k a
+    App e1 e2    >>= k = App  (e1 >>= k) (e2 >>= k)
+    Lam e        >>= k = Lam  (e >>>= k)
+    Arr e1 e2    >>= k = Arr  (e1 >>= k) (e2 >>= k)
+    Pi b e1 e2   >>= k = Pi b (e1 >>= k) (e2 >>>= k)
+    Con c n as   >>= k = Con c n $ map (>>= k) as
+    FunCall n cs >>= k = FunCall n $ map (>>>= k) cs
+    FunSyn n e   >>= k = FunSyn n (e >>= k)
+    Universe l   >>= _ = Universe l
 
-data Def f a = Def
-    { defType :: f a
-    , defTerm :: [Name [Pattern String] Int f a]
+data Def a = Def
+    { defType :: Term a
+    , defTerm :: [Names (Pattern String) Term a]
     } | Syn
-    { defType :: f a
-    , synTerm :: f a
+    { defType :: Term a
+    , synTerm :: Term a
     }
-
-instance Bound Def where
-    Def ty cases >>>= k = Def (ty >>= k) $ map (\(Name name term) -> Name name (term >>>= k)) cases
-    Syn ty term  >>>= k = Syn (ty >>= k) (term >>= k)
 
 data Pattern v = Pattern v [Pattern v]
 
@@ -105,10 +108,6 @@ instance Foldable Pattern where
     foldMap f (Pattern _ [pat]) = foldMap f pat
     foldMap f (Pattern v (pat:pats)) = foldMap f pat `mappend` foldMap f (Pattern v pats)
 
-app :: Term a -> Term a -> Term a
-app (Con c n as) a = Con c n $ as ++ [a]
-app b a = App b a
-
 apps :: Term a -> [Term a] -> Term a
 apps e [] = e
 apps (Con c n as) es = Con c n (as ++ es)
@@ -119,7 +118,7 @@ apps e1 (e2:es) = apps (App e1 e2) es
 ppPattern :: Pattern Doc -> Doc
 ppPattern (Pattern v pats) = v <+> hsep (map (parens . ppPattern) pats)
 
-ppDef :: String -> Def Term String -> Doc
+ppDef :: String -> Def String -> Doc
 ppDef n d = text n <+>     colon  <+> ppTerm (defType d)
          $$ text n <+> case d of
             Def _ cases -> vcat $ flip map cases $ \(Name pats term) ->
@@ -145,6 +144,8 @@ ppTermCtx ctx t@(Lam n) =
     let (as, t') = ppNamesPrec (prec t) ctx n
     in text "\\" <> hsep as <+> arrow <+> t'
 ppTermCtx ctx t@(Con _ n as) = text n <+> hsep (map (ppTermPrec (prec t + 1) ctx) as)
+ppTermCtx _ (FunSyn n _) = text n
+ppTermCtx _ (FunCall n _) = text n
 
 ppNamesPrec :: Int -> [(String,Int)] -> Names String Term Doc -> ([Doc], Doc)
 ppNamesPrec p ctx n =
@@ -160,6 +161,8 @@ arrow = text "->"
 prec :: Term a -> Int
 prec Var{}      = 10
 prec Universe{} = 10
+prec FunSyn{}   = 10
+prec FunCall{}  = 10
 prec App{}      = 9
 prec Con{}      = 9
 prec Arr{}      = 8

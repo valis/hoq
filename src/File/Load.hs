@@ -13,9 +13,8 @@ import Syntax.BNFC.LayoutGrammar
 import qualified Syntax.Expr as E
 import TypeChecking
 import Evaluation.Monad
-import Evaluation.Normalization
 
-loadFile :: MonadIO m => String -> EvalT String RTDef Term m ()
+loadFile :: MonadIO m => String -> EvalT String Term m ()
 loadFile filename = do
     errs <- do
         mcnt <- liftIO $ fmap Right (readFile filename)
@@ -25,7 +24,7 @@ loadFile filename = do
             Left err -> return [err]
     liftIO $ mapM_ (hPutStrLn stderr) errs
 
-parseDefs :: Monad m => String -> EvalT String RTDef Term m [String]
+parseDefs :: Monad m => String -> EvalT String Term m [String]
 parseDefs s = case parser s of
     Bad e -> return [e]
     Ok (E.Defs defs) -> typeCheckDefs defs

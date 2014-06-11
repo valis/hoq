@@ -37,7 +37,7 @@ plus zero y = y
 plus (suc x) y = suc (plus x y)
 
 mul : Nat -> Nat -> Nat
-mul zero y = zero t
+mul zero y = zero
 mul (suc x) y = plus y (mul x y)
 
 fac : Nat -> Nat

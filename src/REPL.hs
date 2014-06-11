@@ -18,7 +18,7 @@ import TypeChecking
 import Evaluation.Monad
 import Evaluation.Normalization
 
-parseExpr :: Monad m => String -> EvalT String RTDef Term m (Either String (Term (String, Maybe (Ref String RTDef Term))))
+parseExpr :: Monad m => String -> EvalT String Term m (Either String (Term String))
 parseExpr s = case parser s of
     Bad err -> return (Left err)
     Ok expr -> case sequenceA (typeCheck expr) of
@@ -28,13 +28,13 @@ parseExpr s = case parser s of
     parser :: String -> Err E.Expr
     parser = pExpr . myLexer
 
-processCmd :: String -> String -> EvalT String RTDef Term IO ()
+processCmd :: String -> String -> EvalT String Term IO ()
 processCmd "quit" _ = liftIO exitSuccess
 processCmd cmd str | Just mode <- nfMode cmd = do
     res <- parseExpr str
     liftIO $ case res of
         Left err -> hPutStrLn stderr err
-        Right term -> putStrLn $ render $ ppTerm $ fmap fst (nf mode term)
+        Right term -> putStrLn $ render $ ppTerm (nf mode term)
   where
     nfMode "whnf" = Just WHNF
     nfMode "wnf"  = Just WNF
@@ -42,7 +42,7 @@ processCmd cmd str | Just mode <- nfMode cmd = do
     nfMode _      = Nothing
 processCmd cmd _ = liftIO $ hPutStrLn stderr $ "Unknown command " ++ cmd
 
-repl :: EvalT String RTDef Term IO ()
+repl :: EvalT String Term IO ()
 repl = go ""
   where
     go last = do

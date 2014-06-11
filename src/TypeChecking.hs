@@ -47,31 +47,31 @@ typeCheck (Paren _ e) = typeCheck e
 
 -- Type checking definitions
 
-type Ev = EvalT String RTDef T.Term
+type Ev = EvalT String T.Term
 
-exprPatToPattern :: Monad m => Pattern -> Ev m RTPattern
+exprPatToPattern :: Monad m => Pattern -> Ev m T.RTPattern
 exprPatToPattern (Pattern (PIdent (_,name)) pats) = do
     d <- getEntry name
     case d of
-        Just (Ref (RTCon i)) -> liftM (RTPattern i) (mapM parPatToPattern pats)
+        Just (T.Con i _ _) -> liftM (T.RTPattern i) (mapM parPatToPattern pats)
         _ -> error "TODO"
 
-parPatToPattern :: Monad m => ParPat -> Ev m RTPattern
+parPatToPattern :: Monad m => ParPat -> Ev m T.RTPattern
 parPatToPattern (ParVar arg) = do
     d <- getEntry (unArg arg)
     return $ case d of
-        Just (Ref (RTCon i)) -> RTPattern i []
-        _ -> RTPatternVar
+        Just (T.Con i _ _) -> T.RTPattern i []
+        _ -> T.RTPatternVar
 parPatToPattern (ParPat _ pat) = exprPatToPattern pat
 
-toList :: RTPattern -> Pattern -> [String]
-toList RTPatternVar (Pattern (PIdent (_,name)) _) = [name]
-toList (RTPattern _ pats) (Pattern _ pats') = concat (zipWith toListPar pats pats')
+toList :: T.RTPattern -> Pattern -> [String]
+toList T.RTPatternVar (Pattern (PIdent (_,name)) _) = [name]
+toList (T.RTPattern _ pats) (Pattern _ pats') = concat (zipWith toListPar pats pats')
   where
-    toListPar :: RTPattern -> ParPat -> [String]
+    toListPar :: T.RTPattern -> ParPat -> [String]
     toListPar pat (ParPat _ pat') = toList pat pat'
-    toListPar RTPatternVar (ParVar arg) = [unArg arg]
-    toListPar (RTPattern _ _) (ParVar _) = []
+    toListPar T.RTPatternVar (ParVar arg) = [unArg arg]
+    toListPar (T.RTPattern _ _) (ParVar _) = []
 
 typeCheckDefs :: Monad m => [Def] -> Ev m [String]
 typeCheckDefs [] = return []
@@ -80,7 +80,7 @@ typeCheckDefs (DefType p@(PIdent (_,name)) ty : defs) = do
     funs' <- mapM (uncurry $ funsToTerm p) funs
     let (errs,names) = partitionEithers funs'
     errs' <- case sequenceA (typeCheck ty) of
-        Right _ -> addDefRec name (RTDef names) >> return errs
+        Right _ -> addDefRec name (T.FunCall name names) >> return errs
         Left err -> return (err:errs)
     liftM (errs' ++) (typeCheckDefs defs')
   where
@@ -90,16 +90,16 @@ typeCheckDefs (DefType p@(PIdent (_,name)) ty : defs) = do
         in ((pats,expr):funs,defs')
     splitDefs defs = ([],defs)
     
-    funsToTerm :: Monad m => PIdent -> [ParPat] -> Expr -> Ev m (Either String (T.Name [RTPattern] Int T.Term String))
+    funsToTerm :: Monad m => PIdent -> [ParPat] -> Expr -> Ev m (Either String (T.Names T.RTPattern T.Term String))
     funsToTerm name pats expr = do
         pats' <- mapM parPatToPattern pats
-        return $ fmap (T.Name pats' . T.abstract (`elemIndex` toList (RTPattern 0 pats') (Pattern name pats))) $ sequenceA (typeCheck expr)
+        return $ fmap (T.Name pats' . T.abstract (`elemIndex` toList (T.RTPattern 0 pats') (Pattern name pats))) $ sequenceA (typeCheck expr)
 typeCheckDefs (DefFun (Pattern (PIdent (_,name)) []) expr : defs) = case sequenceA (typeCheck expr) of
-    Right term -> addDef name (RTSyn term) >> typeCheckDefs defs
+    Right term -> addDef name (T.FunSyn name term) >> typeCheckDefs defs
     Left err -> liftM (err:) (typeCheckDefs defs)
 typeCheckDefs (DefFun (Pattern (PIdent ((l,c),_)) _) expr : defs) = liftM (msg:) (typeCheckDefs defs)
   where msg = show l ++ ": " ++ show c ++ ": Cannot infer type of arguments"
-typeCheckDefs (DefData name teles NoCons : defs) = typeCheckDefs defs
-typeCheckDefs (DefData name teles (Cons cons) : defs) = do
-    forM_ (zip cons [0..]) $ \(Con (PIdent (_,con)) _, i) -> addDef con (RTCon i)
+typeCheckDefs (DefData _ teles NoCons : defs) = typeCheckDefs defs
+typeCheckDefs (DefData _ teles (Cons cons) : defs) = do
+    forM_ (zip cons [0..]) $ \(Con (PIdent (_,con)) _, i) -> addDef con $ T.Con i con []
     typeCheckDefs defs
