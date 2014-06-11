@@ -26,11 +26,11 @@ executable hoq
   other-modules:       Syntax.BNFC.ParGrammar,
                        Syntax.BNFC.LexGrammar,
                        Syntax.Term, Syntax.Name,
-                       Syntax.Expr,
+                       Syntax.Expr, Syntax.PrettyPrinter
                        Evaluation.Normalization,
                        Evaluation.Monad,
                        REPL, TypeChecking,
-                       File.Load
+                       File.Load, ErrorDoc
   -- other-extensions:    
   build-depends:       base >=4.6 && <4.7, bound >=1.0 && <1.1,
                        BNFC >= 2.5, array >= 0.4, pretty >=1.1 && < 1.2,

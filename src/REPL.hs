@@ -14,6 +14,7 @@ import Syntax.BNFC.ParGrammar
 import Syntax.BNFC.ErrM
 import qualified Syntax.Expr as E
 import Syntax.Term
+import Syntax.PrettyPrinter
 import TypeChecking
 import Evaluation.Monad
 import Evaluation.Normalization

@@ -1,4 +1,4 @@
-{-# LANGUAGE KindSignatures, GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Evaluation.Monad
     ( EvalT, runEvalT

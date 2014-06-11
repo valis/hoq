@@ -36,15 +36,7 @@ plus : Nat -> Nat -> Nat
 plus zero y = y
 plus (suc x) y = suc (plus x y)
 
-mul : Nat -> Nat -> Nat
-mul zero y = zero
-mul (suc x) y = plus y (mul x y)
-
-fac : Nat -> Nat
-fac zero = suc zero
-fac (suc x) = mul (suc x) (fac x)
-
-one = suc zero
-two = plus one one
-four = plus two two
-eight = plus four four
+ack : Nat -> Nat -> Nat
+ack zero n = suc n
+ack (suc m) zero = ack m (suc zero)
+ack (suc m) (suc n) = ack m (ack (suc m) n)

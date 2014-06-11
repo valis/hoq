@@ -1,4 +1,6 @@
-module Evaluation.Normalization where
+module Evaluation.Normalization
+    ( NF(..), nf
+    ) where
 
 import Bound
 import Control.Monad

@@ -1,23 +1,19 @@
-{-# LANGUAGE Rank2Types #-}
-
 module Syntax.Term
-    ( Term(..), ClosedTerm
+    ( Term(..)
     , Def(..)
     , Level(..), level
     , Pattern(..), RTPattern(..)
     , module Syntax.Name, module Bound
     , apps
-    , ppClosedTerm, ppTerm, ppDef, ppPattern
     ) where
 
 import Prelude.Extras
 import Data.Function
 import Bound
-import Text.PrettyPrint
 import Data.Traversable hiding (mapM)
 import Data.Foldable hiding (msum)
 import Data.Monoid(mappend)
-import Control.Applicative hiding (empty)
+import Control.Applicative
 import Control.Monad
 import Control.Monad.State
 
@@ -45,7 +41,6 @@ data Term a
     | FunCall String [Names RTPattern Term a]
     | FunSyn  String (Term a)
     | Universe Level
-type ClosedTerm = forall a. Term a
 data RTPattern = RTPattern Int [RTPattern] | RTPatternVar
 
 instance Eq a => Eq (Term a) where
@@ -112,59 +107,3 @@ apps :: Term a -> [Term a] -> Term a
 apps e [] = e
 apps (Con c n as) es = Con c n (as ++ es)
 apps e1 (e2:es) = apps (App e1 e2) es
-
--- Pretty printers
-
-ppPattern :: Pattern Doc -> Doc
-ppPattern (Pattern v pats) = v <+> hsep (map (parens . ppPattern) pats)
-
-ppDef :: String -> Def String -> Doc
-ppDef n d = text n <+>     colon  <+> ppTerm (defType d)
-         $$ text n <+> case d of
-            Def _ cases -> vcat $ flip map cases $ \(Name pats term) ->
-                           hsep (map (parens . ppPattern . fmap text) pats) <+>
-                           equals <+> ppTerm (instantiate (\i -> Var $ toList (Pattern n pats) !! i) term)
-            Syn _ term  -> equals <+> ppTerm term
-
-ppClosedTerm :: ClosedTerm -> Doc
-ppClosedTerm t = ppTermCtx [] t
-
-ppTerm :: Term String -> Doc
-ppTerm t = ppTermCtx (map (\s -> (s,0)) (toList t)) (fmap text t)
-
-ppTermCtx :: [(String,Int)] -> Term Doc -> Doc
-ppTermCtx _ (Var d) = d
-ppTermCtx _ (Universe l) = text $ "Type" ++ show l
-ppTermCtx ctx t@(App e1 e2) = ppTermPrec (prec t) ctx e1 <+> ppTermPrec (prec t + 1) ctx e2
-ppTermCtx ctx t@(Arr e1 e2) = ppTermPrec (prec t + 1) ctx e1 <+> arrow <+> ppTermPrec (prec t) ctx e2
-ppTermCtx ctx t@(Pi b e n) =
-    let (as, t') = ppNamesPrec (prec t) ctx n
-    in parens (hsep as <+> colon <+> ppTermCtx ctx e) <+> (if b then arrow else empty) <+> t'
-ppTermCtx ctx t@(Lam n) =
-    let (as, t') = ppNamesPrec (prec t) ctx n
-    in text "\\" <> hsep as <+> arrow <+> t'
-ppTermCtx ctx t@(Con _ n as) = text n <+> hsep (map (ppTermPrec (prec t + 1) ctx) as)
-ppTermCtx _ (FunSyn n _) = text n
-ppTermCtx _ (FunCall n _) = text n
-
-ppNamesPrec :: Int -> [(String,Int)] -> Names String Term Doc -> ([Doc], Doc)
-ppNamesPrec p ctx n =
-    let (as, ctx', t) = instantiateNames ctx (\d -> maybe (text d) $ \i -> text d <> int i) n
-    in (as, ppTermPrec p ctx' t)
-
-ppTermPrec :: Int -> [(String,Int)] -> Term Doc -> Doc
-ppTermPrec p ctx t = if p > prec t then parens (ppTermCtx ctx t) else ppTermCtx ctx t
-
-arrow :: Doc
-arrow = text "->"
-
-prec :: Term a -> Int
-prec Var{}      = 10
-prec Universe{} = 10
-prec FunSyn{}   = 10
-prec FunCall{}  = 10
-prec App{}      = 9
-prec Con{}      = 9
-prec Arr{}      = 8
-prec Pi{}       = 8
-prec Lam{}      = 8
