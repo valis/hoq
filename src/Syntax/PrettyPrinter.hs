@@ -6,7 +6,7 @@ import Text.PrettyPrint
 import Data.Foldable
 
 import Syntax.Term
-import qualified ErrorDoc as E
+import qualified Syntax.ErrorDoc as E
 
 instance E.Pretty Term where
     pretty t = ppTermCtx (map (\s -> (s,0)) (toList $ fmap render t)) t
@@ -39,6 +39,12 @@ ppTermCtx ctx t@(Lam n) =
 ppTermCtx ctx t@(Con _ n as) = text n <+> hsep (map (ppTermPrec (prec t + 1) ctx) as)
 ppTermCtx _ (FunSyn n _) = text n
 ppTermCtx _ (FunCall n _) = text n
+{-
+ppTermCtx ctx (Hole _ mt) = braces $ case mt of
+    NoTerm     -> text "Error"
+    JustStr s  -> text s
+    JustTerm t -> ppTermCtx ctx t
+-}
 
 ppNamesPrec :: Int -> [(String,Int)] -> Names String Term Doc -> ([Doc], Doc)
 ppNamesPrec p ctx n =

@@ -1,10 +1,10 @@
-module ErrorDoc
-    ( EMsg, EDoc, EDocM
+module Syntax.ErrorDoc
+    ( EMsg, EDoc
     , Pretty(..), epretty
     , edoc, enull, (<>), (<+>), ($$)
     , etext, emsg, emsgL, emsgLC
     , erender, erenderWithFilename
-    , liftErr2, forE
+    , notInScope
     ) where
 
 import qualified Text.PrettyPrint as P
@@ -12,20 +12,8 @@ import qualified Text.PrettyPrint as P
 data EMsg f = EMsg (Maybe Int) (Maybe Int) String (EDoc f)
 data EDoc f = EDoc P.Doc | ENull | ETerm (f (EDoc f)) | EAbove (EDoc f) (EDoc f) | EBeside (EDoc f) Bool (EDoc f)
 
-type EDocM f = Either [EMsg f]
-
 class Functor f => Pretty f where
     pretty :: f P.Doc -> P.Doc
-
-liftErr2 :: (a -> b -> c) -> EDocM f a -> EDocM f b -> EDocM f c
-liftErr2 f (Left m1) (Left m2) = Left (m1 ++ m2)
-liftErr2 f (Left m) _ = Left m
-liftErr2 f _ (Left m) = Left m
-liftErr2 f (Right v1) (Right v2) = Right (f v1 v2)
-
-forE :: [a] -> (a -> EDocM f b) -> EDocM f [b]
-forE [] _ = Right []
-forE (a:as) f = liftErr2 (:) (f a) (forE as f)
 
 epretty :: f (EDoc f) -> EDoc f
 epretty = ETerm
@@ -88,3 +76,6 @@ edocToDoc (ETerm e) = pretty (fmap edocToDoc e)
 
 instance Pretty f => Show (EDoc f) where
     show = P.render . edocToDoc
+
+notInScope :: Show a => (Int,Int) -> String -> a -> EMsg f
+notInScope lc s a = emsgLC lc ("Not in scope: " ++ (if null s then "" else s ++ " ") ++ show a) enull

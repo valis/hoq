@@ -3,6 +3,7 @@ module Syntax.Term
     , Def(..)
     , Level(..), level
     , Pattern(..), RTPattern(..)
+--    , MaybeTerm(..)
     , module Syntax.Name, module Bound
     , apps
     ) where
@@ -18,6 +19,7 @@ import Control.Monad
 import Control.Monad.State
 
 import Syntax.Name
+import Syntax.ErrorDoc
 
 data Level = Level Int | NoLevel
 
@@ -31,6 +33,8 @@ level :: Level -> Int
 level (Level l) = l
 level NoLevel = 0
 
+-- data MaybeTerm a = JustTerm (Term a) | JustStr String | NoTerm
+
 data Term a
     = Var a
     | App (Term a) (Term a)
@@ -41,6 +45,7 @@ data Term a
     | FunCall String [Names RTPattern Term a]
     | FunSyn  String (Term a)
     | Universe Level
+--    | Hole [EMsg Term] (MaybeTerm a)
 data RTPattern = RTPattern Int [RTPattern] | RTPatternVar
 
 instance Eq a => Eq (Term a) where
@@ -52,6 +57,7 @@ instance Eq a => Eq (Term a) where
     FunCall n _ == FunCall n' _ = n == n'
     FunSyn n _  == FunSyn n' _  = n == n'
     Universe u  == Universe u'  = u == u'
+    _           == _            = False
 
 instance Eq1   Term where (==#) = (==)
 
@@ -65,25 +71,35 @@ instance Applicative Term where
 instance Traversable Term where
   traverse f (Var a)               = Var                         <$> f a
   traverse f (App e1 e2)           = App                         <$> traverse f e1 <*> traverse f e2
-  traverse f (Lam (Name n e))      = (Lam . Name n)              <$> traverse f e
+  traverse f (Lam (Name n e))      = Lam . Name n                <$> traverse f e
   traverse f (Arr e1 e2)           = Arr                         <$> traverse f e1 <*> traverse f e2
   traverse f (Pi b e1 (Name n e2)) = (\e1' -> Pi b e1' . Name n) <$> traverse f e1 <*> traverse f e2
   traverse f (Con c n as)          = Con c n                     <$> traverse (traverse f) as
   traverse f (FunCall n cs)        = FunCall n                   <$> traverse (\(Name p c) -> Name p <$> traverse f c) cs
   traverse f (FunSyn n e)          = FunSyn n                    <$> traverse f e
   traverse f (Universe l)          = pure (Universe l)
+{-
+  traverse f (Hole e NoTerm)       = pure (Hole e NoTerm)
+  traverse f (Hole e (JustTerm t)) = Hole e . JustTerm           <$> traverse f t
+  traverse f (Hole e (JustStr s))  = pure $ Hole e (JustStr s)
+-}
 
 instance Monad Term where
-    return = Var
-    Var a        >>= k = k a
-    App e1 e2    >>= k = App  (e1 >>= k) (e2 >>= k)
-    Lam e        >>= k = Lam  (e >>>= k)
-    Arr e1 e2    >>= k = Arr  (e1 >>= k) (e2 >>= k)
-    Pi b e1 e2   >>= k = Pi b (e1 >>= k) (e2 >>>= k)
-    Con c n as   >>= k = Con c n $ map (>>= k) as
-    FunCall n cs >>= k = FunCall n $ map (>>>= k) cs
-    FunSyn n e   >>= k = FunSyn n (e >>= k)
-    Universe l   >>= _ = Universe l
+    return                     = Var
+    Var a                >>= k = k a
+    App e1 e2            >>= k = App  (e1 >>= k) (e2 >>= k)
+    Lam e                >>= k = Lam  (e >>>= k)
+    Arr e1 e2            >>= k = Arr  (e1 >>= k) (e2 >>= k)
+    Pi b e1 e2           >>= k = Pi b (e1 >>= k) (e2 >>>= k)
+    Con c n as           >>= k = Con c n $ map (>>= k) as
+    FunCall n cs         >>= k = FunCall n $ map (>>>= k) cs
+    FunSyn n e           >>= k = FunSyn n (e >>= k)
+    Universe l           >>= _ = Universe l
+{-
+    Hole es NoTerm       >>= _ = Hole es NoTerm
+    Hole es (JustTerm t) >>= k = Hole es $ JustTerm (t >>= k)
+    Hole es (JustStr s)  >>= _ = Hole es (JustStr s)
+-}
 
 data Def a = Def
     { defType :: Term a

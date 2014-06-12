@@ -30,7 +30,7 @@ executable hoq
                        Evaluation.Normalization,
                        Evaluation.Monad,
                        REPL, TypeChecking,
-                       File.Load, ErrorDoc
+                       File.Load, Syntax.ErrorDoc
   -- other-extensions:    
   build-depends:       base >=4.6 && <4.7, bound >=1.0 && <1.1,
                        BNFC >= 2.5, array >= 0.4, pretty >=1.1 && < 1.2,

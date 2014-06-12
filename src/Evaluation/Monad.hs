@@ -1,19 +1,45 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, UndecidableInstances, FlexibleInstances, MultiParamTypeClasses #-}
 
 module Evaluation.Monad
     ( EvalT, runEvalT
-    , Eval, runEval
+    , WarnT, warn, runWarnT
     , addDef, addDefRec, substInTerm
     , getEntry
     ) where
 
 import Control.Monad
 import Control.Monad.State
-import Control.Monad.Identity
+import Control.Monad.Error.Class
+import Data.Monoid hiding ((<>))
 
-newtype EvalT v f m a = EvalT { unEval :: StateT [(v, f v)] m a }
+newtype WarnT w m a = WarnT { runWarnT :: m (w, Maybe a) }
+
+instance Functor m => Functor (WarnT w m) where
+    fmap f (WarnT m) = WarnT $ fmap (\(w, ma) -> (w, fmap f ma)) m
+
+instance (Monoid w, Monad m) => Monad (WarnT w m) where
+    return a      = WarnT $ return (mempty, Just a)
+    WarnT m >>= k = WarnT $ m >>= \(w, ma) -> case ma of
+        Nothing -> return (w, Nothing)
+        Just a  -> runWarnT (k a)
+
+instance (Monoid w, Monad m) => MonadError w (WarnT w m) where
+    throwError w = WarnT $ return (w, Nothing)
+    catchError (WarnT m) h = WarnT $ m >>= \(w, ma) -> case ma of
+        Nothing -> runWarnT (h w)
+        Just _  -> return (w, ma)
+
+instance Monoid w => MonadTrans (WarnT w) where
+    lift m = WarnT $ liftM (\a -> (mempty, Just a)) m
+
+instance (Monoid w, MonadIO m) => MonadIO (WarnT w m) where
+    liftIO m = WarnT $ liftM (\a -> (mempty, Just a)) (liftIO m)
+
+warn :: Monad m => w -> WarnT w m ()
+warn w = WarnT $ return (w, Just ())
+
+newtype EvalT v f m a = EvalT { unEvalT :: StateT [(v, f v)] m a }
     deriving (Functor,Monad,MonadTrans,MonadIO)
-type Eval v f = EvalT v f Identity
 
 addDef :: (Eq v, Monad f, Monad m) => v -> f v -> EvalT v f m ()
 addDef v t = EvalT $ modify $ \list -> (v, t >>= \v -> maybe (return v) id (lookup v list)) : list
@@ -31,6 +57,3 @@ getEntry v = EvalT $ liftM (lookup v) get
 
 runEvalT :: Monad m => EvalT v f m a -> m a
 runEvalT (EvalT f) = evalStateT f []
-
-runEval :: Eval v f a -> a
-runEval = runIdentity . runEvalT

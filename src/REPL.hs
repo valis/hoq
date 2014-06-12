@@ -15,15 +15,16 @@ import Syntax.BNFC.ErrM
 import qualified Syntax.Expr as E
 import Syntax.Term
 import Syntax.PrettyPrinter
+import Syntax.ErrorDoc
 import TypeChecking
 import Evaluation.Monad
 import Evaluation.Normalization
 
-parseExpr :: Monad m => String -> EvalT String Term m (Either String (Term String))
+parseExpr :: Monad m => String -> EvalT String Term m (Either [EMsg Term] (Term String))
 parseExpr s = case parser s of
-    Bad err -> return (Left err)
+    Bad err -> return $ Left [emsg err enull]
     Ok expr -> case sequenceA (typeCheck expr) of
-        Left err -> return (Left err)
+        Left (Hole errs _) -> return (Left errs)
         Right term -> liftM Right (substInTerm term)
   where
     parser :: String -> Err E.Expr
@@ -34,11 +35,11 @@ processCmd "quit" _ = liftIO exitSuccess
 processCmd cmd str | Just mode <- nfMode cmd = do
     res <- parseExpr str
     liftIO $ case res of
-        Left err -> hPutStrLn stderr err
+        Left errs  -> mapM_ (hPutStrLn stderr . erender) errs
         Right term -> putStrLn $ render $ ppTerm (nf mode term)
   where
     nfMode "whnf" = Just WHNF
-    nfMode "wnf"  = Just WNF
+    nfMode "hnf"  = Just HNF
     nfMode "nf"   = Just NF
     nfMode _      = Nothing
 processCmd cmd _ = liftIO $ hPutStrLn stderr $ "Unknown command " ++ cmd

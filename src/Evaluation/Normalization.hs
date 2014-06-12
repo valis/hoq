@@ -8,7 +8,7 @@ import Control.Monad
 import Syntax.Term
 import Evaluation.Monad
 
-data NF = NF | WNF | WHNF deriving Eq
+data NF = NF | HNF | WHNF deriving Eq
 
 nf :: NF -> Term a -> Term a
 nf mode e = go e []

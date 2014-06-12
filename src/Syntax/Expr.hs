@@ -1,7 +1,7 @@
 module Syntax.Expr
     ( module Syntax.BNFC.AbsGrammar
     , getPos
-    , unArg
+    , unArg, unCons
     ) where
 
 import Syntax.BNFC.AbsGrammar
@@ -20,3 +20,7 @@ getPos (Paren (PPar (p,_)) _) = p
 unArg :: Arg -> String
 unArg NoArg{} = "_"
 unArg (Arg (PIdent (_,s))) = s
+
+unCons :: Cons -> [Con]
+unCons NoCons = []
+unCons (Cons cons) = cons
