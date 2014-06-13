@@ -1,6 +1,6 @@
 module Syntax.Expr
     ( module Syntax.BNFC.AbsGrammar
-    , getPos
+    , getPos, argGetPos
     , unArg, unCons
     ) where
 
@@ -16,6 +16,10 @@ getPos (Var (Arg (PIdent (p,_)))) = p
 getPos (Var (NoArg (Pus (p,_)))) = p
 getPos (Universe (U (p,_))) = p
 getPos (Paren (PPar (p,_)) _) = p
+
+argGetPos :: Arg -> (Int,Int)
+argGetPos (Arg (PIdent (p,_))) = p
+argGetPos (NoArg (Pus  (p,_))) = p
 
 unArg :: Arg -> String
 unArg NoArg{} = "_"

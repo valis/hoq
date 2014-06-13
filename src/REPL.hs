@@ -23,9 +23,11 @@ import Evaluation.Normalization
 parseExpr :: Monad m => String -> EvalT String Term m (Either [EMsg Term] (Term String))
 parseExpr s = case parser s of
     Bad err -> return $ Left [emsg err enull]
-    Ok expr -> case sequenceA (typeCheck expr) of
-        Left (Hole errs _) -> return (Left errs)
-        Right term -> liftM Right (substInTerm term)
+    Ok expr -> do
+        term <- typeCheck expr Nothing
+        return $ case sequenceA term of
+                    Hole errs _ -> Left errs
+                    NoHole term -> Right term
   where
     parser :: String -> Err E.Expr
     parser = pExpr . myLexer

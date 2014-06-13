@@ -3,8 +3,8 @@ module Syntax.Term
     , Def(..)
     , Level(..), level
     , Pattern(..), RTPattern(..)
---    , MaybeTerm(..)
     , module Syntax.Name, module Bound
+    , POrd(..), lessOrEqual, greaterOrEqual
     , apps
     ) where
 
@@ -26,14 +26,15 @@ data Level = Level Int | NoLevel
 instance Eq Level where
     (==) = (==) `on` level
 
+instance Ord Level where
+    compare = compare `on` level
+
 instance Show Level where
     show = show . level
 
 level :: Level -> Int
 level (Level l) = l
 level NoLevel = 0
-
--- data MaybeTerm a = JustTerm (Term a) | JustStr String | NoTerm
 
 data Term a
     = Var a
@@ -45,11 +46,12 @@ data Term a
     | FunCall String [Names RTPattern Term a]
     | FunSyn  String (Term a)
     | Universe Level
---    | Hole [EMsg Term] (MaybeTerm a)
+    | DataType String
 data RTPattern = RTPattern Int [RTPattern] | RTPatternVar
 
 instance Eq a => Eq (Term a) where
     Var a       == Var a'       = a == a'
+    App a b     == App a' b'    = a == a' && b == b'
     Lam n       == Lam n'       = n == n'
     Arr a b     == Arr a' b'    = a == a' && b == b'
     Pi _ a b    == Pi _ a' b'   = a == a' && b == b'
@@ -57,7 +59,33 @@ instance Eq a => Eq (Term a) where
     FunCall n _ == FunCall n' _ = n == n'
     FunSyn n _  == FunSyn n' _  = n == n'
     Universe u  == Universe u'  = u == u'
+    DataType d  == DataType d'  = d == d'
     _           == _            = False
+
+class POrd a where
+    pcompare :: a -> a -> Maybe Ordering
+
+instance Eq a => POrd (Term a) where
+    pcompare (Arr a b) (Arr a' b') = contraCovariant (pcompare a a') (pcompare b b')
+    pcompare (Pi _ a (Name _ (Scope b))) (Pi _ a' (Name _ (Scope b'))) = contraCovariant (pcompare a a') (pcompare b b')
+    pcompare (Universe u) (Universe u') = Just $ compare (level u) (level u')
+    pcompare e1 e2 = if e1 == e2 then Just EQ else Nothing
+
+contraCovariant :: Maybe Ordering -> Maybe Ordering -> Maybe Ordering
+contraCovariant (Just LT) (Just r) | r == EQ || r == GT = Just GT
+contraCovariant (Just EQ) r                             = r
+contraCovariant (Just GT) (Just r) | r == LT || r == EQ = Just LT
+contraCovariant _ _                                     = Nothing
+
+lessOrEqual :: POrd a => a -> a -> Bool
+lessOrEqual a b = case pcompare a b of
+    Just r | r == EQ || r == LT -> True
+    _                           -> False
+
+greaterOrEqual :: POrd a => a -> a -> Bool
+greaterOrEqual a b = case pcompare a b of
+    Just r | r == EQ || r == GT -> True
+    _                           -> False
 
 instance Eq1   Term where (==#) = (==)
 
@@ -78,11 +106,7 @@ instance Traversable Term where
   traverse f (FunCall n cs)        = FunCall n                   <$> traverse (\(Name p c) -> Name p <$> traverse f c) cs
   traverse f (FunSyn n e)          = FunSyn n                    <$> traverse f e
   traverse f (Universe l)          = pure (Universe l)
-{-
-  traverse f (Hole e NoTerm)       = pure (Hole e NoTerm)
-  traverse f (Hole e (JustTerm t)) = Hole e . JustTerm           <$> traverse f t
-  traverse f (Hole e (JustStr s))  = pure $ Hole e (JustStr s)
--}
+  traverse f (DataType d)          = pure (DataType d)
 
 instance Monad Term where
     return                     = Var
@@ -95,11 +119,7 @@ instance Monad Term where
     FunCall n cs         >>= k = FunCall n $ map (>>>= k) cs
     FunSyn n e           >>= k = FunSyn n (e >>= k)
     Universe l           >>= _ = Universe l
-{-
-    Hole es NoTerm       >>= _ = Hole es NoTerm
-    Hole es (JustTerm t) >>= k = Hole es $ JustTerm (t >>= k)
-    Hole es (JustStr s)  >>= _ = Hole es (JustStr s)
--}
+    DataType d           >>= _ = DataType d
 
 data Def a = Def
     { defType :: Term a

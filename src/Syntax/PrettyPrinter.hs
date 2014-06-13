@@ -8,8 +8,8 @@ import Data.Foldable
 import Syntax.Term
 import qualified Syntax.ErrorDoc as E
 
-instance E.Pretty Term where
-    pretty t = ppTermCtx (map (\s -> (s,0)) (toList $ fmap render t)) t
+instance E.Pretty1 Term where
+    pretty1 t = ppTermCtx (map (\s -> (s,0)) (toList $ fmap render t)) t
 
 ppPattern :: Pattern Doc -> Doc
 ppPattern (Pattern v pats) = v <+> hsep (map (parens . ppPattern) pats)
@@ -39,12 +39,7 @@ ppTermCtx ctx t@(Lam n) =
 ppTermCtx ctx t@(Con _ n as) = text n <+> hsep (map (ppTermPrec (prec t + 1) ctx) as)
 ppTermCtx _ (FunSyn n _) = text n
 ppTermCtx _ (FunCall n _) = text n
-{-
-ppTermCtx ctx (Hole _ mt) = braces $ case mt of
-    NoTerm     -> text "Error"
-    JustStr s  -> text s
-    JustTerm t -> ppTermCtx ctx t
--}
+ppTermCtx _ (DataType d) = text d
 
 ppNamesPrec :: Int -> [(String,Int)] -> Names String Term Doc -> ([Doc], Doc)
 ppNamesPrec p ctx n =

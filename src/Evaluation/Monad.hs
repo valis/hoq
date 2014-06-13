@@ -10,12 +10,17 @@ module Evaluation.Monad
 import Control.Monad
 import Control.Monad.State
 import Control.Monad.Error.Class
+import Control.Applicative
 import Data.Monoid hiding ((<>))
 
 newtype WarnT w m a = WarnT { runWarnT :: m (w, Maybe a) }
 
 instance Functor m => Functor (WarnT w m) where
     fmap f (WarnT m) = WarnT $ fmap (\(w, ma) -> (w, fmap f ma)) m
+
+instance (Monoid w, Applicative m) => Applicative (WarnT w m) where
+    pure a = WarnT $ pure (mempty, Just a)
+    WarnT f <*> WarnT a = WarnT $ (\(w1, mf) (w2, ma) -> (w1 `mappend` w2, mf <*> ma)) <$> f <*> a
 
 instance (Monoid w, Monad m) => Monad (WarnT w m) where
     return a      = WarnT $ return (mempty, Just a)
@@ -39,7 +44,7 @@ warn :: Monad m => w -> WarnT w m ()
 warn w = WarnT $ return (w, Just ())
 
 newtype EvalT v f m a = EvalT { unEvalT :: StateT [(v, f v)] m a }
-    deriving (Functor,Monad,MonadTrans,MonadIO)
+    deriving (Functor,Monad,MonadTrans,MonadIO,Applicative)
 
 addDef :: (Eq v, Monad f, Monad m) => v -> f v -> EvalT v f m ()
 addDef v t = EvalT $ modify $ \list -> (v, t >>= \v -> maybe (return v) id (lookup v list)) : list
