@@ -1,6 +1,5 @@
 module Syntax.Term
     ( Term(..)
-    , Def(..)
     , Level(..), level
     , Pattern(..), RTPattern(..)
     , module Syntax.Name, module Bound
@@ -93,20 +92,20 @@ instance Functor  Term where fmap    = fmapDefault
 instance Foldable Term where foldMap = foldMapDefault
 
 instance Applicative Term where
-  pure  = Var
-  (<*>) = ap
+    pure  = Var
+    (<*>) = ap
 
 instance Traversable Term where
-  traverse f (Var a)               = Var                         <$> f a
-  traverse f (App e1 e2)           = App                         <$> traverse f e1 <*> traverse f e2
-  traverse f (Lam (Name n e))      = Lam . Name n                <$> traverse f e
-  traverse f (Arr e1 e2)           = Arr                         <$> traverse f e1 <*> traverse f e2
-  traverse f (Pi b e1 (Name n e2)) = (\e1' -> Pi b e1' . Name n) <$> traverse f e1 <*> traverse f e2
-  traverse f (Con c n as)          = Con c n                     <$> traverse (traverse f) as
-  traverse f (FunCall n cs)        = FunCall n                   <$> traverse (\(Name p c) -> Name p <$> traverse f c) cs
-  traverse f (FunSyn n e)          = FunSyn n                    <$> traverse f e
-  traverse f (Universe l)          = pure (Universe l)
-  traverse f (DataType d)          = pure (DataType d)
+    traverse f (Var a)               = Var                         <$> f a
+    traverse f (App e1 e2)           = App                         <$> traverse f e1 <*> traverse f e2
+    traverse f (Lam (Name n e))      = Lam . Name n                <$> traverse f e
+    traverse f (Arr e1 e2)           = Arr                         <$> traverse f e1 <*> traverse f e2
+    traverse f (Pi b e1 (Name n e2)) = (\e1' -> Pi b e1' . Name n) <$> traverse f e1 <*> traverse f e2
+    traverse f (Con c n as)          = Con c n                     <$> traverse (traverse f) as
+    traverse f (FunCall n cs)        = FunCall n                   <$> traverse (\(Name p c) -> Name p <$> traverse f c) cs
+    traverse f (FunSyn n e)          = FunSyn n                    <$> traverse f e
+    traverse f (Universe l)          = pure (Universe l)
+    traverse f (DataType d)          = pure (DataType d)
 
 instance Monad Term where
     return                     = Var
@@ -120,14 +119,6 @@ instance Monad Term where
     FunSyn n e           >>= k = FunSyn n (e >>= k)
     Universe l           >>= _ = Universe l
     DataType d           >>= _ = DataType d
-
-data Def a = Def
-    { defType :: Term a
-    , defTerm :: [Names (Pattern String) Term a]
-    } | Syn
-    { defType :: Term a
-    , synTerm :: Term a
-    }
 
 data Pattern v = Pattern v [Pattern v]
 

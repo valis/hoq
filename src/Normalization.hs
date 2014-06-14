@@ -1,12 +1,10 @@
-module Evaluation.Normalization
+module Normalization
     ( NF(..), nf
     ) where
 
-import Bound
 import Control.Monad
 
 import Syntax.Term
-import Evaluation.Monad
 
 data NF = NF | HNF | WHNF deriving Eq
 
@@ -15,6 +13,7 @@ nf mode e = go e []
   where
     go (App a b)            ts = go a (b:ts)
     go e@Var{}              ts = apps e (nfs mode ts)
+    go e@DataType{}         ts = apps e (nfs mode ts)
     go e@Universe{}         _  = e
     go (Pi b e (Name v s))  _  | mode == NF = Pi b (nf NF e) $ Name v $ toScope $ nf NF (fromScope s)
     go e@Pi{}               _  = e

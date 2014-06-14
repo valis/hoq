@@ -1,14 +1,12 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, UndecidableInstances, FlexibleInstances, MultiParamTypeClasses #-}
+{-# LANGUAGE FlexibleInstances, MultiParamTypeClasses #-}
 
-module Evaluation.Monad
-    ( EvalT, runEvalT
-    , WarnT, warn, runWarnT
-    , addDef, addDefRec, substInTerm
-    , getEntry
+module TypeChecking.Monad.Warn
+    ( WarnT, warn, runWarnT
+    , throwError, catchError
     ) where
 
 import Control.Monad
-import Control.Monad.State
+import Control.Monad.Trans
 import Control.Monad.Error.Class
 import Control.Applicative
 import Data.Monoid hiding ((<>))
@@ -42,23 +40,3 @@ instance (Monoid w, MonadIO m) => MonadIO (WarnT w m) where
 
 warn :: Monad m => w -> WarnT w m ()
 warn w = WarnT $ return (w, Just ())
-
-newtype EvalT v f m a = EvalT { unEvalT :: StateT [(v, f v)] m a }
-    deriving (Functor,Monad,MonadTrans,MonadIO,Applicative)
-
-addDef :: (Eq v, Monad f, Monad m) => v -> f v -> EvalT v f m ()
-addDef v t = EvalT $ modify $ \list -> (v, t >>= \v -> maybe (return v) id (lookup v list)) : list
-
-addDefRec :: (Eq v, Monad f, Monad m) => v -> f v -> EvalT v f m ()
-addDefRec v t = EvalT $ modify $ \list ->
-    let list' = (v, t >>= \v -> maybe (return v) id (lookup v list')) : list
-    in list'
-
-substInTerm :: (Eq v, Monad f, Monad m) => f v -> EvalT v f m (f v)
-substInTerm t = EvalT $ liftM (\list -> t >>= \v -> maybe (return v) id (lookup v list)) get
-
-getEntry :: (Eq v, Monad m) => v -> EvalT v f m (Maybe (f v))
-getEntry v = EvalT $ liftM (lookup v) get
-
-runEvalT :: Monad m => EvalT v f m a -> m a
-runEvalT (EvalT f) = evalStateT f []

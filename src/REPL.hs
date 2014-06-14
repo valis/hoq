@@ -16,29 +16,28 @@ import qualified Syntax.Expr as E
 import Syntax.Term
 import Syntax.PrettyPrinter
 import Syntax.ErrorDoc
-import TypeChecking
-import Evaluation.Monad
-import Evaluation.Normalization
+import TypeChecking.Monad
+import TypeChecking.Simple
+import Normalization
 
-parseExpr :: Monad m => String -> EvalT String Term m (Either [EMsg Term] (Term String))
+parseExpr :: Monad m => String -> TCM m (Term String)
 parseExpr s = case parser s of
-    Bad err -> return $ Left [emsg err enull]
+    Bad err -> throwError [emsg err enull]
     Ok expr -> do
-        term <- typeCheck expr Nothing
-        return $ case sequenceA term of
-                    Hole errs _ -> Left errs
-                    NoHole term -> Right term
+        (term, ty) <- typeCheck expr Nothing
+        lift (substInTerm term)
   where
     parser :: String -> Err E.Expr
     parser = pExpr . myLexer
 
-processCmd :: String -> String -> EvalT String Term IO ()
+processCmd :: String -> String -> ScopeT Term IO ()
 processCmd "quit" _ = liftIO exitSuccess
 processCmd cmd str | Just mode <- nfMode cmd = do
-    res <- parseExpr str
-    liftIO $ case res of
-        Left errs  -> mapM_ (hPutStrLn stderr . erender) errs
-        Right term -> putStrLn $ render $ ppTerm (nf mode term)
+    mres <- runWarnT (parseExpr str)
+    liftIO $ case mres of
+        ([], Nothing)   -> return ()
+        ([], Just term) -> putStrLn $ render $ ppTerm (nf mode term)
+        (errs, _)       -> mapM_ (hPutStrLn stderr . erender) errs
   where
     nfMode "whnf" = Just WHNF
     nfMode "hnf"  = Just HNF
@@ -46,7 +45,7 @@ processCmd cmd str | Just mode <- nfMode cmd = do
     nfMode _      = Nothing
 processCmd cmd _ = liftIO $ hPutStrLn stderr $ "Unknown command " ++ cmd
 
-repl :: EvalT String Term IO ()
+repl :: ScopeT Term IO ()
 repl = go ""
   where
     go last = do

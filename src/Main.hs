@@ -3,10 +3,10 @@ module Main where
 import System.Environment
 
 import File.Load
-import Evaluation.Monad
+import TypeChecking.Monad.Scope
 import REPL
 
 main :: IO ()
 main = do
     args <- getArgs
-    runEvalT $ mapM_ loadFile args >> repl
+    runScopeT $ mapM_ loadFile args >> repl

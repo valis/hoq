@@ -1,6 +1,6 @@
 name:                hoq
 version:             0.1.0.0
-synopsis:            A language based on homotopy type theory with an interval
+synopsis:            A language based on homotopy type theory with an interval object
 -- description:         
 tested-with:         GHC == 7.6.3
 homepage:            http://github.com/valis/hoq
@@ -23,15 +23,22 @@ source-repository head
 
 executable hoq
   main-is:             Main.hs
-  other-modules:       Syntax.BNFC.ParGrammar,
+  other-modules:       REPL,
+                       Normalization, 
+                       File.Load,
+                       Syntax.BNFC.ParGrammar,
                        Syntax.BNFC.LexGrammar,
                        Syntax.Term, Syntax.Name,
-                       Syntax.Expr, Syntax.PrettyPrinter
-                       Evaluation.Normalization,
-                       Evaluation.Monad,
-                       REPL, TypeChecking,
-                       File.Load, Syntax.ErrorDoc
-  -- other-extensions:    
+                       Syntax.Expr, Syntax.PrettyPrinter,
+                       Syntax.ErrorDoc,
+                       TypeChecking.Definitions,
+                       TypeChecking.Expressions,
+                       TypeChecking.Simple,
+                       -- TypeChecking.Interactive,
+                       -- TypeChecking.Interactive.Hole,
+                       TypeChecking.Monad.Scope,
+                       TypeChecking.Monad.Warn,
+                       TypeChecking.Monad
   build-depends:       base >=4.6 && <4.7, bound >=1.0 && <1.1,
                        BNFC >= 2.5, array >= 0.4, pretty >=1.1 && < 1.2,
                        prelude-extras >=0.4 && <0.5, readline >=1.0 && <1.1,

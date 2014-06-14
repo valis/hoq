@@ -13,10 +13,10 @@ import Syntax.BNFC.LayoutGrammar
 import Syntax.ErrorDoc
 import Syntax.PrettyPrinter
 import qualified Syntax.Expr as E
-import TypeChecking
-import Evaluation.Monad
+import TypeChecking.Simple
+import TypeChecking.Monad
 
-loadFile :: MonadIO m => String -> EvalT String Term m ()
+loadFile :: MonadIO m => String -> ScopeT Term m ()
 loadFile filename = do
     (errs, _) <- runWarnT $ do
         mcnt <- liftIO $ fmap Right (readFile filename)

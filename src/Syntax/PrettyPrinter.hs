@@ -1,5 +1,5 @@
 module Syntax.PrettyPrinter
-    ( ppTerm, ppDef, ppPattern
+    ( ppTerm
     ) where
 
 import Text.PrettyPrint
@@ -10,17 +10,6 @@ import qualified Syntax.ErrorDoc as E
 
 instance E.Pretty1 Term where
     pretty1 t = ppTermCtx (map (\s -> (s,0)) (toList $ fmap render t)) t
-
-ppPattern :: Pattern Doc -> Doc
-ppPattern (Pattern v pats) = v <+> hsep (map (parens . ppPattern) pats)
-
-ppDef :: String -> Def String -> Doc
-ppDef n d = text n <+>     colon  <+> ppTerm (defType d)
-         $$ text n <+> case d of
-            Def _ cases -> vcat $ flip map cases $ \(Name pats term) ->
-                           hsep (map (parens . ppPattern . fmap text) pats) <+>
-                           equals <+> ppTerm (instantiate (\i -> Var $ toList (Pattern n pats) !! i) term)
-            Syn _ term  -> equals <+> ppTerm term
 
 ppTerm :: Term String -> Doc
 ppTerm t = ppTermCtx (map (\s -> (s,0)) (toList t)) (fmap text t)
