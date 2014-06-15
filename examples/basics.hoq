@@ -13,7 +13,7 @@ cumlative A = A
 
 -- Lambdas
 compose : (A B C : Type) -> (B -> C) -> (A -> B) -> A -> C
-compose = \A B C g f a -> g (f a)
+compose A B C = \g f a -> g (f a)
 
 -- Data types
 data Bool = false | true

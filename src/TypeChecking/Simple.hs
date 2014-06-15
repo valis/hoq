@@ -37,71 +37,31 @@ typeCheckPDef (PDefData name params cons) = lift $ do
     addDef name (T.DataType name) (T.Universe T.NoLevel)
     forM_ (zip cons [0..]) $ \(Con (PIdent (_,con)) teles, i) -> addDef con (T.Con i con []) (T.Universe T.NoLevel) -- TODO
 
-data Cmp a b = Less [b] [b] | Equal | Greater [a] [a]
-
-splitLists :: [a] -> [b] -> Cmp a b
-splitLists [] []         = Equal
-splitLists [] bs         = Less [] bs
-splitLists as []         = Greater [] as
-splitLists (a:as) (b:bs) = case splitLists as bs of
-    Less bs1 bs2    -> Less (b:bs1) bs2
-    Equal           -> Equal
-    Greater as1 as2 -> Greater (a:as1) as2
-
-collectCtx :: Monad m => [Arg] -> Ctx Int [String] T.Term String a -> T.Term a
-    -> EDocM m (Ctx Int [String] T.Term String (T.Var Int a), T.Term (T.Var Int a))
-{-
-collectCtx args ctx (T.Pi fl a b@(T.Name ns _)) = case splitLists args ns of
-    Less _ _        -> return (Snoc ctx (reverse $ map unArg args, a), T.Pi fl a $ T.instantiateSomeVars (length args) b)
-    Equal           -> return ((reverse $ map unArg args, a) : ctx, T.instantiateVars b)
-    Greater as1 as2 -> collectCtx as2 ((reverse $ map unArg as1, a) : ctx) $ nf WHNF (T.instantiateVars b)
--}
-collectCtx args ctx (T.Arr a b) = case args of
-    []        -> error "collectCtx"
-    [arg]     -> return (Snoc ctx [unArg arg] a, fmap T.F b)
-    arg:args' -> do
-        (Snoc (Snoc ctx' vars1 a1) vars2 a2, ty) <- collectCtx args' (Snoc ctx [unArg arg] a) $ nf WHNF (fmap T.F b)
-        return (Snoc ctx' (vars1 ++ vars2) ?, ty)
-collectCtx args ctx ty = 
-        let msg = emsgLC (argGetPos $ head args) "" $
-                pretty "Expected type:" <+> prettyOpen ctx ty $$
-                pretty "But lambda expression has pi type"
-        in throwError [msg]
-
 typeCheck :: Monad m => Expr -> Maybe (T.Term String) -> TCM m (T.Term String, T.Term String)
 typeCheck expr ty = go Nil expr $ fmap (nf WHNF) ty
   where
     go :: (Monad m, Eq a) => Ctx Int [String] T.Term String a -> Expr -> Maybe (T.Term a) -> TCM m (T.Term a, T.Term a)
     go ctx (Paren _ e) ty = go ctx e ty
-    go ctx (Lam _ args e) (Just ty) = do
-        (ctx',ty') <- collectCtx args ctx ty
-        (te, _) <- go ctx' e $ Just (nf WHNF ty')
-        return (T.Lam $ T.Name (map unArg args) $ T.toScope te, ty)
-{-
-    go ctx (Lam _ args e) (Just ty@(T.Pi _ a (T.Name ns b))) = case splitLists args ns of
-        Less _ _        -> do
-            let vars = map unArg args
-            (te, _) <- go (Snoc ctx (reverse vars) a) e $ Just $ nf WHNF (T.fromScope b)
-            return (T.Lam $ T.Name vars $ T.toScope te, ty)
-        Equal           -> do
-            let vars = map unArg args
-            (te, _) <- go (Snoc ctx (reverse vars) a) e $ Just $ nf WHNF (T.fromScope b)
-            return (T.Lam $ T.Name vars $ T.toScope te, ty)
-        Greater as1 as2 -> undefined
+    go ctx (Lam _ [arg] e) (Just ty@(T.Pi _ a (T.Name [_] b))) = do
+        (te, _) <- go (Snoc ctx [unArg arg] a) e $ Just $ nf WHNF (T.fromScope b)
+        return (T.Lam $ T.Name [unArg arg] $ T.toScope te, ty)
+    go ctx (Lam _ [arg] e) (Just ty@(T.Pi fl a (T.Name ns (T.Scope b)))) = do
+        (te, _) <- go (Snoc ctx [unArg arg] a) e $ Just $
+            T.Pi fl (fmap T.F a) $ T.Name (tail ns) $ T.Scope $ b >>= \v -> case v of
+                T.B i | i == length ns - 1 -> T.Var $ T.F $ T.Var (T.B 0)
+                      | otherwise          -> T.Var (T.B i)
+                T.F t -> fmap (T.F . T.Var . T.F) t
+        return (T.Lam $ T.Name [unArg arg] $ T.toScope te, ty)
     go ctx (Lam _ [arg] e) (Just ty@(T.Arr a b)) = do
-        let vars = [unArg arg]
-        (te, _) <- go (Snoc ctx vars a) e $ Just $ nf WHNF (fmap T.F b)
-        return (T.Lam $ T.Name vars $ T.toScope te, ty)
-    go ctx (Lam p (arg:args) e) (Just ty@(T.Arr a b)) = do
-        let vars = [unArg arg]
-        (te, _) <- go (Snoc ctx vars a) (Lam p args e) $ Just $ nf WHNF (fmap T.F b)
-        return (T.Lam $ T.Name vars $ T.toScope te, ty)
-    go ctx (Lam _ args e) (Just ty) =
-        let msg = emsgLC (argGetPos $ head args) "" $
+        (te, _) <- go (Snoc ctx [unArg arg] a) e $ Just $ nf WHNF (fmap T.F b)
+        return (T.Lam $ T.Name [unArg arg] $ T.toScope te, ty)
+    go ctx (Lam _ [arg] _) (Just ty) =
+        let msg = emsgLC (argGetPos arg) "" $
                 pretty "Expected type:" <+> prettyOpen ctx ty $$
                 pretty "But lambda expression has pi type"
         in throwError [msg]
--}
+    go ctx (Lam _ [] e) (Just ty) = go ctx e (Just ty)
+    go ctx (Lam p (arg:args) e) (Just ty) = go ctx (Lam p [arg] $ Lam p args e) (Just ty)
     go ctx e (Just ty) = do
         (r, t) <- go ctx e Nothing
         let msg = emsgLC (getPos e) "" $ pretty "Expected type:" <+> prettyOpen ctx ty $$
