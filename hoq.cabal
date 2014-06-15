@@ -31,6 +31,7 @@ executable hoq
                        Syntax.Term, Syntax.Name,
                        Syntax.Expr, Syntax.PrettyPrinter,
                        Syntax.ErrorDoc,
+                       Syntax.Context,
                        TypeChecking.Definitions,
                        TypeChecking.Expressions,
                        TypeChecking.Simple,
