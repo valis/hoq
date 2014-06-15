@@ -7,6 +7,7 @@ import Data.List
 import qualified Syntax.Expr as E
 import Syntax.Term
 import Syntax.ErrorDoc
+import Syntax.Context
 import TypeChecking.Monad
 
 notInScope :: Show a => (Int,Int) -> String -> a -> EMsg f
@@ -15,10 +16,8 @@ notInScope lc s a = emsgLC lc ("Not in scope: " ++ (if null s then "" else s ++ 
 inferErrorMsg :: (Int,Int) -> EMsg Term
 inferErrorMsg lc = emsgLC  lc "Cannot infer type of the argument" enull
 
-prettyOpen :: Pretty a Term => [String] -> Term (Var Int a) -> EDoc Term
-prettyOpen vars term = epretty $ fmap pretty $ term >>= \v -> return $ case v of
-    B i -> Left (vars !! i)
-    F a -> Right a
+prettyOpen :: Pretty b Term => Ctx Int [b] Term b a -> Term a -> EDoc Term
+prettyOpen ctx term = epretty $ fmap pretty $ close (!!) ctx term
 
 parseLevel :: String -> Level
 parseLevel "Type" = NoLevel
@@ -32,15 +31,11 @@ exprToVars = fmap reverse . go
     go (E.App as (E.Var a)) = fmap (a:) (go as)
     go e = Left (E.getPos e)
 
-checkUniverses :: (Pretty a Term, Monad m) => [String] -> E.Expr -> E.Expr
-    -> Term (Var Int a) -> Term (Var Int a) -> EDocM m (Term b)
-checkUniverses _ _ _ (Universe u1) (Universe u2) = return $ Universe (max u1 u2)
-checkUniverses ctx e1 e2 t1 t2 = throwError $ msg e1 t1 ++ msg e2 t2
+checkUniverses :: (Pretty b Term, Monad m) => Ctx Int [b] Term b a1 -> Ctx Int [b] Term b a2
+    -> E.Expr -> E.Expr -> Term a1 -> Term a2 -> EDocM m (Term a3)
+checkUniverses _ _ _ _ (Universe u1) (Universe u2) = return $ Universe (max u1 u2)
+checkUniverses ctx1 ctx2 e1 e2 t1 t2 = throwError $ msg ctx1 e1 t1 ++ msg ctx2 e2 t2
   where
-    msg _ (Universe _) = []
-    msg e t = [emsgLC (E.getPos e) "" $ pretty "Expected type: Type" $$
-                                        pretty "Actual type:" <+> prettyOpen ctx t]
-
-fromVar :: Var a b -> b
-fromVar (B _) = error "fromVar"
-fromVar (F b) = b
+    msg _ _ (Universe _) = []
+    msg ctx e t = [emsgLC (E.getPos e) "" $ pretty "Expected type: Type" $$
+                                            pretty "Actual type:" <+> prettyOpen ctx t]

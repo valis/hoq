@@ -24,7 +24,9 @@ instance (Monoid w, Monad m) => Monad (WarnT w m) where
     return a      = WarnT $ return (mempty, Just a)
     WarnT m >>= k = WarnT $ m >>= \(w, ma) -> case ma of
         Nothing -> return (w, Nothing)
-        Just a  -> runWarnT (k a)
+        Just a  -> do
+            (w', mb) <- runWarnT (k a)
+            return (w `mappend` w', mb)
 
 instance (Monoid w, Monad m) => MonadError w (WarnT w m) where
     throwError w = WarnT $ return (w, Nothing)

@@ -16,6 +16,7 @@ ppTerm t = ppTermCtx (map (\s -> (s,0)) (toList t)) (fmap text t)
 
 ppTermCtx :: [(String,Int)] -> Term Doc -> Doc
 ppTermCtx _ (Var d) = d
+ppTermCtx _ (Universe NoLevel) = text "Type"
 ppTermCtx _ (Universe l) = text $ "Type" ++ show l
 ppTermCtx ctx t@(App e1 e2) = ppTermPrec (prec t) ctx e1 <+> ppTermPrec (prec t + 1) ctx e2
 ppTermCtx ctx t@(Arr e1 e2) = ppTermPrec (prec t + 1) ctx e1 <+> arrow <+> ppTermPrec (prec t) ctx e2
