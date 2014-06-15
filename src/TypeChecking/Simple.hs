@@ -4,7 +4,6 @@ module TypeChecking.Simple
     ) where
 
 import Control.Monad
-import Control.Monad
 import Data.List
 
 import Syntax.Expr
@@ -38,14 +37,14 @@ typeCheckPDef (PDefData name params cons) = lift $ do
     forM_ (zip cons [0..]) $ \(Con (PIdent (_,con)) teles, i) -> addDef con (T.Con i con []) (T.Universe T.NoLevel) -- TODO
 
 typeCheck :: Monad m => Expr -> Maybe (T.Term String) -> TCM m (T.Term String, T.Term String)
-typeCheck expr ty = liftM (\(te,ty) -> (fmap fromVar te, fmap fromVar ty)) $ go [] expr $ fmap (fmap T.F) ty
+typeCheck expr ty = liftM (\(te,ty) -> (fmap fromVar te, fmap fromVar ty)) $ go [] expr $ fmap (nf WHNF . fmap T.F) ty
   where
     go :: Monad m => [([String], T.Term (T.Var Int String))] -> Expr -> Maybe (T.Term (T.Var Int String))
         -> TCM m (T.Term (T.Var Int String), T.Term (T.Var Int String))
     go ctx (Paren _ e) ty = go ctx e ty
     go ctx (Lam _ args e) (Just ty) = do
         (ctx',ty') <- collectCtx args ctx ty
-        (te, _) <- go ctx' e (Just ty')
+        (te, _) <- go ctx' e $ Just (nf WHNF ty')
         return (T.Lam $ T.abstractVars (map unArg args) te, ty)
     go ctx e (Just ty) = do
         (r, t) <- go ctx e Nothing
@@ -67,8 +66,11 @@ typeCheck expr ty = liftM (\(te,ty) -> (fmap fromVar te, fmap fromVar ty)) $ go 
         (r1, t1) <- go ctx e1 Nothing
         case t1 of
             T.Pi fl a b -> do
-                (r2, _) <- go ctx e2 (Just a)
+                (r2, _) <- go ctx e2 $ Just (nf WHNF a)
                 return (T.App r1 r2, either (T.Pi fl a) id $ T.instantiateNames1 r2 b)
+            T.Arr a b -> do
+                (r2, _) <- go ctx e2 $ Just (nf WHNF a)
+                return (T.App r1 r2, b)
             _ -> let msg = emsgLC (getPos e1) "" $ pretty "Expected pi type" $$
                                                    pretty "Actual type:" <+> prettyOpen (concat $ map fst ctx) t1
                  in throwError [msg]
@@ -109,11 +111,15 @@ collectCtx args ctx (T.Pi fl a b@(T.Name ns _)) = case splitLists args ns of
     Less _ _        -> return ((reverse $ map unArg args, a) : ctx, T.Pi fl a $ T.instantiateSomeVars (length args) b)
     Equal           -> return ((reverse $ map unArg args, a) : ctx, T.instantiateVars b)
     Greater as1 as2 -> collectCtx as2 ((reverse $ map unArg as1, a) : ctx) $ nf WHNF (T.instantiateVars b)
+collectCtx args ctx (T.Arr a b) = case args of
+    []        -> error "collectCtx"
+    [arg]     -> return (([unArg arg], a) : ctx, b)
+    arg:args' -> collectCtx args' (([unArg arg], a) : ctx) (nf WHNF b)
 collectCtx args ctx ty = 
-        let msg = emsgLC (argGetPos $ head args) "" $
-                pretty "Expected type:" <+> prettyOpen (concat $ fmap fst ctx) ty $$
-                pretty "But lambda expression has pi type"
-        in throwError [msg]
+    let msg = emsgLC (argGetPos $ head args) "" $
+            pretty "Expected type:" <+> prettyOpen (concat $ fmap fst ctx) ty $$
+            pretty "But lambda expression has pi type"
+    in throwError [msg]
 
 data Cmp a b = Less [b] [b] | Equal | Greater [a] [a]
 
