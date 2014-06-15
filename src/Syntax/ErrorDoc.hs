@@ -75,6 +75,10 @@ erenderWithFilename :: Pretty1 f => String -> EMsg f -> String
 erenderWithFilename fn (EMsg l c s d) = P.render (msgToDoc (Just fn) l c s d)
 
 msgToDoc :: Pretty1 f => Maybe String -> Maybe Int -> Maybe Int -> String -> EDoc f -> P.Doc
+msgToDoc Nothing l c "" d =
+    maybe P.empty (\ln -> P.text $ show ln ++ ":") l P.<>
+    maybe P.empty (\cn -> P.text $ show cn ++ ":") c P.<+>
+    edocToDoc d
 msgToDoc fn l c s d = P.hang (
     maybe P.empty (\s -> P.text $ s ++ ":") fn P.<>
     maybe P.empty (\ln -> P.text $ show ln ++ ":") l P.<>

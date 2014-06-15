@@ -1,10 +1,11 @@
 module Syntax.Name
-    ( Name(..), Names, names
+    ( Name(..), Names
     , abstractName, abstractNames
     , instantiateName, instantiateNames
     , instantiateNames1
     , abstractVar, abstractVars
     , instantiateVar, instantiateVars
+    , instantiateSomeVars
     ) where
 
 import Prelude.Extras
@@ -25,9 +26,6 @@ instance Functor f => Functor (Name n b f) where
     fmap f (Name n s) = Name n (fmap f s)
 
 type Ctx n = [(n,Int)]
-
-names :: Names n f a -> [n]
-names = name
 
 renameName :: Eq n => n -> Ctx n -> (Ctx n, Maybe Int)
 renameName n0 = go
@@ -98,3 +96,11 @@ instantiateVars (Name ns (Scope t)) = t >>= \v -> case v of
     F t' -> t' >>= \v' -> return $ case v' of
         B i -> B (i + length ns)
         F a -> F a
+
+instantiateSomeVars :: Monad f => Int -> Names n f (Var Int a) -> Names n f (Var Int a)
+instantiateSomeVars k (Name ns (Scope t)) = Name (drop k ns) $ Scope $ t >>= \v -> return $ case v of
+    B i | i < k     -> B i
+        | otherwise -> F $ return $ B (i - k)
+    F t'            -> F $ t' >>= \v' -> return $ case v' of
+                                                B i -> B (i + k)
+                                                F a -> F a
