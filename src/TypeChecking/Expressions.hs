@@ -1,6 +1,11 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module TypeChecking.Expressions where
+module TypeChecking.Expressions
+    ( notInScope, inferErrorMsg
+    , prettyOpen, parseLevel
+    , exprToVars, checkUniverses
+    , instantiateType
+    ) where
 
 import Data.List
 
@@ -39,3 +44,27 @@ checkUniverses ctx1 ctx2 e1 e2 t1 t2 = throwError $ msg ctx1 e1 t1 ++ msg ctx2 e
     msg _ _ (Universe _) = []
     msg ctx e t = [emsgLC (E.getPos e) "" $ pretty "Expected type: Type" $$
                                             pretty "Actual type:" <+> prettyOpen ctx t]
+
+instantiateType :: Ctx Int [String] Term b a -> [String] -> Term a -> Either Int (TermInCtx Int [String] Term b)
+instantiateType ctx [] ty = Right (TermInCtx ctx ty)
+instantiateType ctx (v:vs) (Arr a b) = either (Left . succ) Right $ instantiateType (Snoc ctx [v] a) vs (fmap F b)
+instantiateType ctx vs (Pi fl a (Name ns b)) = case splitLists vs ns of
+    Less _ ns'  -> Right $ TermInCtx (Snoc ctx vs a) $ Pi fl (fmap F a) $ Name ns' $ Scope $ unscope b >>= \v -> case v of
+        B i -> let l = length ns'
+               in if i < l then return (B i)
+                           else return $ F $ Var $ B (i - l)
+        F t -> fmap (F . Var . F) t
+    Equal       -> Right $ TermInCtx (Snoc ctx vs a) (fromScope b)
+    Greater vs1 vs2 -> either (Left . (+ length vs1)) Right $ instantiateType (Snoc ctx vs1 a) vs2 (fromScope b)
+instantiateType _ _ _ = Left 0
+
+data Cmp a b = Less [b] [b] | Equal | Greater [a] [a]
+
+splitLists :: [a] -> [b] -> Cmp a b
+splitLists [] []         = Equal
+splitLists [] bs         = Less [] bs
+splitLists as []         = Greater [] as
+splitLists (a:as) (b:bs) = case splitLists as bs of
+    Less bs1 bs2    -> Less (b:bs1) bs2
+    Equal           -> Equal
+    Greater as1 as2 -> Greater (a:as1) as2

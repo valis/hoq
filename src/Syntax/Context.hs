@@ -4,11 +4,13 @@ module Syntax.Context where
 
 import Bound
 import Control.Monad
-import Control.Monad.Identity
 
 data Ctx i s f b a where
     Nil  :: Ctx i s f b b
     Snoc :: Ctx i s f b a -> s -> f a -> Ctx i s f b (Var i a)
+
+data TermInCtx i s f a where
+    TermInCtx :: Ctx i s f a b -> f b -> TermInCtx i s f a
 
 lookupIndex :: Monad f => (s -> Maybe i) -> Ctx i s f b a -> Maybe (f a, f a)
 lookupIndex c Nil = Nothing
@@ -25,3 +27,18 @@ close c Nil            t = t
 close c (Snoc ctx s _) t = close c ctx $ t >>= \v -> return $ case v of
     B i -> liftBase ctx (c s i)
     F a -> a
+
+(+++) :: Ctx i s f a b -> Ctx i s f b c -> Ctx i s f a c
+ctx +++ Nil = ctx
+ctx +++ Snoc ctx' s t = Snoc (ctx +++ ctx') s t
+
+abstractTermInCtx :: Monad f => TermInCtx Int [s] f a -> f (Var Int a)
+abstractTermInCtx (TermInCtx Nil t) = liftM F t
+abstractTermInCtx (TermInCtx (Snoc ctx s _) t) = go (length s) ctx t
+  where
+    go :: Monad f => Int -> Ctx Int [s] f a b -> f (Var Int b) -> f (Var Int a)
+    go _ Nil t = t
+    go n (Snoc ctx s _) t = go (n + length s) ctx $ t >>= \v -> return $ case v of
+        B i     -> B i
+        F (B i) -> B (i + n)
+        F (F a) -> F a
