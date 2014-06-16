@@ -42,26 +42,14 @@ typeCheck expr ty = typeCheckCtx Nil expr $ fmap (nf WHNF) ty
 
 typeCheckCtx :: (Monad m, Eq a) => Ctx Int [String] T.Term String a -> Expr -> Maybe (T.Term a) -> TCM m (T.Term a, T.Term a)
 typeCheckCtx ctx (Paren _ e) ty = typeCheckCtx ctx e ty
-typeCheckCtx ctx (Lam _ [arg] e) (Just ty@(T.Pi _ a (T.Name [_] b))) = do
-    (te, _) <- typeCheckCtx (Snoc ctx [unArg arg] a) e $ Just $ nf WHNF (T.fromScope b)
-    return (T.Lam $ T.Name [unArg arg] $ T.toScope te, ty)
-typeCheckCtx ctx (Lam _ [arg] e) (Just ty@(T.Pi fl a (T.Name ns (T.Scope b)))) = do
-    (te, _) <- typeCheckCtx (Snoc ctx [unArg arg] a) e $ Just $
-        T.Pi fl (fmap T.F a) $ T.Name (tail ns) $ T.Scope $ b >>= \v -> case v of
-            T.B i | i == length ns - 1 -> T.Var $ T.F $ T.Var (T.B 0)
-                  | otherwise          -> T.Var (T.B i)
-            T.F t -> fmap (T.F . T.Var . T.F) t
-    return (T.Lam $ T.Name [unArg arg] $ T.toScope te, ty)
-typeCheckCtx ctx (Lam _ [arg] e) (Just ty@(T.Arr a b)) = do
-    (te, _) <- typeCheckCtx (Snoc ctx [unArg arg] a) e $ Just $ nf WHNF (fmap T.F b)
-    return (T.Lam $ T.Name [unArg arg] $ T.toScope te, ty)
-typeCheckCtx ctx (Lam _ [arg] _) (Just ty) =
-    let msg = emsgLC (argGetPos arg) "" $
-            pretty "Expected type:" <+> prettyOpen ctx ty $$
-            pretty "But lambda expression has pi type"
-    in throwError [msg]
-typeCheckCtx ctx (Lam _ [] e) (Just ty) = typeCheckCtx ctx e (Just ty)
-typeCheckCtx ctx (Lam p (arg:args) e) (Just ty) = typeCheckCtx ctx (Lam p [arg] $ Lam p args e) (Just ty)
+typeCheckCtx ctx (Lam _ args e) (Just ty) = case instantiateType Nil (map unArg args) ty of
+    Left i -> let msg = emsgLC (argGetPos $ args !! i) "" $
+                        pretty "Expected type:" <+> prettyOpen ctx ty $$
+                        pretty "But lambda expression has pi type"
+              in throwError [msg]
+    Right (TermInCtx ctx' ty') -> do
+        (te, _) <- typeCheckCtx (ctx +++ ctx') e (Just ty')
+        return (T.Lam $ T.Name (map unArg args) $ T.toScope $ abstractTermInCtx (TermInCtx ctx' te), ty)
 typeCheckCtx ctx e (Just ty) = do
     (r, t) <- typeCheckCtx ctx e Nothing
     let msg = emsgLC (getPos e) "" $ pretty "Expected type:" <+> prettyOpen ctx ty $$

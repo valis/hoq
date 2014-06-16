@@ -10,7 +10,7 @@ data Ctx i s f b a where
     Snoc :: Ctx i s f b a -> s -> f a -> Ctx i s f b (Var i a)
 
 data TermInCtx i s f a where
-    TermInCtx :: Ctx i s f a b -> f b -> TermInCtx i s f a
+    TermInCtx :: Eq b => Ctx i s f a b -> f b -> TermInCtx i s f a
 
 lookupIndex :: Monad f => (s -> Maybe i) -> Ctx i s f b a -> Maybe (f a, f a)
 lookupIndex c Nil = Nothing
