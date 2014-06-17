@@ -1,5 +1,5 @@
 module TypeChecking.Definitions
-    ( PDef(..)
+    ( PDef(..), Tele
     , splitDefs
     , parPatToPattern, toListPat
     ) where
@@ -35,9 +35,8 @@ toListPat (T.RTPattern _ pats) (Pattern _ pats') = concat (zipWith toListPar pat
     toListPar T.RTPatternVar (ParVar arg) = [unArg arg]
     toListPar (T.RTPattern _ _) (ParVar _) = []
 
--- conTeleToPi :: 
-
-data PDef = PDefSyn String Expr | PDefCases String Expr [([ParPat],Expr)] | PDefData String [(Expr,Expr)] [Con]
+type Tele = [([Arg], Expr)]
+data PDef = PDefSyn String Expr | PDefCases String Expr [([ParPat],Expr)] | PDefData String Tele [(String,Tele)]
 
 theSameAs :: String -> Def -> Bool
 theSameAs name (DefFun (Pattern (PIdent (_,name')) _) _) = name == name'
@@ -52,5 +51,13 @@ splitDefs (DefFun (Pattern (PIdent (_,name)) []) expr : defs) = liftM (PDefSyn n
 splitDefs (DefFun (Pattern (PIdent (lc,name)) _) _    : defs) = do
     warn [inferErrorMsg lc]
     splitDefs $ dropWhile (theSameAs name) defs
-splitDefs (DefData (PIdent (_,name)) teles cons : defs) =
-    liftM (PDefData name (map (\(DataTele _ e1 e2) -> (e1,e2)) teles) (unCons cons) :) (splitDefs defs)
+splitDefs (DefData (PIdent (_,name)) teles cons : defs) = do
+    dataTeles <- forM teles $ \(DataTele _ e1 e2) -> liftM (\vs -> (vs, e2)) (exprToVars e1)
+    conTeles  <- forM (unCons cons) $ \(Con (PIdent (_,con)) teles) -> do
+        teles' <- forM teles $ \tele ->
+            case tele of
+                VarTele _ e1 e2 -> liftM (\vs -> (vs, e2)) (exprToVars e1)
+                TypeTele e2     -> return ([], e2)
+        return (con,teles')
+    pdefs <- splitDefs defs
+    return (PDefData name dataTeles conTeles : pdefs)

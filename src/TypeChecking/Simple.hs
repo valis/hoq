@@ -35,7 +35,8 @@ typeCheckPDef (PDefCases name ty cases) = do
         return $ T.Name pats' $ T.abstract (`elemIndex` list) term
 typeCheckPDef (PDefData name params cons) = lift $ do
     addDef name (T.DataType name) (T.Universe T.NoLevel)
-    forM_ (zip cons [0..]) $ \(Con (PIdent (_,con)) teles, i) -> addDef con (T.Con i con []) (T.Universe T.NoLevel) -- TODO
+    forM_ (zip cons [0..]) $ \((con,teles),i) -> do
+        addDef con (T.Con i con []) (T.Universe T.NoLevel) -- TODO
 
 typeCheck :: Monad m => Expr -> Maybe (T.Term String) -> TCM m (T.Term String, T.Term String)
 typeCheck expr ty = typeCheckCtx Nil expr $ fmap (nf WHNF) ty
@@ -54,19 +55,18 @@ typeCheckCtx ctx e (Just ty) = do
     (r, t) <- typeCheckCtx ctx e Nothing
     let msg = emsgLC (getPos e) "" $ pretty "Expected type:" <+> prettyOpen ctx ty $$
                                      pretty "Actual type:"   <+> prettyOpen ctx t
-    if t `T.lessOrEqual` ty
+    if nf NF t `T.lessOrEqual` nf NF ty
         then return (r, t)
         else throwError [msg]
 typeCheckCtx ctx (Pi [] e) Nothing = typeCheckCtx ctx e Nothing
-typeCheckCtx ctx expr@(Pi (PiTele _ e1 e2 : tvs) e) Nothing = case exprToVars e1 of
-    Left lc    -> throwError [emsgLC lc "Expected a list of identifiers" enull]
-    Right args -> do
-        (r1, t1) <- typeCheckCtx ctx e2 Nothing
-        let vars = map unArg args
-            ctx' = Snoc ctx (reverse vars) r1
-        (r2, t2) <- typeCheckCtx ctx' (Pi tvs e) Nothing
-        t <- checkUniverses ctx ctx' e2 (Pi tvs e) t1 t2
-        return (T.Pi (null tvs) r1 $ T.Name vars $ T.toScope r2, t)
+typeCheckCtx ctx expr@(Pi (PiTele _ e1 e2 : tvs) e) Nothing = do
+    args <- exprToVars e1
+    (r1, t1) <- typeCheckCtx ctx e2 Nothing
+    let vars = map unArg args
+        ctx' = Snoc ctx (reverse vars) r1
+    (r2, t2) <- typeCheckCtx ctx' (Pi tvs e) Nothing
+    t <- checkUniverses ctx ctx' e2 (Pi tvs e) t1 t2
+    return (T.Pi (null tvs) r1 $ T.Name vars $ T.toScope r2, t)
 typeCheckCtx ctx (App e1 e2) Nothing = do
     (r1, t1) <- typeCheckCtx ctx e1 Nothing
     case t1 of

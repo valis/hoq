@@ -4,9 +4,10 @@ module TypeChecking.Expressions
     ( notInScope, inferErrorMsg
     , prettyOpen, parseLevel
     , exprToVars, checkUniverses
-    , instantiateType
+    , instantiateType, typeCheckPat
     ) where
 
+import Control.Monad
 import Data.List
 
 import qualified Syntax.Expr as E
@@ -30,12 +31,12 @@ parseLevel "Type" = NoLevel
 parseLevel ('T':'y':'p':'e':s) = Level (read s)
 parseLevel s = error $ "parseLevel: " ++ s
 
-exprToVars :: E.Expr -> Either (Int,Int) [E.Arg]
-exprToVars = fmap reverse . go
+exprToVars :: Monad m => E.Expr -> EDocM m [E.Arg]
+exprToVars = liftM reverse . go
   where
-    go (E.Var a) = Right [a]
-    go (E.App as (E.Var a)) = fmap (a:) (go as)
-    go e = Left (E.getPos e)
+    go (E.Var a) = return [a]
+    go (E.App as (E.Var a)) = liftM (a:) (go as)
+    go e = throwError [emsgLC (E.getPos e) "Expected a list of identifiers" enull]
 
 checkUniverses :: (Pretty b Term, Monad m) => Ctx Int [b] Term b a1 -> Ctx Int [b] Term b a2
     -> E.Expr -> E.Expr -> Term a1 -> Term a2 -> EDocM m (Term a3)
@@ -69,3 +70,6 @@ splitLists (a:as) (b:bs) = case splitLists as bs of
     Less bs1 bs2    -> Less (b:bs1) bs2
     Equal           -> Equal
     Greater as1 as2 -> Greater (a:as1) as2
+
+typeCheckPat :: (Monad m, Eq a) => Ctx Int [String] Term b a -> E.ParPat -> Term a -> TCM m (TermInCtx Int [String] Term b)
+typeCheckPat = undefined

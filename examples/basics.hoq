@@ -8,8 +8,8 @@ universes : (f : Type1 -> Type0) -> f Type0 -> f Type0
 universes f = id (f Type0)
 
 -- Universes are cumulative
-cumlative : Type3 -> Type8
-cumlative A = A
+cumulative : Type3 -> Type8
+cumulative A = A
 
 -- Lambdas
 compose : (A B C : Type) -> (B -> C) -> (A -> B) -> A -> C
