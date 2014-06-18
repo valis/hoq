@@ -19,13 +19,13 @@ typeCheckDefs :: Monad m => [Def] -> TCM m ()
 typeCheckDefs defs = splitDefs defs >>= mapM_ (\t -> typeCheckPDef t `catchError` warn)
 
 typeCheckPDef :: Monad m => PDef -> TCM m ()
-typeCheckPDef (PDefSyn name expr) = do
+typeCheckPDef (PDefSyn arg expr) = do
     (term, ty) <- typeCheck expr Nothing
-    lift $ addDef name (T.FunSyn name term) ty
-typeCheckPDef (PDefCases name ty cases) = do
+    addDefCheck arg (T.FunSyn (unArg arg) term) ty
+typeCheckPDef (PDefCases arg ty cases) = do
     (ty, _) <- typeCheck ty Nothing
     names <- mapM (uncurry $ funsToTerm ty) cases
-    lift $ addDefRec name (T.FunCall name names) ty
+    addDefRecCheck arg (T.FunCall (unArg arg) names) ty
   where
     funsToTerm :: Monad m => T.Term String -> [ParPat] -> Expr -> TCM m (T.Names T.RTPattern T.Term String)
     funsToTerm ty pats expr = do
@@ -33,10 +33,36 @@ typeCheckPDef (PDefCases name ty cases) = do
         let list = toListPat (T.RTPattern 0 pats') (Pattern (error "typeCheckPDef") pats)
         (term, _) <- typeCheck expr $ Just (nf WHNF ty)
         return $ T.Name pats' $ T.abstract (`elemIndex` list) term
-typeCheckPDef (PDefData name params cons) = lift $ do
-    addDef name (T.DataType name) (T.Universe T.NoLevel)
-    forM_ (zip cons [0..]) $ \((con,teles),i) -> do
-        addDef con (T.Con i con []) (T.Universe T.NoLevel) -- TODO
+typeCheckPDef (PDefData arg params cons) = do
+    let name = unArg arg
+    (CtxFrom ctx, dataType, _) <- checkTele Nil params (T.Universe T.NoLevel)
+    addDefCheck arg (T.Var name) dataType
+    lvls <- forM (zip cons [0..]) $ \((con,tele),i) -> do
+        (_, conType, conLevel) <- checkTele ctx tele $ fmap (liftBase ctx) dataType
+        addDefCheck con (T.Con i (unArg con) []) (error "TODO") -- conType -- ???
+        return conLevel
+    lift $ deleteDef name
+    lift $ addDef name (T.DataType name) $ replaceLevel dataType (maximum lvls)
+  where
+    checkTele :: (Monad m, Eq a) => Ctx Int [String] T.Term String a -> Tele -> T.Term a ->
+        TCM m (CtxFrom Int [String] T.Term String, T.Term a, T.Level)
+    checkTele ctx [] term = return (CtxFrom ctx, term, T.NoLevel)
+    checkTele ctx (([],expr):tele) term = do
+        (r1,t1) <- typeCheckCtx ctx expr Nothing
+        (rctx,r2,t2) <- checkTele ctx tele term
+        T.Universe t <- checkUniverses ctx ctx expr expr t1 (T.Universe t2)
+        return (tctx, T.Arr r1 r2, t)
+    checkTele ctx ((args,expr):tele) term = do
+        (r1,t1) <- typeCheckCtx ctx expr Nothing
+        let vars = map unArg args
+            ctx' = Snoc ctx (reverse vars) r1
+        (rctx,r2,t2) <- checkTele ctx' tele (fmap T.F term)
+        T.Universe t <- checkUniverses ctx ctx' expr expr t1 (T.Universe t2)
+        return (rctx, T.Pi (null tele) r1 $ T.Name vars $ T.toScope r2, t)
+    
+    replaceLevel :: T.Term a -> T.Level -> T.Term a
+    replaceLevel (T.Pi fl r1 (T.Name vars (T.Scope r2))) lvl = T.Pi fl r1 $ T.Name vars $ T.Scope (replaceLevel r2 lvl)
+    replaceLevel _ lvl = T.Universe lvl
 
 typeCheck :: Monad m => Expr -> Maybe (T.Term String) -> TCM m (T.Term String, T.Term String)
 typeCheck expr ty = typeCheckCtx Nil expr $ fmap (nf WHNF) ty

@@ -36,7 +36,7 @@ toListPat (T.RTPattern _ pats) (Pattern _ pats') = concat (zipWith toListPar pat
     toListPar (T.RTPattern _ _) (ParVar _) = []
 
 type Tele = [([Arg], Expr)]
-data PDef = PDefSyn String Expr | PDefCases String Expr [([ParPat],Expr)] | PDefData String Tele [(String,Tele)]
+data PDef = PDefSyn Arg Expr | PDefCases Arg Expr [([ParPat],Expr)] | PDefData Arg Tele [(Arg,Tele)]
 
 theSameAs :: String -> Def -> Bool
 theSameAs name (DefFun (Pattern (PIdent (_,name')) _) _) = name == name'
@@ -44,20 +44,20 @@ theSameAs _ _ = False
 
 splitDefs :: Monad m => [Def] -> EDocM m [PDef]
 splitDefs [] = return []
-splitDefs (DefType (PIdent (_,name)) ty : defs) =
+splitDefs (DefType p@(PIdent (_,name)) ty : defs) =
     let (defs1,defs2) = span (theSameAs name) defs
-    in liftM (PDefCases name ty (map (\(DefFun (Pattern _ pats) expr) -> (pats,expr)) defs1) :) (splitDefs defs2)
-splitDefs (DefFun (Pattern (PIdent (_,name)) []) expr : defs) = liftM (PDefSyn name expr :) (splitDefs defs)
-splitDefs (DefFun (Pattern (PIdent (lc,name)) _) _    : defs) = do
+    in liftM (PDefCases (Arg p) ty (map (\(DefFun (Pattern _ pats) expr) -> (pats,expr)) defs1) :) (splitDefs defs2)
+splitDefs (DefFun (Pattern p []) expr : defs) = liftM (PDefSyn (Arg p) expr :) (splitDefs defs)
+splitDefs (DefFun (Pattern (PIdent (lc,name)) _) _ : defs) = do
     warn [inferErrorMsg lc]
     splitDefs $ dropWhile (theSameAs name) defs
-splitDefs (DefData (PIdent (_,name)) teles cons : defs) = do
+splitDefs (DefData p teles cons : defs) = do
     dataTeles <- forM teles $ \(DataTele _ e1 e2) -> liftM (\vs -> (vs, e2)) (exprToVars e1)
-    conTeles  <- forM (unCons cons) $ \(Con (PIdent (_,con)) teles) -> do
+    conTeles  <- forM (unCons cons) $ \(Con p teles) -> do
         teles' <- forM teles $ \tele ->
             case tele of
                 VarTele _ e1 e2 -> liftM (\vs -> (vs, e2)) (exprToVars e1)
                 TypeTele e2     -> return ([], e2)
-        return (con,teles')
+        return (Arg p, teles')
     pdefs <- splitDefs defs
-    return (PDefData name dataTeles conTeles : pdefs)
+    return (PDefData (Arg p) dataTeles conTeles : pdefs)

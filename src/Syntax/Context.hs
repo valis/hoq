@@ -9,6 +9,9 @@ data Ctx i s f b a where
     Nil  :: Ctx i s f b b
     Snoc :: Ctx i s f b a -> s -> f a -> Ctx i s f b (Var i a)
 
+data CtxFrom i s f a where
+    CtxFrom :: Eq b => Ctx i s f a b -> CtxFrom i s f a
+
 data TermInCtx i s f a where
     TermInCtx :: Eq b => Ctx i s f a b -> f b -> TermInCtx i s f a
 

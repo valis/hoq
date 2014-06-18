@@ -2,12 +2,14 @@
 
 module TypeChecking.Monad.Scope
     ( ScopeT, runScopeT
-    , addDef, addDefRec, substInTerm, getEntry
+    , addDef, addDefRec, deleteDef
+    , substInTerm, getEntry
     ) where
 
 import Control.Monad
 import Control.Monad.State
 import Control.Applicative
+import Data.List
 
 newtype ScopeT f m a = ScopeT { unScopeT :: StateT [(String, (f String, f String))] m a }
     deriving (Functor,Monad,MonadTrans,MonadIO,Applicative)
@@ -22,6 +24,9 @@ addDefRec :: (Monad f, Monad m) => String -> f String -> f String -> ScopeT f m 
 addDefRec v te ty = ScopeT $ modify $ \list ->
     let list' = (v, (modTerm fst te list', modTerm snd ty list)) : list
     in list'
+
+deleteDef :: (Monad f, Monad m) => String -> ScopeT f m ()
+deleteDef var = ScopeT $ modify $ deleteBy (\(v1,_) (v2,_) -> v1 == v2) (var, error "")
 
 substInTerm :: (Monad f, Monad m) => f String -> ScopeT f m (f String)
 substInTerm t = ScopeT $ liftM (modTerm fst t) get
