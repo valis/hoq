@@ -12,7 +12,6 @@ import Text.PrettyPrint
 
 import Syntax.BNFC.ParGrammar
 import Syntax.BNFC.ErrM
-import qualified Syntax.Expr as E
 import Syntax.Term
 import Syntax.PrettyPrinter
 import Syntax.ErrorDoc
@@ -21,14 +20,9 @@ import TypeChecking.Simple
 import Normalization
 
 parseExpr :: Monad m => String -> TCM m (Term String)
-parseExpr s = case parser s of
+parseExpr s = case pExpr (myLexer s) of
     Bad err -> throwError [emsg err enull]
-    Ok expr -> do
-        (term, ty) <- typeCheck expr Nothing
-        lift (substInTerm term)
-  where
-    parser :: String -> Err E.Expr
-    parser = pExpr . myLexer
+    Ok expr -> liftM fst (typeCheck expr Nothing)
 
 processCmd :: String -> String -> ScopeT Term IO ()
 processCmd "quit" _ = liftIO exitSuccess

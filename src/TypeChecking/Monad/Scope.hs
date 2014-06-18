@@ -2,37 +2,55 @@
 
 module TypeChecking.Monad.Scope
     ( ScopeT, runScopeT
-    , addDef, addDefRec, deleteDef
-    , substInTerm, getEntry
+    , addFunction, addConstructor, addDataType
+    , deleteDataType
+    , getConstructor
+    , Entry(..), getEntry
     ) where
 
+import Bound.Var
 import Control.Monad
+import Control.Monad.Fix
 import Control.Monad.State
 import Control.Applicative
 import Data.List
+import Data.Maybe
 
-newtype ScopeT f m a = ScopeT { unScopeT :: StateT [(String, (f String, f String))] m a }
-    deriving (Functor,Monad,MonadTrans,MonadIO,Applicative)
+data Entry f = FunctionE (f String) (f String) | DataTypeE (f String) | ConstructorE Int (f (Var Int String))
 
-modTerm :: Monad f => ((f String, f String) -> f String) -> f String ->  [(String, (f String, f String))] -> f String
-modTerm f t list = t >>= \v -> maybe (return v) f (lookup v list)
+data ScopeState f = ScopeState
+    { functions    :: [(String, (f String, f String))]
+    , dataTypes    :: [(String, f String)]
+    , constructors :: [((String, String), (Int, f (Var Int String)))]
+    }
 
-addDef :: (Monad f, Monad m) => String -> f String -> f String -> ScopeT f m ()
-addDef v te ty = ScopeT $ modify $ \list -> (v, (modTerm fst te list, modTerm snd ty list)) : list
+newtype ScopeT f m a = ScopeT { unScopeT :: StateT (ScopeState f) m a }
+    deriving (Functor,Monad,MonadTrans,MonadIO,MonadFix,Applicative)
 
-addDefRec :: (Monad f, Monad m) => String -> f String -> f String -> ScopeT f m ()
-addDefRec v te ty = ScopeT $ modify $ \list ->
-    let list' = (v, (modTerm fst te list', modTerm snd ty list)) : list
-    in list'
+addFunction :: (Monad f, Monad m) => String -> f String -> f String -> ScopeT f m ()
+addFunction v te ty = ScopeT $ modify $ \scope -> scope { functions = (v, (te, ty)) : functions scope }
 
-deleteDef :: (Monad f, Monad m) => String -> ScopeT f m ()
-deleteDef var = ScopeT $ modify $ deleteBy (\(v1,_) (v2,_) -> v1 == v2) (var, error "")
+addDataType :: (Monad f, Monad m) => String -> f String -> ScopeT f m ()
+addDataType v ty = ScopeT $ modify $ \scope -> scope { dataTypes = (v, ty) : dataTypes scope }
 
-substInTerm :: (Monad f, Monad m) => f String -> ScopeT f m (f String)
-substInTerm t = ScopeT $ liftM (modTerm fst t) get
+addConstructor :: (Monad f, Monad m) => String -> String -> Int -> f (Var Int String) -> ScopeT f m ()
+addConstructor con dt i ty = ScopeT $ modify $ \scope -> scope { constructors = ((con, dt), (i, ty)) : constructors scope }
 
-getEntry :: Monad m => String -> ScopeT f m (Maybe (f String, f String))
-getEntry v = ScopeT $ liftM (lookup v) get
+deleteDataType :: (Monad f, Monad m) => String -> ScopeT f m ()
+deleteDataType dt = ScopeT $ modify $ \scope ->
+    scope { dataTypes = deleteBy (\(v1,_) (v2,_) -> v1 == v2) (dt, error "") (dataTypes scope) }
+
+getConstructor :: Monad m => String -> Maybe String -> ScopeT f m [(Int, f (Var Int String))]
+getConstructor con (Just dt) = ScopeT $ liftM (maybeToList . lookup (con, dt) . constructors) get
+getConstructor con Nothing   = ScopeT $ liftM (map snd . filter (\((c,_),_) -> con == c) . constructors) get
+
+getEntry :: Monad m => String -> Maybe String -> ScopeT f m (Maybe (Entry f))
+getEntry v dt = ScopeT $ do
+    cons  <- unScopeT (getConstructor v dt)
+    scope <- get
+    return $ fmap (uncurry FunctionE)    (lookup v $ functions scope)
+     `mplus` fmap DataTypeE              (lookup v $ dataTypes scope)
+     `mplus` fmap (uncurry ConstructorE) (listToMaybe cons)
 
 runScopeT :: Monad m => ScopeT f m a -> m a
-runScopeT (ScopeT f) = evalStateT f []
+runScopeT (ScopeT f) = evalStateT f $ ScopeState [] [] []

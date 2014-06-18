@@ -6,6 +6,7 @@ module TypeChecking.Monad.Warn
     ) where
 
 import Control.Monad
+import Control.Monad.Fix
 import Control.Monad.Trans
 import Control.Monad.Error.Class
 import Control.Applicative
@@ -39,6 +40,9 @@ instance Monoid w => MonadTrans (WarnT w) where
 
 instance (Monoid w, MonadIO m) => MonadIO (WarnT w m) where
     liftIO m = WarnT $ liftM (\a -> (mempty, Just a)) (liftIO m)
+
+instance (Monoid w, MonadFix m) => MonadFix (WarnT w m) where
+    mfix f = WarnT $ mfix $ \ ~(_, ~(Just a)) -> runWarnT (f a)
 
 warn :: Monad m => w -> WarnT w m ()
 warn w = WarnT $ return (w, Just ())

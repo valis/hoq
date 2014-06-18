@@ -35,9 +35,9 @@ close c (Snoc ctx s _) t = close c ctx $ t >>= \v -> return $ case v of
 ctx +++ Nil = ctx
 ctx +++ Snoc ctx' s t = Snoc (ctx +++ ctx') s t
 
-abstractTermInCtx :: Monad f => TermInCtx Int [s] f a -> f (Var Int a)
-abstractTermInCtx (TermInCtx Nil t) = liftM F t
-abstractTermInCtx (TermInCtx (Snoc ctx s _) t) = go (length s) ctx t
+abstractTermInCtx :: Monad f => Ctx Int [s] f a b -> f b -> f (Var Int a)
+abstractTermInCtx Nil t = liftM F t
+abstractTermInCtx (Snoc ctx s _) t = go (length s) ctx t
   where
     go :: Monad f => Int -> Ctx Int [s] f a b -> f (Var Int b) -> f (Var Int a)
     go _ Nil t = t
