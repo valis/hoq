@@ -53,15 +53,18 @@ checkUniverses ctx1 ctx2 e1 e2 t1 t2 = throwError $ msg ctx1 e1 t1 ++ msg ctx2 e
 
 instantiateType :: Eq a => Ctx Int [String] Term b a -> [String] -> Term a -> Either Int (TermInCtx Int [String] Term b)
 instantiateType ctx [] ty = Right (TermInCtx ctx ty)
-instantiateType ctx (v:vs) (T.Arr a b) = either (Left . succ) Right $ instantiateType (Snoc ctx [v] a) vs $ nf WHNF (fmap F b)
+instantiateType ctx (v:vs) (T.Arr a b) =
+    either (Left . succ) Right $ instantiateType (Snoc ctx [v] a) vs $ nf WHNF (fmap F b)
 instantiateType ctx vs (T.Pi fl a (Name ns b)) = case splitLists vs ns of
-    Less _ ns'  -> Right $ TermInCtx (Snoc ctx vs a) $ T.Pi fl (fmap F a) $ Name ns' $ Scope $ unscope b >>= \v -> case v of
-        B i -> let l = length ns'
-               in if i < l then return (B i)
-                           else return $ F $ T.Var $ B (i - l)
-        F t -> fmap (F . T.Var . F) t
-    Equal       -> Right $ TermInCtx (Snoc ctx vs a) (fromScope b)
-    Greater vs1 vs2 -> either (Left . (+ length vs1)) Right $ instantiateType (Snoc ctx vs1 a) vs2 $ nf WHNF (fromScope b)
+    Less _ ns'  -> Right $ TermInCtx (Snoc ctx (reverse vs) a) $ T.Pi fl (fmap F a) $
+        Name ns' $ Scope $ unscope b >>= \v -> case v of
+            B i -> let l = length ns'
+                   in if i < l then return (B i)
+                               else return $ F $ T.Var $ B (i - l)
+            F t -> fmap (F . T.Var . F) t
+    Equal       -> Right $ TermInCtx (Snoc ctx (reverse vs) a) (fromScope b)
+    Greater vs1 vs2 -> either (Left . (+ length vs1)) Right $
+        instantiateType (Snoc ctx (reverse vs1) a) vs2 $ nf WHNF (fromScope b)
 instantiateType _ _ _ = Left 0
 
 data Cmp a b = Less [b] [b] | Equal | Greater [a] [a]

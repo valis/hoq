@@ -13,14 +13,15 @@ nf mode e = go e []
   where
     go (App a b)            ts = go a (b:ts)
     go e@Var{}              ts = apps e (nfs mode ts)
-    go e@DataType{}         ts = apps e (nfs mode ts)
     go e@Universe{}         _  = e
     go (Pi b e (Name v s))  _  | mode == NF = Pi b (nf NF e) $ Name v $ toScope $ nf NF (fromScope s)
     go e@Pi{}               _  = e
     go (Arr e1 e2)          _  | mode == NF = Arr (nf NF e1) (nf NF e2)
     go e@Arr{}              _  = e
-    go (Con c n es)         [] = Con c n $ if mode == NF then map (nf NF) es else es
-    go (Con c n es)         ts = Con c n $ if mode == NF then map (nf NF) (es ++ ts) else es ++ ts
+    go (Con c n es)         [] = Con c n    $ if mode == NF then map (nf NF) es         else es
+    go (Con c n es)         ts = Con c n    $ if mode == NF then map (nf NF) (es ++ ts) else es ++ ts
+    go (DataType d es)      [] = DataType d $ if mode == NF then map (nf NF) es         else es
+    go (DataType d es)      ts = DataType d $ if mode == NF then map (nf NF) (es ++ ts) else es ++ ts
     go (Lam (Name vars e)) ts =
         let lvars = length vars
             (t1,t2) = splitAt lvars ts

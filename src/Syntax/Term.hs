@@ -45,21 +45,21 @@ data Term a
     | FunCall String [Names RTPattern Term a]
     | FunSyn  String (Term a)
     | Universe Level
-    | DataType String
+    | DataType String [Term a]
 data RTPattern = RTPattern Int [RTPattern] | RTPatternVar
 
 instance Eq a => Eq (Term a) where
-    Var a       == Var a'       = a == a'
-    App a b     == App a' b'    = a == a' && b == b'
-    Lam n       == Lam n'       = n == n'
-    Arr a b     == Arr a' b'    = a == a' && b == b'
-    Pi _ a b    == Pi _ a' b'   = a == a' && b == b'
-    Con c _ a   == Con c' _ a'  = c == c' && a == a'
-    FunCall n _ == FunCall n' _ = n == n'
-    FunSyn n _  == FunSyn n' _  = n == n'
-    Universe u  == Universe u'  = u == u'
-    DataType d  == DataType d'  = d == d'
-    _           == _            = False
+    Var a        == Var a'         = a == a'
+    App a b      == App a' b'      = a == a' && b == b'
+    Lam n        == Lam n'         = n == n'
+    Arr a b      == Arr a' b'      = a == a' && b == b'
+    Pi _ a b     == Pi _ a' b'     = a == a' && b == b'
+    Con c _ a    == Con c' _ a'    = c == c' && a == a'
+    FunCall n _  == FunCall n' _   = n == n'
+    FunSyn n _   == FunSyn n' _    = n == n'
+    Universe u   == Universe u'    = u == u'
+    DataType d a == DataType d' a' = d == d' && a == a'
+    _            == _              = False
 
 class POrd a where
     pcompare :: a -> a -> Maybe Ordering
@@ -104,8 +104,8 @@ instance Traversable Term where
     traverse f (Con c n as)          = Con c n                     <$> traverse (traverse f) as
     traverse f (FunCall n cs)        = FunCall n                   <$> traverse (\(Name p c) -> Name p <$> traverse f c) cs
     traverse f (FunSyn n e)          = FunSyn n                    <$> traverse f e
+    traverse f (DataType d as)       = DataType d                  <$> traverse (traverse f) as
     traverse f (Universe l)          = pure (Universe l)
-    traverse f (DataType d)          = pure (DataType d)
 
 instance Monad Term where
     return                     = Var
@@ -118,7 +118,7 @@ instance Monad Term where
     FunCall n cs         >>= k = FunCall n $ map (>>>= k) cs
     FunSyn n e           >>= k = FunSyn n (e >>= k)
     Universe l           >>= _ = Universe l
-    DataType d           >>= _ = DataType d
+    DataType d as        >>= k = DataType d $ map (>>= k) as
 
 data Pattern v = Pattern v [Pattern v]
 
