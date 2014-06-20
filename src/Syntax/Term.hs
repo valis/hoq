@@ -15,10 +15,8 @@ import Data.Foldable hiding (msum)
 import Data.Monoid(mappend)
 import Control.Applicative
 import Control.Monad
-import Control.Monad.State
 
 import Syntax.Name
-import Syntax.ErrorDoc
 
 data Level = Level Int | NoLevel
 

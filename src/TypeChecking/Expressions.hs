@@ -9,7 +9,6 @@ module TypeChecking.Expressions
     ) where
 
 import Control.Monad
-import Data.List
 
 import Syntax.Expr as E
 import Syntax.Term as T

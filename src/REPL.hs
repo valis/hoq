@@ -7,7 +7,6 @@ import System.Exit
 import System.IO
 import Control.Monad
 import Control.Monad.Trans
-import Data.Traversable(sequenceA)
 import Text.PrettyPrint
 
 import Syntax.BNFC.ParGrammar

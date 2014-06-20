@@ -12,7 +12,7 @@ import Syntax.BNFC.ErrM
 import Syntax.BNFC.ParGrammar
 import Syntax.BNFC.LayoutGrammar
 import Syntax.ErrorDoc
-import Syntax.PrettyPrinter
+import Syntax.PrettyPrinter()
 import Syntax.Expr
 import TypeChecking.Simple
 import TypeChecking.Monad

@@ -153,7 +153,7 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
             (r , _) <- go ctx e [] $ Just (nf WHNF a)
             (rs, t) <- typeCheckApps es [] b
             return (r:rs, t)
-        typeCheckApps _ [] ty = throwError
+        typeCheckApps _ _ ty = throwError
             [emsgLC (argGetPos x) "" $ pretty "Expected pi type" $$
                                        pretty "Actual type:" <+> prettyOpen ctx ty]
     go ctx (E.Pi [] e) [] Nothing = go ctx e [] Nothing
