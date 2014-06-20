@@ -38,12 +38,12 @@ typeCheckPDef (PDefCases arg ty cases) = do
         (term, _) <- typeCheck expr $ Just (nf WHNF ty)
         return $ Name pats' $ abstract (`elemIndex` list) term
 typeCheckPDef (PDefData arg params cons) =
-    let name = unArg arg in
     if null params 
     then do
         addDataTypeCheck arg (T.Universe NoLevel)
         lvls <- forM (zip cons [0..]) $ \((con,tele),i) -> do
             (_, conType, conLevel) <- checkTele Nil tele (T.Universe NoLevel)
+            checkPositivity (nf WHNF conType)
             addConstructorCheck con name i (Left conType)
             return conLevel
         lift $ deleteDataType name
@@ -53,11 +53,14 @@ typeCheckPDef (PDefData arg params cons) =
         addDataTypeCheck arg dataType
         lvls <- forM (zip cons [0..]) $ \((con,tele),i) -> do
             (_, conType, conLevel) <- checkTele ctx tele $ fmap (liftBase ctx) dataType
+            checkPositivity (nf WHNF conType)
             addConstructorCheck con name i $ Right (abstractTermInCtx ctx conType)
             return conLevel
         lift $ deleteDataType name
         lift $ addDataType name $ replaceLevel dataType (maximum lvls)
   where
+    name = unArg arg
+    
     checkTele :: (Monad m, Eq a) => Ctx Int [String] Term String a -> Tele -> Term a ->
         TCM m (CtxFrom Int [String] Term String, Term a, Level)
     checkTele ctx [] term = return (CtxFrom ctx, term, NoLevel)
@@ -77,6 +80,20 @@ typeCheckPDef (PDefData arg params cons) =
     replaceLevel :: Term a -> Level -> Term a
     replaceLevel (T.Pi fl r1 (Name vars (Scope r2))) lvl = T.Pi fl r1 $ Name vars $ Scope (replaceLevel r2 lvl)
     replaceLevel _ lvl = T.Universe lvl
+    
+    checkPositivity :: Monad m => Term a -> EDocM m ()
+    checkPositivity (T.Arr a b)                   = checkNoNegative a >> checkPositivity (nf WHNF b)
+    checkPositivity (T.Pi _ a (Name _ (Scope b))) = checkNoNegative a >> checkPositivity (nf WHNF b)
+    checkPositivity _                             = return ()
+    
+    checkNoNegative :: Monad m => Term a -> EDocM m ()
+    checkNoNegative (T.Arr a b)                   = checkNoDataType a >> checkNoNegative (nf WHNF b)
+    checkNoNegative (T.Pi _ a (Name _ (Scope b))) = checkNoDataType a >> checkNoNegative (nf WHNF b)
+    checkNoNegative _                             = return ()
+    
+    checkNoDataType :: Monad m => Term a -> EDocM m ()
+    checkNoDataType t = when (name `elem` collectDataTypes t) $ throwError
+        [emsgLC (argGetPos arg) "Data type is not strictly positive" enull]
 
 typeCheck :: Monad m => Expr -> Maybe (Term String) -> TCM m (Term String, Term String)
 typeCheck expr ty = typeCheckCtx Nil expr $ fmap (nf WHNF) ty
@@ -123,18 +140,18 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
         return (apps te tes, ty')
       where
         typeCheckApps [] [] ty = return ([],ty)
+        typeCheckApps es is (T.Pi _ _ (Name [] b)) = typeCheckApps es [] $ instantiate (reverse is !!) b
         typeCheckApps [] is (T.Pi fl a (Name ns (Scope b))) =
             return ([], T.Pi fl a $ Name ns $ Scope $ b >>= \v -> return $ case v of
                 B i | i >= length ns -> F $ reverse is !! (i - length ns)
                 _ -> v)
-        typeCheckApps (e:es) [] (T.Arr a b) = do
-            (r , _) <- go ctx e [] $ Just (nf WHNF a)
-            (rs, t) <- typeCheckApps es [] b
-            return (r:rs, t)
-        typeCheckApps es is (T.Pi _ _ (Name [] b)) = typeCheckApps es [] $ instantiate (reverse is !!) b
         typeCheckApps (e:es) is (T.Pi fl a (Name (_:ns) b)) = do
             (r , _) <- go ctx e [] $ Just (nf WHNF a)
             (rs, t) <- typeCheckApps es (r:is) $ T.Pi fl a (Name ns b)
+            return (r:rs, t)
+        typeCheckApps (e:es) [] (T.Arr a b) = do
+            (r , _) <- go ctx e [] $ Just (nf WHNF a)
+            (rs, t) <- typeCheckApps es [] b
             return (r:rs, t)
         typeCheckApps _ [] ty = throwError
             [emsgLC (argGetPos x) "" $ pretty "Expected pi type" $$

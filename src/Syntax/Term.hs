@@ -4,7 +4,7 @@ module Syntax.Term
     , Pattern(..), RTPattern(..)
     , module Syntax.Name, module Bound
     , POrd(..), lessOrEqual, greaterOrEqual
-    , apps
+    , collectDataTypes, apps
     ) where
 
 import Prelude.Extras
@@ -129,6 +129,18 @@ instance Foldable Pattern where
     foldMap f (Pattern v []) = f v
     foldMap f (Pattern _ [pat]) = foldMap f pat
     foldMap f (Pattern v (pat:pats)) = foldMap f pat `mappend` foldMap f (Pattern v pats)
+
+collectDataTypes :: Term a -> [String]
+collectDataTypes (Var _) = []
+collectDataTypes (App e1 e2) = collectDataTypes e1 ++ collectDataTypes e2
+collectDataTypes (Lam (Name _ (Scope e))) = collectDataTypes e
+collectDataTypes (Arr e1 e2) = collectDataTypes e1 ++ collectDataTypes e2
+collectDataTypes (Pi _ e1 (Name _ (Scope e2))) = collectDataTypes e1 ++ collectDataTypes e2
+collectDataTypes (Con _ _ as) = as >>= collectDataTypes
+collectDataTypes (FunCall _ _) = []
+collectDataTypes (FunSyn _ _) = []
+collectDataTypes (DataType d as) = d : (as >>= collectDataTypes)
+collectDataTypes (Universe _) = []
 
 apps :: Term a -> [Term a] -> Term a
 apps e [] = e
