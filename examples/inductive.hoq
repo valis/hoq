@@ -1,0 +1,31 @@
+data Nat = zero | suc Nat
+
+data List (A : Type) = nil | cons A (List A)
+
+plus : Nat -> Nat -> Nat
+plus zero y = y
+plus (suc x) y = suc (plus x y)
+
+mul : Nat -> Nat -> Nat
+mul zero _ = zero
+mul (suc x) y = plus y (mul x y)
+
+fac : Nat -> Nat
+fac zero = suc zero
+fac (suc x) = mul (suc x) (fac x)
+
+append : (A : Type) -> List A -> List A -> List A
+append A nil ys = ys
+append A (cons x xs) ys = cons x (append A xs ys)
+
+n0 = zero
+n1 = suc n0
+n2 = suc n1
+n3 = suc n2
+n4 = suc n3
+n5 = suc n4
+n6 = suc n5
+
+downFrom : Nat -> List Nat
+downFrom zero = nil
+downFrom (suc n) = cons n (downFrom n)

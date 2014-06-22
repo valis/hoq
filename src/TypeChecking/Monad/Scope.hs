@@ -4,7 +4,7 @@ module TypeChecking.Monad.Scope
     ( ScopeT, runScopeT
     , addFunction, addConstructor, addDataType
     , deleteDataType
-    , getConstructor
+    , getConstructor, getConstructorDataTypes
     , Entry(..), getEntry
     ) where
 
@@ -45,6 +45,9 @@ deleteDataType dt = ScopeT $ modify $ \scope ->
 getConstructor :: Monad m => String -> Maybe String -> ScopeT f m [(Int, Either (f String) (f (Var Int String)))]
 getConstructor con (Just dt) = ScopeT $ liftM (maybeToList . lookup (con, dt) . constructors) get
 getConstructor con Nothing   = ScopeT $ liftM (map snd . filter (\((c,_),_) -> con == c) . constructors) get
+
+getConstructorDataTypes :: Monad m => String -> ScopeT f m [String]
+getConstructorDataTypes con = ScopeT $ liftM (map (snd . fst) . filter (\((c,_),_) -> con == c) . constructors) get
 
 getEntry :: Monad m => String -> Maybe String -> ScopeT f m [Entry f]
 getEntry v dt = ScopeT $ do

@@ -8,6 +8,7 @@ module TypeChecking.Simple
 import Control.Monad
 import Control.Monad.Fix
 import Data.List
+import Data.Maybe
 
 import Syntax.Expr as E
 import Syntax.Term as T
@@ -23,7 +24,15 @@ data TermsInCtx a where
 
 typeCheckPattern :: (Monad m, Eq a) => Ctx Int [String] Term String a
     -> Term a -> ParPat -> TCM m (TermInCtx Int [String] Term a)
-typeCheckPattern ctx ty (ParVar arg) = return $ TermInCtx (Snoc Nil [unArg arg] ty) $ T.Var (B 0)
+typeCheckPattern ctx ty (ParVar arg) = do
+    let var = unArg arg
+    cons <- lift $ getConstructor var $ case ty of
+        DataType dt _ -> Just dt
+        _             -> Nothing
+    case cons of
+        []       -> return $ TermInCtx (Snoc Nil [var] ty) $ T.Var (B 0)
+        [(i,_)]  -> return $ TermInCtx Nil $ T.Con i var []
+        _        -> throwError [inferErrorMsg (argGetPos arg) $ "data constructor " ++ show var]
 typeCheckPattern ctx (DataType dt params) (ParPat _ (E.Pattern (PIdent (lc,conName)) pats)) = do
     cons <- lift $ getConstructor conName (Just dt)
     (i, conType) <- case cons of
@@ -41,11 +50,11 @@ typeCheckPattern ctx ty (ParPat (PPar (lc,_)) _) =
 typeCheckPatterns :: (Monad m, Eq a) => Ctx Int [String] Term String a -> Term a -> [ParPat] -> TCM m (TermsInCtx a)
 typeCheckPatterns _ ty [] = return $ TermsInCtx Nil [] ty
 typeCheckPatterns ctx (T.Arr a b) (pat:pats) = do
-    TermInCtx ctx' te <- typeCheckPattern ctx a pat
+    TermInCtx ctx' te <- typeCheckPattern ctx (nf WHNF a) pat
     TermsInCtx ctx'' tes ty <- typeCheckPatterns (ctx +++ ctx') (nf WHNF $ fmap (liftBase ctx') b) pats
     return $ TermsInCtx (ctx' +++ ctx'') (fmap (liftBase ctx'') te : tes) ty
 typeCheckPatterns ctx (T.Pi fl a b) (pat:pats) = do
-    TermInCtx ctx' te <- typeCheckPattern ctx a pat
+    TermInCtx ctx' te <- typeCheckPattern ctx (nf WHNF a) pat
     let b' = either (T.Pi fl $ fmap (liftBase ctx') a) id $ instantiateNames1 te $ fmap (liftBase ctx') b
     TermsInCtx ctx'' tes ty <- typeCheckPatterns (ctx +++ ctx') (nf WHNF b') pats
     return $ TermsInCtx (ctx' +++ ctx'') (fmap (liftBase ctx'') te : tes) ty
@@ -70,7 +79,7 @@ typeCheckPDef (PDefCases arg ety cases) = do
             TermsInCtx ctx terms ty' <- typeCheckPatterns Nil (nf WHNF ty) pats
             (term, _) <- typeCheckCtx ctx expr $ Just (nf WHNF ty')
             pats' <- mapM parPatToPattern pats
-            return $ Name pats' $ toScope (abstractTermInCtx ctx term)
+            return $ Name pats' $ toScope $ reverseTerm (length $ contextNames ctx) (abstractTermInCtx ctx term)
         return $ FunCall (unArg arg) names
     return ()
 typeCheckPDef (PDefData arg params cons) =
@@ -78,7 +87,7 @@ typeCheckPDef (PDefData arg params cons) =
     then do
         addDataTypeCheck arg (T.Universe NoLevel)
         lvls <- forM (zip cons [0..]) $ \((con,tele),i) -> do
-            (_, conType, conLevel) <- checkTele Nil tele (T.Universe NoLevel)
+            (_, conType, conLevel) <- checkTele Nil tele $ DataType name []
             checkPositivity (nf WHNF conType)
             addConstructorCheck con name i (Left conType)
             return conLevel
@@ -88,7 +97,7 @@ typeCheckPDef (PDefData arg params cons) =
         (CtxFrom ctx, dataType, _) <- checkTele Nil params (T.Universe NoLevel)
         addDataTypeCheck arg dataType
         lvls <- forM (zip cons [0..]) $ \((con,tele),i) -> do
-            (_, conType, conLevel) <- checkTele ctx tele $ fmap (liftBase ctx) dataType
+            (_, conType, conLevel) <- checkTele ctx tele $ DataType name []
             checkPositivity (nf WHNF conType)
             addConstructorCheck con name i $ Right (abstractTermInCtx ctx conType)
             return conLevel
@@ -167,12 +176,25 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
                             B i -> reverse params !! i
                             F a -> return $ liftBase ctx a)
                         _ -> throwError [emsgLC lc ("Cannot infer parameters of data constructor " ++ show var) enull]
-                    [] -> throwError [notInScope lc "" var]
+                    [] -> do
+                        cons <- lift (getConstructorDataTypes var)
+                        let DataType dataType _ = fromJust mty
+                        case cons of
+                            []    -> throwError [notInScope lc "" var]
+                            [act] -> throwError [emsgLC lc "" $
+                                pretty ("Expected data type: " ++ dataType) $$
+                                pretty ("Actual data type: " ++ act)]
+                            acts -> throwError [emsgLC lc "" $
+                                pretty ("Expected data type: " ++ dataType) $$
+                                pretty ("Posible data types: " ++ intercalate ", " acts)]
                     _  -> throwError [inferErrorMsg lc $ show var]
         (tes,ty') <- typeCheckApps exprs [] ty
-        case mty of
-            Just ety -> actExpType ctx ty' ety lc
-            Nothing  -> return ()
+        case (mty, ty') of
+            (Nothing, _)  -> return ()
+            (Just (DataType edt _), DataType adt []) -> unless (edt == adt) $
+                throwError [emsgLC lc "" $ pretty ("Expected data type: " ++ edt) $$
+                                           pretty ("Actual data type: " ++ adt)]
+            (Just ety, _) -> actExpType ctx ty' ety lc
         return (apps te tes, ty')
       where
         typeCheckApps [] [] ty = return ([],ty)

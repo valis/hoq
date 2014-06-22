@@ -5,7 +5,7 @@ module TypeChecking.Expressions
     , prettyOpen, parseLevel
     , fixTerm
     , exprToVars, checkUniverses
-    , instantiateType, typeCheckPat
+    , instantiateType, reverseTerm
     ) where
 
 import Control.Monad
@@ -77,5 +77,7 @@ splitLists (a:as) (b:bs) = case splitLists as bs of
     Equal           -> Equal
     Greater as1 as2 -> Greater (a:as1) as2
 
-typeCheckPat :: (Monad m, Eq a) => Ctx Int [String] Term b a -> ParPat -> Term a -> TCM m (TermInCtx Int [String] Term b)
-typeCheckPat = undefined
+reverseTerm :: Int -> Term (Var Int a) -> Term (Var Int a)
+reverseTerm l = fmap $ \v -> case v of
+    B i -> B (l - 1 - i)
+    F a -> F a
