@@ -35,6 +35,10 @@ close c (Snoc ctx s _) t = close c ctx $ t >>= \v -> return $ case v of
 ctx +++ Nil = ctx
 ctx +++ Snoc ctx' s t = Snoc (ctx +++ ctx') s t
 
+contextNames :: Ctx i s f a b -> [s]
+contextNames Nil = []
+contextNames (Snoc ctx s _) = s : contextNames ctx
+
 abstractTermInCtx :: Monad f => Ctx Int [s] f a b -> f b -> f (Var Int a)
 abstractTermInCtx Nil t = liftM F t
 abstractTermInCtx (Snoc ctx s _) t = go (length s) ctx t

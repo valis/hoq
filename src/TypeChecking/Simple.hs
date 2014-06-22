@@ -1,3 +1,5 @@
+{-# LANGUAGE GADTs #-}
+
 module TypeChecking.Simple
     ( typeCheck
     , typeCheckDefs
@@ -16,6 +18,39 @@ import TypeChecking.Expressions
 import TypeChecking.Monad
 import Normalization
 
+data TermsInCtx a where
+    TermsInCtx :: Eq b => Ctx Int [String] Term a b -> [Term b] -> Term b -> TermsInCtx a
+
+typeCheckPattern :: (Monad m, Eq a) => Ctx Int [String] Term String a
+    -> Term a -> ParPat -> TCM m (TermInCtx Int [String] Term a)
+typeCheckPattern ctx ty (ParVar arg) = return $ TermInCtx (Snoc Nil [unArg arg] ty) $ T.Var (B 0)
+typeCheckPattern ctx (DataType dt params) (ParPat _ (E.Pattern (PIdent (lc,conName)) pats)) = do
+    cons <- lift $ getConstructor conName (Just dt)
+    (i, conType) <- case cons of
+        []                     -> throwError [notInScope lc "data constructor" conName]
+        (i, Left  conType) : _ -> return (i, fmap (liftBase ctx) conType)
+        (i, Right conType) : _ -> return (i, conType >>= \v -> case v of
+                                                                B i -> reverse params !! i
+                                                                F a -> T.Var $ liftBase ctx a)
+    TermsInCtx ctx' terms _ <- typeCheckPatterns ctx conType pats
+    return $ TermInCtx ctx' (T.Con i conName terms)
+typeCheckPattern ctx ty (ParPat (PPar (lc,_)) _) =
+    throwError [emsgLC lc "" $ pretty "Unexpected pattern" $$
+                               pretty "Expected type:" <+> prettyOpen ctx ty]
+
+typeCheckPatterns :: (Monad m, Eq a) => Ctx Int [String] Term String a -> Term a -> [ParPat] -> TCM m (TermsInCtx a)
+typeCheckPatterns _ ty [] = return $ TermsInCtx Nil [] ty
+typeCheckPatterns ctx (T.Arr a b) (pat:pats) = do
+    TermInCtx ctx' te <- typeCheckPattern ctx a pat
+    TermsInCtx ctx'' tes ty <- typeCheckPatterns (ctx +++ ctx') (nf WHNF $ fmap (liftBase ctx') b) pats
+    return $ TermsInCtx (ctx' +++ ctx'') (fmap (liftBase ctx'') te : tes) ty
+typeCheckPatterns ctx (T.Pi fl a b) (pat:pats) = do
+    TermInCtx ctx' te <- typeCheckPattern ctx a pat
+    let b' = either (T.Pi fl $ fmap (liftBase ctx') a) id $ instantiateNames1 te $ fmap (liftBase ctx') b
+    TermsInCtx ctx'' tes ty <- typeCheckPatterns (ctx +++ ctx') (nf WHNF b') pats
+    return $ TermsInCtx (ctx' +++ ctx'') (fmap (liftBase ctx'') te : tes) ty
+typeCheckPatterns _ _ (pat:_) = throwError [emsgLC (parPatGetPos pat) "Too many arguments" enull]
+
 typeCheckDefs :: MonadFix m => [Def] -> TCM m ()
 typeCheckDefs defs = splitDefs defs >>= mapM_ (\t -> typeCheckPDef t `catchError` warn)
 
@@ -23,20 +58,21 @@ typeCheckPDef :: MonadFix m => PDef -> TCM m ()
 typeCheckPDef (PDefSyn arg expr) = do
     (term, ty) <- typeCheck expr Nothing
     addFunctionCheck arg (FunSyn (unArg arg) term) ty
-typeCheckPDef (PDefCases arg ty cases) = do
-    (ty, _) <- typeCheck ty Nothing
+typeCheckPDef (PDefCases arg ety cases) = do
+    (ty, u) <- typeCheck ety Nothing
+    case u of
+        T.Universe _ -> return ()
+        _            -> throwError [emsgLC (getPos ety) "" $ pretty "Expected a type" $$
+                                                             pretty "Actual type:" <+> prettyOpen Nil ty]
     mfix $ \te -> do
         addFunctionCheck arg te ty
-        names <- mapM (uncurry $ funsToTerm ty) cases
+        names <- forM cases $ \(pats,expr) -> do
+            TermsInCtx ctx terms ty' <- typeCheckPatterns Nil (nf WHNF ty) pats
+            (term, _) <- typeCheckCtx ctx expr $ Just (nf WHNF ty')
+            pats' <- mapM parPatToPattern pats
+            return $ Name pats' $ toScope (abstractTermInCtx ctx term)
         return $ FunCall (unArg arg) names
     return ()
-  where
-    funsToTerm :: Monad m => Term String -> [ParPat] -> Expr -> TCM m (Names RTPattern Term String)
-    funsToTerm ty pats expr = do
-        pats' <- mapM parPatToPattern pats
-        let list = toListPat (RTPattern 0 pats') (E.Pattern (error "typeCheckPDef") pats)
-        (term, _) <- typeCheck expr $ Just (nf WHNF ty)
-        return $ Name pats' $ abstract (`elemIndex` list) term
 typeCheckPDef (PDefData arg params cons) =
     if null params 
     then do
@@ -82,8 +118,8 @@ typeCheckPDef (PDefData arg params cons) =
     replaceLevel _ lvl = T.Universe lvl
     
     checkPositivity :: Monad m => Term a -> EDocM m ()
-    checkPositivity (T.Arr a b)                   = checkNoNegative a >> checkPositivity (nf WHNF b)
-    checkPositivity (T.Pi _ a (Name _ (Scope b))) = checkNoNegative a >> checkPositivity (nf WHNF b)
+    checkPositivity (T.Arr a b)                   = checkNoNegative (nf WHNF a) >> checkPositivity (nf WHNF b)
+    checkPositivity (T.Pi _ a (Name _ (Scope b))) = checkNoNegative (nf WHNF a) >> checkPositivity (nf WHNF b)
     checkPositivity _                             = return ()
     
     checkNoNegative :: Monad m => Term a -> EDocM m ()
