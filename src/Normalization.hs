@@ -18,6 +18,8 @@ nf mode e = go e []
     go e@Pi{}               _  = e
     go (Arr e1 e2)          _  | mode == NF = Arr (nf NF e1) (nf NF e2)
     go e@Arr{}              _  = e
+    go e@Interval           _  = e
+    go e@(ICon _)           _  = e
     go (Con c n es)         [] = Con c n    $ if mode == NF then map (nf NF) es         else es
     go (Con c n es)         ts = Con c n    $ if mode == NF then map (nf NF) (es ++ ts) else es ++ ts
     go (DataType d es)      [] = DataType d $ if mode == NF then map (nf NF) es         else es
@@ -52,6 +54,9 @@ instantiatePat [] [] = Just []
 instantiatePat (RTPatternVar : pats) (term:terms) = fmap (term:) (instantiatePat pats terms)
 instantiatePat (RTPattern con pats1 : pats) (term:terms) = case nf WHNF term of
     Con i n terms1 | i == con -> liftM2 (++) (instantiatePat pats1 terms1) (instantiatePat pats terms)
+    _ -> Nothing
+instantiatePat (RTPatternI con : pats) (term:terms) = case nf WHNF term of
+    ICon i | i == con -> instantiatePat pats terms
     _ -> Nothing
 instantiatePat _ _ = Nothing
 

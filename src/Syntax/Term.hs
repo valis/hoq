@@ -1,5 +1,5 @@
 module Syntax.Term
-    ( Term(..)
+    ( Term(..), ICon(..)
     , Level(..), level
     , Pattern(..), RTPattern(..)
     , module Syntax.Name, module Bound
@@ -44,7 +44,10 @@ data Term a
     | FunSyn  String (Term a)
     | Universe Level
     | DataType String [Term a]
-data RTPattern = RTPattern Int [RTPattern] | RTPatternVar
+    | Interval
+    | ICon ICon
+data ICon = ILeft | IRight deriving Eq
+data RTPattern = RTPattern Int [RTPattern] | RTPatternVar | RTPatternI ICon
 
 instance Eq a => Eq (Term a) where
     Var a        == Var a'         = a == a'
@@ -57,6 +60,8 @@ instance Eq a => Eq (Term a) where
     FunSyn n _   == FunSyn n' _    = n == n'
     Universe u   == Universe u'    = u == u'
     DataType d a == DataType d' a' = d == d' && a == a'
+    Interval     == Interval       = True
+    ICon c       == ICon c'        = c == c'
     _            == _              = False
 
 class POrd a where
@@ -103,7 +108,9 @@ instance Traversable Term where
     traverse f (FunCall n cs)        = FunCall n                   <$> traverse (\(Name p c) -> Name p <$> traverse f c) cs
     traverse f (FunSyn n e)          = FunSyn n                    <$> traverse f e
     traverse f (DataType d as)       = DataType d                  <$> traverse (traverse f) as
-    traverse f (Universe l)          = pure (Universe l)
+    traverse _ (Universe l)          = pure (Universe l)
+    traverse _ Interval              = pure Interval
+    traverse _ (ICon c)              = pure (ICon c)
 
 instance Monad Term where
     return                     = Var
@@ -117,6 +124,8 @@ instance Monad Term where
     FunSyn n e           >>= k = FunSyn n (e >>= k)
     Universe l           >>= _ = Universe l
     DataType d as        >>= k = DataType d $ map (>>= k) as
+    Interval             >>= _ = Interval
+    ICon c               >>= _ = ICon c
 
 data Pattern v = Pattern v [Pattern v]
 
@@ -129,16 +138,18 @@ instance Foldable Pattern where
     foldMap f (Pattern v (pat:pats)) = foldMap f pat `mappend` foldMap f (Pattern v pats)
 
 collectDataTypes :: Term a -> [String]
-collectDataTypes (Var _) = []
-collectDataTypes (App e1 e2) = collectDataTypes e1 ++ collectDataTypes e2
-collectDataTypes (Lam (Name _ (Scope e))) = collectDataTypes e
-collectDataTypes (Arr e1 e2) = collectDataTypes e1 ++ collectDataTypes e2
+collectDataTypes (Var _)                       = []
+collectDataTypes (App e1 e2)                   = collectDataTypes e1 ++ collectDataTypes e2
+collectDataTypes (Lam (Name _ (Scope e)))      = collectDataTypes e
+collectDataTypes (Arr e1 e2)                   = collectDataTypes e1 ++ collectDataTypes e2
 collectDataTypes (Pi _ e1 (Name _ (Scope e2))) = collectDataTypes e1 ++ collectDataTypes e2
-collectDataTypes (Con _ _ as) = as >>= collectDataTypes
-collectDataTypes (FunCall _ _) = []
-collectDataTypes (FunSyn _ _) = []
-collectDataTypes (DataType d as) = d : (as >>= collectDataTypes)
-collectDataTypes (Universe _) = []
+collectDataTypes (Con _ _ as)                  = as >>= collectDataTypes
+collectDataTypes (FunCall _ _)                 = []
+collectDataTypes (FunSyn _ _)                  = []
+collectDataTypes (DataType d as)               = d : (as >>= collectDataTypes)
+collectDataTypes (Universe _)                  = []
+collectDataTypes Interval                      = []
+collectDataTypes (ICon _)                      = []
 
 apps :: Term a -> [Term a] -> Term a
 apps e [] = e

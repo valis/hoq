@@ -122,6 +122,16 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
         typeCheckApps _ _ ty = throwError
             [emsgLC (argGetPos x) "" $ pretty "Expected pi type" $$
                                        pretty "Actual type:" <+> prettyOpen ctx ty]
+    go ctx e@ELeft{} [] (Just ety) = do
+        actExpType ctx T.Interval ety (getPos e)
+        return (ICon ILeft, T.Interval)
+    go _ (ELeft _) [] Nothing = return (ICon ILeft, T.Interval)
+    go _ e@ELeft{} _ _ = throwError [emsgLC (getPos e) "\"left\" is applied to arguments" enull]
+    go ctx e@ERight{} [] (Just ety) = do
+        actExpType ctx T.Interval ety (getPos e)
+        return (ICon IRight, T.Interval)
+    go _ (ERight _) [] Nothing = return (ICon IRight, T.Interval)
+    go _ e@ERight{} _ _ = throwError [emsgLC (getPos e) "\"right\" is applied to arguments" enull]
     go ctx (E.Pi [] e) [] Nothing = go ctx e [] Nothing
     go ctx expr@(E.Pi (PiTele _ e1 e2 : tvs) e) [] Nothing = do
         args <- exprToVars e1
@@ -138,12 +148,13 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
         return (T.Arr r1 r2, t)
     go _ (E.Universe (U (_,u))) [] Nothing =
         let l = parseLevel u
-        in return $ (T.Universe l, T.Universe $ Level $ level l + 1)
+        in return (T.Universe l, T.Universe $ Level $ level l + 1)
       where
         parseLevel :: String -> Level
         parseLevel "Type" = NoLevel
         parseLevel ('T':'y':'p':'e':s) = Level (read s)
         parseLevel s = error $ "parseLevel: " ++ s
+    go _ E.Interval{} [] Nothing = return (T.Interval, T.Universe NoLevel)
     go ctx e [] (Just ty) = do
         (r, t) <- go ctx e [] Nothing
         actExpType ctx t ty (getPos e)

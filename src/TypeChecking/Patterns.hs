@@ -37,6 +37,8 @@ instance Error () where
 
 typeCheckPattern :: (Monad m, Eq a) => Ctx Int [String] Term String a
     -> Term a -> ParPat -> ErrorT () (TCM m) (TermInCtx Int [String] Term a, RTPattern)
+typeCheckPattern ctx ty (ParLeft _) = return (TermInCtx Nil $ ICon ILeft, RTPatternI ILeft)
+typeCheckPattern ctx ty (ParRight _) = return (TermInCtx Nil $ ICon IRight, RTPatternI IRight)
 typeCheckPattern ctx ty (ParEmpty _) = throwError ()
 typeCheckPattern ctx ty (ParVar arg) = do
     let var = unArg arg

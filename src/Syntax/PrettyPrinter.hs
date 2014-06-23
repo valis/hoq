@@ -30,6 +30,9 @@ ppTermCtx ctx t@(Con _ n as) = text n <+> hsep (map (ppTermPrec (prec t + 1) ctx
 ppTermCtx _ (FunSyn n _) = text n
 ppTermCtx _ (FunCall n _) = text n
 ppTermCtx ctx t@(DataType d as) = text d <+> hsep (map (ppTermPrec (prec t + 1) ctx) as)
+ppTermCtx ctx Interval = text "I"
+ppTermCtx ctx (ICon ILeft) = text "left"
+ppTermCtx ctx (ICon IRight) = text "right"
 
 ppNamesPrec :: Int -> [(String,Int)] -> Names String Term Doc -> ([Doc], Doc)
 ppNamesPrec p ctx n =
@@ -49,6 +52,8 @@ prec FunSyn{}        = 10
 prec FunCall{}       = 10
 prec (Con _ _ [])    = 10
 prec (DataType _ []) = 10
+prec Interval        = 10
+prec ICon{}   = 10
 prec App{}           = 9
 prec Con{}           = 9
 prec DataType{}      = 9

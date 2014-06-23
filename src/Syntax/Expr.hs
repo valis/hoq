@@ -31,6 +31,8 @@ parPatGetPos :: ParPat -> (Int,Int)
 parPatGetPos (ParVar arg) = argGetPos arg
 parPatGetPos (ParEmpty (PPar (p,_))) = p
 parPatGetPos (ParPat (PPar (p,_)) _) = p
+parPatGetPos (ParLeft (PLeft (p,_))) = p
+parPatGetPos (ParRight (PRight (p,_))) = p
 
 unArg :: Arg -> String
 unArg NoArg{} = "_"
