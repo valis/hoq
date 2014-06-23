@@ -4,8 +4,8 @@ elseif exists("b:current_syntax")
   finish
 endif
 
-" syn keyword hoqKeyword         lift
-syn keyword hoqType            data
+syn keyword hoqConstructor     left right path
+syn keyword hoqType            data I Path
 syn match   hoqLineComment     "---*\([^-!#$%&\*\+./<=>\?@\\^|~].*\)\?$"
 syn region  hoqBlockComment    start="{-"  end="-}" contains=hoqBlockComment
 syn match   hoqNumber          "\<[0-9]\+\>"
@@ -21,7 +21,7 @@ if version >= 508 || !exists("did_hoq_syntax_inits")
     command -nargs=+ HiLink hi def link <args>
   endif
 
-  HiLink hoqKeyword        Keyword
+  HiLink hoqConstructor    Keyword
   HiLink hoqLineComment    hoqComment
   HiLink hoqBlockComment   hoqComment
   HiLink hoqComment        Comment

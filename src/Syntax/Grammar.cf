@@ -23,7 +23,7 @@ Con.       Con      ::= PIdent [ConTele];
 separator  nonempty Con "|";
 
 VarTele.   ConTele  ::= PPar Expr ":" Expr ")";
-TypeTele.  ConTele  ::= Expr3;
+TypeTele.  ConTele  ::= Expr4;
 terminator ConTele  "";
 
 DataTele.  DataTele ::= PPar Expr ":" Expr ")";
@@ -35,19 +35,31 @@ terminator nonempty PiTele "";
 Lam.       Expr     ::= PLam [Arg] "->" Expr;
 Arr.       Expr1    ::= Expr2 "->" Expr1;
 Pi.        Expr1    ::= [PiTele] "->" Expr1;
-App.       Expr2    ::= Expr2 Expr3;
-Var.       Expr3    ::= Arg;
-Universe.  Expr3    ::= U;
+PathImp.   Expr2    ::= Expr3 "=" Expr3;
+App.       Expr3    ::= Expr3 Expr4;
+Var.       Expr4    ::= Arg;
+Universe.  Expr4    ::= U;
+Interval.  Expr4    ::= I;
+ELeft.     Expr4    ::= PLeft;
+ERight.    Expr4    ::= PRight;
+Path.      Expr4    ::= PPath;
+PathCon.   Expr4    ::= Ppath;
 _.         Expr     ::= Expr1;
 _.         Expr1    ::= Expr2;
 _.         Expr2    ::= Expr3;
-Paren.     Expr3    ::= PPar Expr ")";
+_.         Expr3    ::= Expr4;
+Paren.     Expr4    ::= PPar Expr ")";
 
 Arg.       Arg      ::= PIdent;
 NoArg.     Arg      ::= Pus;
 separator  nonempty Arg "";
 
 position token U ('T' 'y' 'p' 'e' digit*);
+position token I 'I';
+position token PLeft 'l' 'e' 'f' 't';
+position token PRight 'r' 'i' 'g' 'h' 't';
+position token PPath 'P' 'a' 't' 'h';
+position token Ppath 'p' 'a' 't' 'h';
 position token PLam '\\';
 position token PPar '(';
 position token Pus '_';

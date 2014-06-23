@@ -16,6 +16,12 @@ getPos (Var (Arg (PIdent (p,_)))) = p
 getPos (Var (NoArg (Pus (p,_)))) = p
 getPos (Universe (U (p,_))) = p
 getPos (Paren (PPar (p,_)) _) = p
+getPos (PathImp e _) = getPos e
+getPos (Interval (I (p,_))) = p
+getPos (ELeft (PLeft (p,_))) = p
+getPos (ERight (PRight (p,_))) = p
+getPos (Path (PPath (p,_))) = p
+getPos (PathCon (Ppath (p,_))) = p
 
 argGetPos :: Arg -> (Int,Int)
 argGetPos (Arg (PIdent (p,_))) = p
