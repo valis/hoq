@@ -1,7 +1,7 @@
 module Syntax.Expr
     ( module Syntax.BNFC.AbsGrammar
     , getPos, argGetPos, parPatGetPos
-    , unArg, unCons
+    , unArg
     ) where
 
 import Syntax.BNFC.AbsGrammar
@@ -23,12 +23,9 @@ argGetPos (NoArg (Pus  (p,_))) = p
 
 parPatGetPos :: ParPat -> (Int,Int)
 parPatGetPos (ParVar arg) = argGetPos arg
+parPatGetPos (ParEmpty (PPar (p,_))) = p
 parPatGetPos (ParPat (PPar (p,_)) _) = p
 
 unArg :: Arg -> String
 unArg NoArg{} = "_"
 unArg (Arg (PIdent (_,s))) = s
-
-unCons :: Cons -> [Con]
-unCons NoCons = []
-unCons (Cons cons) = cons

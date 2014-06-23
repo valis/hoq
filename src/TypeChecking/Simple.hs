@@ -75,12 +75,17 @@ typeCheckPDef (PDefCases arg ety cases) = do
                                                              pretty "Actual type:" <+> prettyOpen Nil ty]
     mfix $ \te -> do
         addFunctionCheck arg te ty
-        names <- forM cases $ \(pats,expr) -> do
-            TermsInCtx ctx terms ty' <- typeCheckPatterns Nil (nf WHNF ty) pats
-            (term, _) <- typeCheckCtx ctx expr $ Just (nf WHNF ty')
-            pats' <- mapM parPatToPattern pats
-            return $ Name pats' $ toScope $ reverseTerm (length $ contextNames ctx) (abstractTermInCtx ctx term)
-        return $ FunCall (unArg arg) names
+        names <- forM cases $ \(pats,mexpr) -> case mexpr of
+            Nothing -> return Nothing
+            Just expr -> do
+                TermsInCtx ctx terms ty' <- typeCheckPatterns Nil (nf WHNF ty) pats
+                (term, _) <- typeCheckCtx ctx expr $ Just (nf WHNF ty')
+                mpats' <- mapM parPatToPattern pats
+                return $ case sequence mpats' of
+                    Just pats' -> Just $ Name pats' $ toScope $
+                        reverseTerm (length $ contextNames ctx) (abstractTermInCtx ctx term)
+                    Nothing    -> Nothing
+        return $ FunCall (unArg arg) (catMaybes names)
     return ()
 typeCheckPDef (PDefData arg params cons) =
     if null params 

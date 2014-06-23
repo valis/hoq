@@ -1,62 +1,71 @@
 module TypeChecking.Definitions
     ( PDef(..), Tele
     , splitDefs
-    , parPatToPattern, toListPat
+    , parPatToPattern
     ) where
 
 import Control.Monad
 
 import Syntax.Expr as E
 import Syntax.Term as T
+import Syntax.ErrorDoc
 import TypeChecking.Expressions
 import TypeChecking.Monad
 
-exprPatToPattern :: Monad m => E.Pattern -> TCM m RTPattern
+exprPatToPattern :: Monad m => E.Pattern -> TCM m (Maybe RTPattern)
 exprPatToPattern (E.Pattern (PIdent (lc,name)) pats) = do
     d <- lift (getConstructor name Nothing)
     case d of
         []       -> throwError [notInScope lc "data constructor" name]
-        [(i, _)] -> liftM (RTPattern i) (mapM parPatToPattern pats)
+        [(i, _)] -> liftM (fmap (RTPattern i) . sequence) (mapM parPatToPattern pats)
         _        -> throwError [inferErrorMsg lc $ "data constructor " ++ show name]
 
-parPatToPattern :: Monad m => ParPat -> TCM m RTPattern
+parPatToPattern :: Monad m => ParPat -> TCM m (Maybe RTPattern)
+parPatToPattern (ParEmpty _) = return Nothing
 parPatToPattern (ParVar arg) = do
     let var = unArg arg
     d <- lift $ getConstructor var Nothing
     case d of
-        []       -> return RTPatternVar
-        [(i, _)] -> return $ RTPattern i []
+        []       -> return (Just RTPatternVar)
+        [(i, _)] -> return $ Just $ RTPattern i []
         _        -> throwError [inferErrorMsg (argGetPos arg) $ "data constructor " ++ show var]
 parPatToPattern (ParPat _ pat) = exprPatToPattern pat
 
-toListPat :: RTPattern -> E.Pattern -> [String]
-toListPat RTPatternVar (E.Pattern (PIdent (_,name)) _) = [name]
-toListPat (RTPattern _ pats) (E.Pattern _ pats') = concat (zipWith toListPar pats pats')
-  where
-    toListPar :: RTPattern -> ParPat -> [String]
-    toListPar pat (ParPat _ pat') = toListPat pat pat'
-    toListPar RTPatternVar (ParVar arg) = [unArg arg]
-    toListPar (RTPattern _ _) (ParVar _) = []
-
 type Tele = [([Arg], Expr)]
-data PDef = PDefSyn Arg Expr | PDefCases Arg Expr [([ParPat],Expr)] | PDefData Arg Tele [(Arg,Tele)]
+data PDef = PDefSyn Arg Expr | PDefCases Arg Expr [([ParPat], Maybe Expr)] | PDefData Arg Tele [(Arg,Tele)]
 
 theSameAs :: String -> Def -> Bool
 theSameAs name (DefFun (E.Pattern (PIdent (_,name')) _) _) = name == name'
+theSameAs name (DefFunEmpty (E.Pattern (PIdent (_,name')) _)) = name == name'
 theSameAs _ _ = False
 
 splitDefs :: Monad m => [Def] -> EDocM m [PDef]
 splitDefs [] = return []
-splitDefs (DefType p@(PIdent (_,name)) ty : defs) =
-    let (defs1,defs2) = span (theSameAs name) defs
-    in liftM (PDefCases (Arg p) ty (map (\(DefFun (E.Pattern _ pats) expr) -> (pats,expr)) defs1) :) (splitDefs defs2)
+splitDefs (DefType p@(PIdent (lc,name)) ty : defs) =
+    case span (theSameAs name) defs of
+        ([],_) -> do
+            warn [emsgLC lc ("Missing a realization of function " ++ show name) enull]
+            splitDefs defs
+        (defs1,defs2) -> do
+            pdefs <- splitDefs defs2
+            let defToPDef (DefFun (E.Pattern _ pats) expr) = (pats, Just expr)
+                defToPDef (DefFunEmpty (E.Pattern _ pats)) = (pats, Nothing)
+                defToPDef _                                = error "defToPDef"
+            return $ PDefCases (Arg p) ty (map defToPDef defs1) : pdefs
 splitDefs (DefFun (E.Pattern p []) expr : defs) = liftM (PDefSyn (Arg p) expr :) (splitDefs defs)
 splitDefs (DefFun (E.Pattern (PIdent (lc,name)) _) _ : defs) = do
     warn [inferErrorMsg lc "the argument"]
     splitDefs $ dropWhile (theSameAs name) defs
+splitDefs (DefFunEmpty (E.Pattern (PIdent (lc,name)) []) : defs) = do
+    warn [emsgLC lc "Expected right hand side" enull]
+    splitDefs $ dropWhile (theSameAs name) defs
+splitDefs (DefFunEmpty (E.Pattern (PIdent (lc,name)) _) : defs) = do
+    warn [inferErrorMsg lc "the argument"]
+    splitDefs $ dropWhile (theSameAs name) defs
+splitDefs (DefDataEmpty p teles : defs) = splitDefs (DefData p teles [] : defs)
 splitDefs (DefData p teles cons : defs) = do
     dataTeles <- forM teles $ \(DataTele _ e1 e2) -> liftM (\vs -> (vs, e2)) (exprToVars e1)
-    conTeles  <- forM (unCons cons) $ \(E.Con p teles) -> do
+    conTeles  <- forM cons $ \(E.Con p teles) -> do
         teles' <- forM teles $ \tele ->
             case tele of
                 VarTele _ e1 e2 -> liftM (\vs -> (vs, e2)) (exprToVars e1)

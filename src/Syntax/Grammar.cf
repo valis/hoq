@@ -5,19 +5,19 @@ comment "{-" "-}";
 
 layout toplevel;
 
-Defs.      Defs     ::= [Def];
-DefType.   Def      ::= PIdent ":" Expr;
-DefFun.    Def      ::= Pattern "=" Expr;
-DefData.   Def      ::= "data" PIdent [DataTele] Cons;
-separator  Def      ";";
+Defs.         Defs     ::= [Def];
+DefType.      Def      ::= PIdent ":" Expr;
+DefFun.       Def      ::= Pattern "=" Expr;
+DefFunEmpty.  Def      ::= Pattern;
+DefData.      Def      ::= "data" PIdent [DataTele] "=" [Con];
+DefDataEmpty. Def      ::= "data" PIdent [DataTele];
+separator     Def      ";";
 
 Pattern.   Pattern  ::= PIdent [ParPat];
 ParVar.    ParPat   ::= Arg;
+ParEmpty.  ParPat   ::= PPar ")";
 ParPat.    ParPat   ::= PPar Pattern ")";
 terminator ParPat   "";
-
-Cons.      Cons     ::= "=" [Con];
-NoCons.    Cons     ::= ;
 
 Con.       Con      ::= PIdent [ConTele];
 separator  nonempty Con "|";

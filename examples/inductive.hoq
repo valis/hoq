@@ -29,3 +29,8 @@ n6 = suc n5
 downFrom : Nat -> List Nat
 downFrom zero = nil
 downFrom (suc n) = cons n (downFrom n)
+
+data Empty
+
+Empty-elim : (A : Type) -> Empty -> A
+Empty-elim A ()
