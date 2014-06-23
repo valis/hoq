@@ -32,11 +32,9 @@ executable hoq
                        Syntax.Expr, Syntax.PrettyPrinter,
                        Syntax.ErrorDoc,
                        Syntax.Context,
+                       TypeChecking.Patterns,
                        TypeChecking.Definitions,
                        TypeChecking.Expressions,
-                       TypeChecking.Simple,
-                       -- TypeChecking.Interactive,
-                       -- TypeChecking.Interactive.Hole,
                        TypeChecking.Monad.Scope,
                        TypeChecking.Monad.Warn,
                        TypeChecking.Monad

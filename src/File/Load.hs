@@ -14,7 +14,7 @@ import Syntax.BNFC.LayoutGrammar
 import Syntax.ErrorDoc
 import Syntax.PrettyPrinter()
 import Syntax.Expr
-import TypeChecking.Simple
+import TypeChecking.Definitions
 import TypeChecking.Monad
 
 loadFile :: (MonadIO m, MonadFix m) => String -> ScopeT Term m ()

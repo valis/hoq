@@ -15,7 +15,7 @@ import Syntax.Term
 import Syntax.PrettyPrinter
 import Syntax.ErrorDoc
 import TypeChecking.Monad
-import TypeChecking.Simple
+import TypeChecking.Expressions
 import Normalization
 
 parseExpr :: Monad m => String -> TCM m (Term String)
