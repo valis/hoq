@@ -45,7 +45,7 @@ ack (suc m) (suc n) = ack m (ack (suc m) n)
 coe : (A : I -> Type) -> A left -> (i : I) -> A i
 coe A a left = a
 
--- To define a function over the interval type
+-- To define a function over the interval type,
 -- it is enough to give only one of the cases: either left or right
 opcoe : (A : I -> Type) -> A right -> (i : I) -> A i
 opcoe A a right = a

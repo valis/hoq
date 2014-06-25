@@ -23,19 +23,19 @@ parseExpr s = case pExpr (myLexer s) of
     Bad err -> throwError [emsg err enull]
     Ok expr -> liftM fst (typeCheck expr Nothing)
 
-processCmd :: String -> String -> ScopeT Term IO ()
-processCmd "quit" _ = liftIO exitSuccess
-processCmd cmd str | Just mode <- nfMode cmd = do
+ep :: NF -> String -> ScopeT Term IO ()
+ep mode str = do
     mres <- runWarnT (parseExpr str)
     liftIO $ case mres of
         ([], Nothing)   -> return ()
         ([], Just term) -> putStrLn $ render $ ppTerm (nf mode term)
         (errs, _)       -> mapM_ (hPutStrLn stderr . erender) errs
-  where
-    nfMode "whnf" = Just WHNF
-    nfMode "hnf"  = Just HNF
-    nfMode "nf"   = Just NF
-    nfMode _      = Nothing
+
+processCmd :: String -> String -> ScopeT Term IO ()
+processCmd "quit" _   = liftIO exitSuccess
+processCmd "nf"   str = ep NF str
+processCmd "hnf"  str = ep HNF str
+processCmd "whnf" str = ep WHNF str
 processCmd cmd _ = liftIO $ hPutStrLn stderr $ "Unknown command " ++ cmd
 
 repl :: ScopeT Term IO ()
@@ -47,7 +47,7 @@ repl = go ""
             Nothing   -> liftIO $ putStrLn ""
             Just line -> case break (== ' ') line of
                 ("",_)      -> go last
-                (cmd,line') -> do
+                (c:cmd,line') -> do
                     when (line /= last) $ liftIO (addHistory line)
-                    processCmd cmd line'
+                    if c == ':' then processCmd cmd line' else ep NF line
                     go line
