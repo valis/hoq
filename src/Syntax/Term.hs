@@ -46,32 +46,50 @@ data Term a
     | DataType String [Term a]
     | Interval
     | ICon ICon
+    | Path [Term a]
+    | PathImp (Maybe (Term a)) (Term a) (Term a)
+    | PCon (Maybe (Term a))
 data ICon = ILeft | IRight deriving Eq
 data RTPattern = RTPattern Int [RTPattern] | RTPatternVar | RTPatternI ICon
 
 instance Eq a => Eq (Term a) where
-    Var a        == Var a'         = a == a'
-    App a b      == App a' b'      = a == a' && b == b'
-    Lam n        == Lam n'         = n == n'
-    Arr a b      == Arr a' b'      = a == a' && b == b'
-    Pi _ a b     == Pi _ a' b'     = a == a' && b == b'
-    Con c _ a    == Con c' _ a'    = c == c' && a == a'
-    FunCall n _  == FunCall n' _   = n == n'
-    FunSyn n _   == FunSyn n' _    = n == n'
-    Universe u   == Universe u'    = u == u'
-    DataType d a == DataType d' a' = d == d' && a == a'
-    Interval     == Interval       = True
-    ICon c       == ICon c'        = c == c'
-    _            == _              = False
+    Var a          == Var a'            = a == a'
+    App a b        == App a' b'         = a == a' && b == b'
+    Lam n          == Lam n'            = n == n'
+    Arr a b        == Arr a' b'         = a == a' && b == b'
+    Pi _ a b       == Pi _ a' b'        = a == a' && b == b'
+    Con c _ a      == Con c' _ a'       = c == c' && a == a'
+    FunCall n _    == FunCall n' _      = n == n'
+    FunSyn n _     == FunSyn n' _       = n == n'
+    Universe u     == Universe u'       = u == u'
+    DataType d a   == DataType d' a'    = d == d' && a == a'
+    Interval       == Interval          = True
+    ICon c         == ICon c'           = c == c'
+    Path as        == Path as'          = as == as'
+    Path [a,b,c]   == PathImp ma' b' c' = maybe True (== a) ma' && b == b' && c == c'
+    PathImp ma b c == Path [a',b',c']   = maybe True (== a') ma && b == b' && c == c'
+    PathImp ma b c == PathImp ma' b' c' = maybe True id (liftM2 (==) ma ma') && b == b' && c == c'
+    PCon f         == PCon f'           = f == f'
+    _              == _                 = False
 
 class POrd a where
     pcompare :: a -> a -> Maybe Ordering
 
 instance Eq a => POrd (Term a) where
-    pcompare (Arr a b) (Arr a' b') = contraCovariant (pcompare a a') (pcompare b b')
-    pcompare (Pi _ a (Name _ (Scope b))) (Pi _ a' (Name _ (Scope b'))) = contraCovariant (pcompare a a') (pcompare b b')
-    pcompare (Universe u) (Universe u') = Just $ compare (level u) (level u')
-    pcompare e1 e2 = if e1 == e2 then Just EQ else Nothing
+    pcompare (Pi _ a (Name _ (Scope b))) (Pi _ a' (Name _ (Scope b')))
+                                                  = contraCovariant (pcompare a a') (pcompare b b')
+    pcompare (Arr a b) (Arr a' b')                = contraCovariant (pcompare a a') (pcompare b b')
+    pcompare (Universe u) (Universe u')           = Just $ compare (level u) (level u')
+    pcompare (Path []) (Path [])                  = Just EQ
+    pcompare (Path (a:as)) (Path (a':as'))        = if as == as' then pcompare a a' else Nothing
+    pcompare (Path [a,b,c]) (PathImp ma' b' c')   = if b == b' && c == c' then ma' >>= pcompare a else Nothing
+    pcompare (PathImp ma b c) (Path [a',b',c'])   = if b == b' && c == c' then ma >>= \a -> pcompare a a' else Nothing
+    pcompare (PathImp ma b c) (PathImp ma' b' c') = do
+        guard (b == b' && c == c')
+        a  <- ma
+        a' <- ma'
+        pcompare a a'
+    pcompare e1 e2                                = if e1 == e2 then Just EQ else Nothing
 
 contraCovariant :: Maybe Ordering -> Maybe Ordering -> Maybe Ordering
 contraCovariant (Just LT) (Just r) | r == EQ || r == GT = Just GT
@@ -104,6 +122,9 @@ instance Traversable Term where
     traverse f (Lam (Name n e))      = Lam . Name n                <$> traverse f e
     traverse f (Arr e1 e2)           = Arr                         <$> traverse f e1 <*> traverse f e2
     traverse f (Pi b e1 (Name n e2)) = (\e1' -> Pi b e1' . Name n) <$> traverse f e1 <*> traverse f e2
+    traverse f (PathImp me1 e2 e3)   = PathImp                     <$> traverse (traverse f) me1 <*> traverse f e2 <*> traverse f e3
+    traverse f (PCon e)              = PCon                        <$> traverse (traverse f) e
+    traverse f (Path es)             = Path                        <$> traverse (traverse f) es
     traverse f (Con c n as)          = Con c n                     <$> traverse (traverse f) as
     traverse f (FunCall n cs)        = FunCall n                   <$> traverse (\(Name p c) -> Name p <$> traverse f c) cs
     traverse f (FunSyn n e)          = FunSyn n                    <$> traverse f e
@@ -126,6 +147,9 @@ instance Monad Term where
     DataType d as        >>= k = DataType d $ map (>>= k) as
     Interval             >>= _ = Interval
     ICon c               >>= _ = ICon c
+    Path es              >>= k = Path $ map (>>= k) es
+    PathImp me1 e2 e3    >>= k = PathImp (fmap (>>= k) me1) (e2 >>= k) (e3 >>= k)
+    PCon e               >>= k = PCon $ fmap (>>= k) e
 
 data Pattern v = Pattern v [Pattern v]
 
@@ -137,7 +161,7 @@ instance Foldable Pattern where
     foldMap f (Pattern _ [pat]) = foldMap f pat
     foldMap f (Pattern v (pat:pats)) = foldMap f pat `mappend` foldMap f (Pattern v pats)
 
-collectDataTypes :: Term a -> [String]
+collectDataTypes :: Term a                    -> [String]
 collectDataTypes (Var _)                       = []
 collectDataTypes (App e1 e2)                   = collectDataTypes e1 ++ collectDataTypes e2
 collectDataTypes (Lam (Name _ (Scope e)))      = collectDataTypes e
@@ -150,6 +174,9 @@ collectDataTypes (DataType d as)               = d : (as >>= collectDataTypes)
 collectDataTypes (Universe _)                  = []
 collectDataTypes Interval                      = []
 collectDataTypes (ICon _)                      = []
+collectDataTypes (Path es)                     = es >>= collectDataTypes
+collectDataTypes (PathImp me1 e2 e3)           = maybe [] collectDataTypes me1 ++ collectDataTypes e2 ++ collectDataTypes e3
+collectDataTypes (PCon me)                     = maybe [] collectDataTypes me
 
 apps :: Term a -> [Term a] -> Term a
 apps e [] = e

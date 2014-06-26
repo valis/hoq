@@ -33,6 +33,9 @@ ppTermCtx ctx t@(DataType d as) = text d <+> hsep (map (ppTermPrec (prec t + 1) 
 ppTermCtx ctx Interval = text "I"
 ppTermCtx ctx (ICon ILeft) = text "left"
 ppTermCtx ctx (ICon IRight) = text "right"
+ppTermCtx ctx t@(Path es) = text "Path" <+> hsep (map (ppTermPrec (prec t + 1) ctx) es)
+ppTermCtx ctx t@(PathImp _ e2 e3) = ppTermPrec (prec t + 1) ctx e2 <+> equals <+> ppTermPrec (prec t + 1) ctx e3
+ppTermCtx ctx t@(PCon me) = text "path" <+> maybe empty (ppTermPrec (prec t + 1) ctx) me
 
 ppNamesPrec :: Int -> [(String,Int)] -> Names String Term Doc -> ([Doc], Doc)
 ppNamesPrec p ctx n =
@@ -45,18 +48,23 @@ ppTermPrec p ctx t = if p > prec t then parens (ppTermCtx ctx t) else ppTermCtx 
 arrow :: Doc
 arrow = text "->"
 
-prec :: Term a -> Int
+prec :: Term a      -> Int
 prec Var{}           = 10
 prec Universe{}      = 10
 prec FunSyn{}        = 10
 prec FunCall{}       = 10
 prec (Con _ _ [])    = 10
 prec (DataType _ []) = 10
+prec (Path [])       = 10
+prec (PCon Nothing)  = 10
 prec Interval        = 10
-prec ICon{}   = 10
+prec ICon{}          = 10
 prec App{}           = 9
 prec Con{}           = 9
 prec DataType{}      = 9
-prec Arr{}           = 8
-prec Pi{}            = 8
-prec Lam{}           = 8
+prec Path{}          = 9
+prec PCon{}          = 9
+prec PathImp{}       = 8
+prec Arr{}           = 7
+prec Pi{}            = 7
+prec Lam{}           = 6
