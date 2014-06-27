@@ -37,11 +37,12 @@ exprToVars = liftM reverse . go
 checkUniverses :: (Pretty b Term, Monad m) => Ctx Int [b] Term b a1 -> Ctx Int [b] Term b a2
     -> Expr -> Expr -> Term a1 -> Term a2 -> EDocM m (Term a3)
 checkUniverses _ _ _ _ (T.Universe u1) (T.Universe u2) = return $ T.Universe (max u1 u2)
-checkUniverses ctx1 ctx2 e1 e2 t1 t2 = throwError $ msg ctx1 e1 t1 ++ msg ctx2 e2 t2
-  where
-    msg _ _ (T.Universe _) = []
-    msg ctx e t = [emsgLC (getPos e) "" $ pretty "Expected type: Type" $$
-                                            pretty "Actual type:" <+> prettyOpen ctx t]
+checkUniverses ctx1 ctx2 e1 e2 t1 t2 = throwError $ checkIsType ctx1 e1 t1 ++ checkIsType ctx2 e2 t2
+
+checkIsType :: Pretty b Term => Ctx Int [b] Term b a -> Expr -> Term a -> [EMsg Term]
+checkIsType _ _ (T.Universe _) = []
+checkIsType ctx e t = [emsgLC (getPos e) "" $ pretty "Expected type: Type" $$
+                                              pretty "Actual type:" <+> prettyOpen ctx t]
 
 reverseTerm :: Int -> Term (Var Int a) -> Term (Var Int a)
 reverseTerm l = fmap $ \v -> case v of
@@ -132,6 +133,28 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
         return (ICon IRight, T.Interval)
     go _ (ERight _) [] Nothing = return (ICon IRight, T.Interval)
     go _ e@ERight{} _ _ = throwError [emsgLC (getPos e) "\"right\" is applied to arguments" enull]
+    go ctx e@PathCon{} es _ | length es > 1 = throwError [emsgLC (getPos e) "A path is applied to arguments" enull]
+    go ctx e@PathCon{} [] Nothing = throwError [inferErrorMsg (getPos e) "path"]
+    go ctx PathCon{} [e] Nothing = throwError [emsgLC (getPos e) "Not implemented yet" enull] -- TODO
+{-
+        (r,t) <- go ctx e [] Nothing
+        case t of
+            T.Arr T.Interval t'  -> ...
+            T.Pi _ T.Interval t' -> ...
+            _                    -> ...
+-}
+    go ctx e@PathCon{} [] (Just ty) = throwError [emsgLC (getPos e) "Not implemented yet" enull] -- TODO
+    go ctx e'@PathCon{} [e] (Just ty) = do
+        (mt1,t2,t3) <- case ty of
+            T.Path [t1,t2,t3]   -> return (Just t1, t2, t3)
+            T.PathImp mt1 t2 t3 -> return (mt1, t2, t3)
+            _                   -> throwError [emsgLC (getPos e') "" $ pretty "Expected type:" <+> prettyOpen ctx ty $$
+                                                                       pretty "Actual type: Path"]
+        (r,t) <- go ctx e [] $ fmap (T.Arr T.Interval) mt1
+        let left  = nf NF $ T.App r (ICon ILeft)
+            right = nf NF $ T.App r (ICon IRight)
+        actExpType ctx (T.PathImp Nothing left right) ty (getPos e')
+        return (PCon (Just r), ty)
     go ctx (E.Pi [] e) [] Nothing = go ctx e [] Nothing
     go ctx expr@(E.Pi (PiTele _ e1 e2 : tvs) e) [] Nothing = do
         args <- exprToVars e1
@@ -155,11 +178,29 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
         parseLevel ('T':'y':'p':'e':s) = Level (read s)
         parseLevel s = error $ "parseLevel: " ++ s
     go _ E.Interval{} [] Nothing = return (T.Interval, T.Universe NoLevel)
-    go ctx e [] (Just ty) = do
-        (r, t) <- go ctx e [] Nothing
+    go ctx e@E.Path{} [] Nothing = throwError [inferErrorMsg (getPos e) "Path"]
+    go ctx e@E.Path{} [] (Just ty) = throwError [emsgLC (getPos e) "Not implemented yet" enull] -- TODO
+    go ctx E.Path{} (e1:es) Nothing | length es < 3 = do
+        (r1,t1) <- go ctx e1 [] Nothing
+        case (checkIsType ctx e1 t1, es) of
+            ([], [])      -> return (T.Path [r1], T.Arr r1 $ T.Arr r1 t1)
+            ([], [e2])    -> do
+                (r2,_) <- go ctx e2 [] (Just r1)
+                return (T.Path [r1,r2], T.Arr r1 t1)
+            ([], [e2,e3]) -> do
+                (r2,_) <- go ctx e2 [] (Just r1)
+                (r3,_) <- go ctx e2 [] (Just r1)
+                return (T.Path [r1,r2,r3], t1)
+            (errs, _)     -> throwError errs
+    go ctx (E.PathImp e1 e2) [] Nothing = do
+        (r1,t1) <- go ctx e1 [] Nothing
+        (r2,_)  <- go ctx e2 [] (Just t1)
+        return (T.PathImp (Just t1) r1 r2, T.Universe NoLevel) -- TODO
+    go _ e _ Nothing = throwError [emsgLC (getPos e) "A type is applied to arguments" enull]
+    go ctx e es (Just ty) = do
+        (r, t) <- go ctx e es Nothing
         actExpType ctx t ty (getPos e)
-        return (r, t)
-    go _ e _ _ = throwError [emsgLC (getPos e) "A type is applied to arguments" enull]
+        return (r, ty)
     
     actExpType :: (Monad m, Eq a) => Ctx Int [String] Term String a -> Term a -> Term a -> (Int,Int) -> EDocM m ()
     actExpType ctx act exp lc = unless (nf NF act `lessOrEqual` nf NF exp) $
