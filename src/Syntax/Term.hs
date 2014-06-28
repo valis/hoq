@@ -83,19 +83,18 @@ class POrd a where
 
 instance Eq a => POrd (Term a) where
     pcompare (Pi _ a (Name _ (Scope b))) (Pi _ a' (Name _ (Scope b')))
-                                                  = contraCovariant (pcompare a a') (pcompare b b')
-    pcompare (Arr a b) (Arr a' b')                = contraCovariant (pcompare a a') (pcompare b b')
-    pcompare (Universe u) (Universe u')           = Just $ compare (level u) (level u')
-    pcompare (Path []) (Path [])                  = Just EQ
-    pcompare (Path (a:as)) (Path (a':as'))        = if as == as' then pcompare a a' else Nothing
-    pcompare (Path [a,b,c]) (PathImp ma' b' c')   = if b == b' && c == c' then ma' >>= pcompare a else Nothing
-    pcompare (PathImp ma b c) (Path [a',b',c'])   = if b == b' && c == c' then ma >>= \a -> pcompare a a' else Nothing
-    pcompare (PathImp ma b c) (PathImp ma' b' c') = do
-        guard (b == b' && c == c')
-        a  <- ma
-        a' <- ma'
-        pcompare a a'
-    pcompare e1 e2                                = if e1 == e2 then Just EQ else Nothing
+                                                              = contraCovariant (pcompare a a') (pcompare b b')
+    pcompare (Arr a b) (Arr a' b')                            = contraCovariant (pcompare a a') (pcompare b b')
+    pcompare (Universe u) (Universe u')                       = Just $ compare (level u) (level u')
+    pcompare (Path []) (Path [])                              = Just EQ
+    pcompare (Path (a:as)) (Path (a':as'))                    = if as == as'          then pcompare a a' else Nothing
+    pcompare (Path [a,b,c]) (PathImp Nothing   b' c')         = if b == b' && c == c' then Just EQ       else Nothing
+    pcompare (Path [a,b,c]) (PathImp (Just a') b' c')         = if b == b' && c == c' then pcompare a a' else Nothing
+    pcompare (PathImp Nothing  b c) (Path [a',b',c'])         = if b == b' && c == c' then Just EQ       else Nothing
+    pcompare (PathImp (Just a) b c) (Path [a',b',c'])         = if b == b' && c == c' then pcompare a a' else Nothing
+    pcompare (PathImp (Just a) b c) (PathImp (Just a') b' c') = if b == b' && c == c' then pcompare a a' else Nothing
+    pcompare (PathImp _  b c) (PathImp _ b' c')               = if b == b' && c == c' then Just EQ       else Nothing
+    pcompare e1 e2                                            = if e1 == e2           then Just EQ       else Nothing
 
 contraCovariant :: Maybe Ordering -> Maybe Ordering -> Maybe Ordering
 contraCovariant (Just LT) (Just r) | r == EQ || r == GT = Just GT

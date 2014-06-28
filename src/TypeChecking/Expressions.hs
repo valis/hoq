@@ -97,7 +97,7 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
                                 pretty ("Expected data type: " ++ dataType) $$
                                 pretty ("Posible data types: " ++ intercalate ", " acts)]
                     _  -> throwError [inferErrorMsg lc $ show var]
-        (tes,ty') <- typeCheckApps exprs [] ty
+        (tes,ty') <- typeCheckApps (argGetPos x) ctx exprs ty
         case (mty, ty') of
             (Nothing, _)  -> return ()
             (Just (DataType edt _), DataType adt []) -> unless (edt == adt) $
@@ -105,24 +105,6 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
                                            pretty ("Actual data type: " ++ adt)]
             (Just ety, _) -> actExpType ctx ty' ety lc
         return (apps te tes, ty')
-      where
-        typeCheckApps [] [] ty = return ([],ty)
-        typeCheckApps es is (T.Pi _ _ (Name [] b)) = typeCheckApps es [] $ instantiate (reverse is !!) b
-        typeCheckApps [] is (T.Pi fl a (Name ns (Scope b))) =
-            return ([], T.Pi fl a $ Name ns $ Scope $ b >>= \v -> return $ case v of
-                B i | i >= length ns -> F $ reverse is !! (i - length ns)
-                _ -> v)
-        typeCheckApps (e:es) is (T.Pi fl a (Name (_:ns) b)) = do
-            (r , _) <- go ctx e [] $ Just (nf WHNF a)
-            (rs, t) <- typeCheckApps es (r:is) $ T.Pi fl a (Name ns b)
-            return (r:rs, t)
-        typeCheckApps (e:es) [] (T.Arr a b) = do
-            (r , _) <- go ctx e [] $ Just (nf WHNF a)
-            (rs, t) <- typeCheckApps es [] b
-            return (r:rs, t)
-        typeCheckApps _ _ ty = throwError
-            [emsgLC (argGetPos x) "" $ pretty "Expected pi type" $$
-                                       pretty "Actual type:" <+> prettyOpen ctx ty]
     go ctx e@ELeft{} [] (Just ety) = do
         actExpType ctx T.Interval ety (getPos e)
         return (ICon ILeft, T.Interval)
@@ -155,6 +137,38 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
             right = nf NF $ T.App r (ICon IRight)
         actExpType ctx (T.PathImp Nothing left right) ty (getPos e')
         return (PCon (Just r), ty)
+    go ctx (E.At e1 e2) es Nothing = do
+        (r1, t1) <- go ctx e1 [] Nothing
+        (r2, _)  <- go ctx e2 [] (Just T.Interval)
+        let tcApps a b c = do
+                (tes, ty) <- typeCheckApps (getPos e1) ctx es a
+                return (apps (T.At b c r1 r2) tes, ty)
+        case nf WHNF t1 of
+            T.Path [a,b,c]         -> tcApps a b c
+            T.PathImp (Just a) b c -> tcApps a b c
+            T.PathImp Nothing  _ _ -> throwError [emsgLC (getPos e1) "Cannot infer type" enull]
+            t1'                    -> throwError [emsgLC (getPos e1) "" $ pretty "Expected type: Path" $$
+                                                                          pretty "Actual type:" <+> prettyOpen ctx t1']
+    go ctx e@E.Coe{} es Nothing | length es < 4 = throwError [emsgLC (getPos e) "Not implemented yet" enull] -- TODO
+    go ctx E.Coe{} (e1:e2:e3:e4:es) Nothing = do
+        (r1, _) <- go ctx e1 [] $ Just $ T.Arr T.Interval (T.Universe NoLevel) -- TODO
+        (r2, _) <- go ctx e2 [] $ Just T.Interval
+        (r3, _) <- go ctx e3 [] $ Just $ nf WHNF (T.App r1 r2)
+        (r4, _) <- go ctx e4 [] $ Just T.Interval
+        return (T.Coe [r1,r2,r3,r4], T.App r1 r4)
+    go ctx e@E.Iso{} es Nothing | length es < 7 = throwError [emsgLC (getPos e) "Not implemented yet" enull] -- TODO
+    go ctx E.Iso{} [e1,e2,e3,e4,e5,e6,e7] Nothing = do
+        (r1, t1) <- go ctx e1 [] Nothing
+        (r2, t2) <- go ctx e2 [] Nothing
+        tm <- checkUniverses ctx ctx e1 e2 (nf WHNF t1) (nf WHNF t2)
+        (r3, _)  <- go ctx e3 [] $ Just (T.Arr r1 r2)
+        (r4, _)  <- go ctx e4 [] $ Just (T.Arr r2 r1)
+        (r5, _)  <- go ctx e5 [] $ Just $ T.Pi True r1 $ Name ["x"] $ Scope $
+            T.PathImp (Just $ T.Var $ F r1) (T.App (T.Var (F r4)) $ T.App (T.Var (F r3)) $ T.Var $ B 0) (T.Var $ B 0)
+        (r6, _)  <- go ctx e6 [] $ Just $ T.Pi True r2 $ Name ["x"] $ Scope $
+            T.PathImp (Just $ T.Var $ F r2) (T.App (T.Var (F r3)) $ T.App (T.Var (F r4)) $ T.Var $ B 0) (T.Var $ B 0)
+        (r7, _)  <- go ctx e7 [] $ Just T.Interval
+        return (T.Iso [r1,r2,r3,r4,r5,r6,r7], tm)
     go ctx (E.Pi [] e) [] Nothing = go ctx e [] Nothing
     go ctx expr@(E.Pi (PiTele _ e1 e2 : tvs) e) [] Nothing = do
         args <- exprToVars e1
@@ -162,12 +176,12 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
         let vars = map unArg args
             ctx' = Snoc ctx (reverse vars) r1
         (r2, t2) <- go ctx' (E.Pi tvs e) [] Nothing
-        t <- checkUniverses ctx ctx' e2 (E.Pi tvs e) t1 t2
+        t <- checkUniverses ctx ctx' e2 (E.Pi tvs e) (nf WHNF t1) (nf WHNF t2)
         return (T.Pi (null tvs) r1 $ Name vars $ toScope r2, t)
     go ctx (E.Arr e1 e2) [] Nothing = do
         (r1,t1) <- go ctx e1 [] Nothing
         (r2,t2) <- go ctx e2 [] Nothing
-        t <- checkUniverses ctx ctx e1 e2 t1 t2
+        t <- checkUniverses ctx ctx e1 e2 (nf WHNF t1) (nf WHNF t2)
         return (T.Arr r1 r2, t)
     go _ (E.Universe (U (_,u))) [] Nothing =
         let l = parseLevel u
@@ -203,9 +217,33 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
         return (r, ty)
     
     actExpType :: (Monad m, Eq a) => Ctx Int [String] Term String a -> Term a -> Term a -> (Int,Int) -> EDocM m ()
-    actExpType ctx act exp lc = unless (nf NF act `lessOrEqual` nf NF exp) $
-        throwError [emsgLC lc "" $ pretty "Expected type:" <+> prettyOpen ctx exp $$
-                                   pretty "Actual type:"   <+> prettyOpen ctx act]
+    actExpType ctx act exp lc =
+        let act' = nf NF act
+            exp' = nf NF exp
+        in unless (act' `lessOrEqual` exp') $
+            throwError [emsgLC lc "" $ pretty "Expected type:" <+> prettyOpen ctx exp' $$
+                                       pretty "Actual type:"   <+> prettyOpen ctx act']
+
+typeCheckApps :: (Monad m, Eq a) => (Int,Int) -> Ctx Int [String] Term String a -> [Expr] -> Term a
+    -> TCM m ([Term a], Term a)
+typeCheckApps lc ctx exprs = go exprs []
+  where
+    go [] [] ty = return ([],ty)
+    go es is (T.Pi _ _ (Name [] b)) = go es [] $ instantiate (reverse is !!) b
+    go [] is (T.Pi fl a (Name ns (Scope b))) =
+        return ([], T.Pi fl a $ Name ns $ Scope $ b >>= \v -> return $ case v of
+            B i | i >= length ns -> F $ reverse is !! (i - length ns)
+            _ -> v)
+    go (e:es) is (T.Pi fl a (Name (_:ns) b)) = do
+        (r , _) <- typeCheckCtx ctx e $ Just (nf WHNF a)
+        (rs, t) <- go es (r:is) $ T.Pi fl a (Name ns b)
+        return (r:rs, t)
+    go (e:es) [] (T.Arr a b) = do
+        (r , _) <- typeCheckCtx ctx e $ Just (nf WHNF a)
+        (rs, t) <- go es [] b
+        return (r:rs, t)
+    go _ _ ty = throwError [emsgLC lc "" $ pretty "Expected pi type" $$
+                                           pretty "Actual type:" <+> prettyOpen ctx ty]
 
 instantiateType :: Eq a => Ctx Int [String] Term b a -> [String] -> Term a -> Either Int (TermInCtx Int [String] Term b)
 instantiateType ctx [] ty = Right (TermInCtx ctx ty)

@@ -42,10 +42,24 @@ ack (suc m) zero = ack m (suc zero)
 ack (suc m) (suc n) = ack m (ack (suc m) n)
 
 -- Interval type
-coe : (A : I -> Type) -> A left -> (i : I) -> A i
-coe A a left = a
+-- I is a type with constructors left : I and right : I
+-- 
+-- coe is a primitive operator of type (A : I -> Type) (i : I) -> A i -> (j : I) -> A j
+-- coe satisfies the following rules:
+-- coe A i a i = a
+-- coe (\_ -> A) i a j = a
 
--- To define a function over the interval type,
--- it is enough to give only one of the cases: either left or right
-opcoe : (A : I -> Type) -> A right -> (i : I) -> A i
-opcoe A a right = a
+-- Path types
+-- Path A a a' is a type with constructor path : (f : I -> A) -> Path A (f left) (f right)
+-- a = a' is a synonym for Path A a a'
+-- @ is an eliminator for Path, it has type Path A a a' -> I -> A
+-- path f @ i = f i
+
+transport : (A : Type) (B : A -> Type) (a a' : A) -> a = a' -> B a -> B a'
+transport A B _ _ p x = coe (\i -> B (p @ i)) left x right
+
+idp : (A : Type) (a : A) -> a = a
+idp A a = path (\_ -> a)
+
+J : (A : Type) (B : (a : A) (a' : A) -> a = a' -> Type) -> ((a : A) -> B a a (idp A a)) -> (a a' : A) (p : a = a') -> B a a' p
+J A B d a a' p = coe (\i -> B a (p @ i) (coe (\j -> a = p @ j) left (idp A a) i)) left (d a) right
