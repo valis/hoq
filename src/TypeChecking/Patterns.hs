@@ -30,12 +30,12 @@ checkCoverage :: Monad m => Term String -> [([ParPat], Maybe Expr)] -> TCM m ()
 checkCoverage _ _ = return () -- TODO
 
 data TermsInCtx a where
-    TermsInCtx :: Eq b => Ctx Int [String] Term a b -> [Term b] -> Term b -> TermsInCtx a
+    TermsInCtx :: (Eq b, Show b) => Ctx Int [String] Term a b -> [Term b] -> Term b -> TermsInCtx a
 
 instance Error () where
     noMsg = ()
 
-typeCheckPattern :: (Monad m, Eq a) => Ctx Int [String] Term String a
+typeCheckPattern :: (Monad m, Eq a, Show a) => Ctx Int [String] Term String a
     -> Term a -> ParPat -> ErrorT () (TCM m) (TermInCtx Int [String] Term a, RTPattern)
 typeCheckPattern ctx ty (ParLeft _) = return (TermInCtx Nil $ ICon ILeft, RTPatternI ILeft)
 typeCheckPattern ctx ty (ParRight _) = return (TermInCtx Nil $ ICon IRight, RTPatternI IRight)
@@ -63,7 +63,7 @@ typeCheckPattern ctx ty (ParPat (PPar (lc,_)) _) = lift $
     throwError [emsgLC lc "" $ pretty "Unexpected pattern" $$
                                pretty "Expected type:" <+> prettyOpen ctx ty]
 
-typeCheckPatterns :: (Monad m, Eq a) => Ctx Int [String] Term String a -> Term a -> [ParPat]
+typeCheckPatterns :: (Monad m, Eq a, Show a) => Ctx Int [String] Term String a -> Term a -> [ParPat]
     -> ErrorT () (TCM m) (TermsInCtx a, [RTPattern])
 typeCheckPatterns _ ty [] = return (TermsInCtx Nil [] ty, [])
 typeCheckPatterns ctx (T.Arr a b) (pat:pats) = do

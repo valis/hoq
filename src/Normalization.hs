@@ -2,6 +2,7 @@ module Normalization
     ( NF(..), nf
     ) where
 
+import Debug.Trace
 import Control.Monad
 import Data.Traversable
 
@@ -9,7 +10,7 @@ import Syntax.Term
 
 data NF = NF | HNF | WHNF deriving Eq
 
-nf :: Eq a => NF -> Term a -> Term a
+nf :: (Show a, Eq a) => NF -> Term a -> Term a
 nf mode e = go e []
   where
     go (App a b)            ts = go a (b:ts)
@@ -38,9 +39,9 @@ nf mode e = go e []
             lt1 = length t1
             nfm = if mode == WHNF then id else nf mode
         in if lt1 < lvars
-            then Lam $ Name (drop lt1 vars) $ Scope $ nfm $ flip fmap (unscope e) $ \var -> case var of
-                B b -> if b < lt1 then F (t1 !! b) else B (b - lt1)
-                _ -> var
+            then Lam $ Name (drop lt1 vars) $ Scope $ nfm $ unscope e >>= \var -> case var of
+                B b -> if b < lt1 then fmap (F . Var) (t1 !! b) else return $ B (b - lt1)
+                _   -> return var
             else go (instantiate (t1 !!) e) t2
     go (FunSyn _ term) ts = go term ts
     go fc@(FunCall _ []) ts = apps fc (nfs mode ts)
@@ -59,22 +60,28 @@ nf mode e = go e []
         (t1, t2)             -> apps (At (go a []) (go b []) (go t1 []) (go t2 [])) (nfs mode ts)
     go (Coe es) ts = case es ++ ts of
         e1:e2:e3:e4:es' | nf NF e2 == nf NF e4 || isStationary e1 -> go e3 es'
-        es'                                                       -> Coe $ nfs mode (es ++ ts)
+        es'                                                       -> Coe (nfs mode es')
     go (Iso es) ts = case map (nf WHNF) (es ++ ts) of
         t1:t2:t3:t4:t5:t6: ICon ILeft  : _ -> go t1 []
         t1:t2:t3:t4:t5:t6: ICon IRight : _ -> go t2 []
         _                                  -> Iso $ nfs mode (es ++ ts)
+    go (Squeeze es) ts = case map (nf WHNF) (es ++ ts) of
+        ICon ILeft  : _ : _ -> ICon ILeft
+        ICon IRight : j : _ -> if mode == WHNF then j else nf mode j
+        _ : ICon ILeft  : _ -> ICon ILeft
+        i : ICon IRight : _ -> if mode == WHNF then i else nf mode i
+        es'                 -> traceShow (head es') $ Squeeze $ nfs mode (es ++ ts)
 
-isStationary :: Eq a => Term a -> Bool
+isStationary :: (Eq a, Show a) => Term a -> Bool
 isStationary t = case sequenceA (nf NF $ App (fmap F t) $ Var $ B ()) of
     F _ -> True
     B _ -> False
 
-nfs :: Eq a => NF -> [Term a] -> [Term a]
+nfs :: (Eq a, Show a) => NF -> [Term a] -> [Term a]
 nfs NF terms = map (nf NF) terms
 nfs _  terms = terms
 
-instantiatePat :: Eq a => [RTPattern] -> [Term a] -> Maybe [Term a]
+instantiatePat :: (Eq a, Show a) => [RTPattern] -> [Term a] -> Maybe [Term a]
 instantiatePat [] [] = Just []
 instantiatePat (RTPatternVar : pats) (term:terms) = fmap (term:) (instantiatePat pats terms)
 instantiatePat (RTPattern con pats1 : pats) (term:terms) = case nf WHNF term of
@@ -85,6 +92,6 @@ instantiatePat (RTPatternI con : pats) (term:terms) = case nf WHNF term of
     _ -> Nothing
 instantiatePat _ _ = Nothing
 
-instantiateCases :: Eq a => [Names RTPattern Term a] -> [Term a] -> Maybe (Term a)
+instantiateCases :: (Eq a, Show a) => [Names RTPattern Term a] -> [Term a] -> Maybe (Term a)
 instantiateCases cases terms = msum $ flip map cases $ \(Name pats term) ->
     fmap (\ts -> instantiate (ts !!) term) (instantiatePat pats terms)

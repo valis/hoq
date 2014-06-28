@@ -25,6 +25,7 @@ getPos (PathCon (Ppath (p,_))) = p
 getPos (At e _) = getPos e
 getPos (Coe (PCoe (p,_))) = p
 getPos (Iso (PIso (p,_))) = p
+getPos (Squeeze (PSqueeze (p,_))) = p
 
 argGetPos :: Arg -> (Int,Int)
 argGetPos (Arg (PIdent (p,_))) = p

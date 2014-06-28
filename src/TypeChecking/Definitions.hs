@@ -114,7 +114,7 @@ typeCheckPDef (PDefData arg params cons) =
   where
     name = unArg arg
     
-    checkTele :: (Monad m, Eq a) => Ctx Int [String] Term String a -> Tele -> Term a ->
+    checkTele :: (Monad m, Eq a, Show a) => Ctx Int [String] Term String a -> Tele -> Term a ->
         TCM m (CtxFrom Int [String] Term String, Term a, Level)
     checkTele ctx [] term = return (CtxFrom ctx, term, NoLevel)
     checkTele ctx (([],expr):tele) term = do
@@ -134,12 +134,12 @@ typeCheckPDef (PDefData arg params cons) =
     replaceLevel (T.Pi fl r1 (Name vars (Scope r2))) lvl = T.Pi fl r1 $ Name vars $ Scope (replaceLevel r2 lvl)
     replaceLevel _ lvl = T.Universe lvl
     
-    checkPositivity :: Eq a => Monad m => Term a -> EDocM m ()
+    checkPositivity :: (Eq a, Show a) => Monad m => Term a -> EDocM m ()
     checkPositivity (T.Arr a b)                   = checkNoNegative (nf WHNF a) >> checkPositivity (nf WHNF b)
     checkPositivity (T.Pi _ a (Name _ (Scope b))) = checkNoNegative (nf WHNF a) >> checkPositivity (nf WHNF b)
     checkPositivity _                             = return ()
     
-    checkNoNegative :: Eq a => Monad m => Term a -> EDocM m ()
+    checkNoNegative :: (Eq a, Show a) => Monad m => Term a -> EDocM m ()
     checkNoNegative (T.Arr a b)                   = checkNoDataType a >> checkNoNegative (nf WHNF b)
     checkNoNegative (T.Pi _ a (Name _ (Scope b))) = checkNoDataType a >> checkNoNegative (nf WHNF b)
     checkNoNegative _                             = return ()

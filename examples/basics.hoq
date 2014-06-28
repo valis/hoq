@@ -43,11 +43,17 @@ ack (suc m) (suc n) = ack m (ack (suc m) n)
 
 -- Interval type
 -- I is a type with constructors left : I and right : I
+-- coe and squeeze are primitive operators which satisfy rules as described below
 -- 
--- coe is a primitive operator of type (A : I -> Type) (i : I) -> A i -> (j : I) -> A j
--- coe satisfies the following rules:
+-- coe : (A : I -> Type) (i : I) -> A i -> (j : I) -> A j
 -- coe A i a i = a
 -- coe (\_ -> A) i a j = a
+-- 
+-- squeeze : I -> I -> I
+-- squeeze left _ = left
+-- squeeze right j = j
+-- squeeze _ left = left
+-- squeeze i right = i
 
 -- Path types
 -- Path A a a' is a type with constructor path : (f : I -> A) -> Path A (f left) (f right)
@@ -61,5 +67,5 @@ transport A B _ _ p x = coe (\i -> B (p @ i)) left x right
 idp : (A : Type) (a : A) -> a = a
 idp A a = path (\_ -> a)
 
-J : (A : Type) (B : (a : A) (a' : A) -> a = a' -> Type) -> ((a : A) -> B a a (idp A a)) -> (a a' : A) (p : a = a') -> B a a' p
-J A B d a a' p = coe (\i -> B a (p @ i) (coe (\j -> a = p @ j) left (idp A a) i)) left (d a) right
+J : (A : Type) (B : (a a' : A) -> a = a' -> Type) -> ((a : A) -> B a a (idp A a)) -> (a a' : A) (p : a = a') -> B a a' p
+J A B d a a' p = coe (\i -> B a (p @ i) (path (\j -> p @ squeeze i j))) left (d a) right

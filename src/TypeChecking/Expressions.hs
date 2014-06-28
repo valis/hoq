@@ -52,10 +52,10 @@ reverseTerm l = fmap $ \v -> case v of
 typeCheck :: Monad m => Expr -> Maybe (Term String) -> TCM m (Term String, Term String)
 typeCheck expr ty = typeCheckCtx Nil expr $ fmap (nf WHNF) ty
 
-typeCheckCtx :: (Monad m, Eq a) => Ctx Int [String] Term String a -> Expr -> Maybe (Term a) -> TCM m (Term a, Term a)
+typeCheckCtx :: (Monad m, Eq a, Show a) => Ctx Int [String] Term String a -> Expr -> Maybe (Term a) -> TCM m (Term a, Term a)
 typeCheckCtx ctx expr ty = go ctx expr [] ty
   where
-    go :: (Monad m, Eq a) => Ctx Int [String] Term String a -> Expr -> [Expr] -> Maybe (Term a) -> TCM m (Term a, Term a)
+    go :: (Monad m, Eq a, Show a) => Ctx Int [String] Term String a -> Expr -> [Expr] -> Maybe (Term a) -> TCM m (Term a, Term a)
     go ctx (Paren _ e) exprs ty = go ctx e exprs ty
     go ctx (E.Lam _ args e) [] (Just ty) = case instantiateType Nil (map unArg args) ty of
         Left i -> let msg = emsgLC (argGetPos $ args !! i) "" $
@@ -105,16 +105,10 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
                                            pretty ("Actual data type: " ++ adt)]
             (Just ety, _) -> actExpType ctx ty' ety lc
         return (apps te tes, ty')
-    go ctx e@ELeft{} [] (Just ety) = do
-        actExpType ctx T.Interval ety (getPos e)
-        return (ICon ILeft, T.Interval)
-    go _ (ELeft _) [] Nothing = return (ICon ILeft, T.Interval)
-    go _ e@ELeft{} _ _ = throwError [emsgLC (getPos e) "\"left\" is applied to arguments" enull]
-    go ctx e@ERight{} [] (Just ety) = do
-        actExpType ctx T.Interval ety (getPos e)
-        return (ICon IRight, T.Interval)
+    go _ (ELeft _)  [] Nothing = return (ICon ILeft, T.Interval)
+    go _ e@ELeft{}  _  Nothing = throwError [emsgLC (getPos e) "\"left\" is applied to arguments" enull]
     go _ (ERight _) [] Nothing = return (ICon IRight, T.Interval)
-    go _ e@ERight{} _ _ = throwError [emsgLC (getPos e) "\"right\" is applied to arguments" enull]
+    go _ e@ERight{} _  Nothing = throwError [emsgLC (getPos e) "\"right\" is applied to arguments" enull]
     go ctx e@PathCon{} es _ | length es > 1 = throwError [emsgLC (getPos e) "A path is applied to arguments" enull]
     go ctx e@PathCon{} [] Nothing = throwError [inferErrorMsg (getPos e) "path"]
     go ctx PathCon{} [e] Nothing = throwError [emsgLC (getPos e) "Not implemented yet" enull] -- TODO
@@ -169,6 +163,11 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
             T.PathImp (Just $ T.Var $ F r2) (T.App (T.Var (F r3)) $ T.App (T.Var (F r4)) $ T.Var $ B 0) (T.Var $ B 0)
         (r7, _)  <- go ctx e7 [] $ Just T.Interval
         return (T.Iso [r1,r2,r3,r4,r5,r6,r7], tm)
+    go ctx e@E.Squeeze{} es Nothing | length es < 2 = throwError [emsgLC (getPos e) "Not implemented yet" enull] -- TODO
+    go ctx E.Squeeze{} [e1,e2] Nothing = do
+        (r1, _) <- go ctx e1 [] (Just T.Interval)
+        (r2, _) <- go ctx e2 [] (Just T.Interval)
+        return (T.Squeeze [r1,r2], T.Interval)
     go ctx (E.Pi [] e) [] Nothing = go ctx e [] Nothing
     go ctx expr@(E.Pi (PiTele _ e1 e2 : tvs) e) [] Nothing = do
         args <- exprToVars e1
@@ -216,7 +215,7 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
         actExpType ctx t ty (getPos e)
         return (r, ty)
     
-    actExpType :: (Monad m, Eq a) => Ctx Int [String] Term String a -> Term a -> Term a -> (Int,Int) -> EDocM m ()
+    actExpType :: (Monad m, Eq a, Show a) => Ctx Int [String] Term String a -> Term a -> Term a -> (Int,Int) -> EDocM m ()
     actExpType ctx act exp lc =
         let act' = nf NF act
             exp' = nf NF exp
@@ -224,12 +223,12 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
             throwError [emsgLC lc "" $ pretty "Expected type:" <+> prettyOpen ctx exp' $$
                                        pretty "Actual type:"   <+> prettyOpen ctx act']
 
-typeCheckApps :: (Monad m, Eq a) => (Int,Int) -> Ctx Int [String] Term String a -> [Expr] -> Term a
+typeCheckApps :: (Monad m, Eq a, Show a) => (Int,Int) -> Ctx Int [String] Term String a -> [Expr] -> Term a
     -> TCM m ([Term a], Term a)
 typeCheckApps lc ctx exprs = go exprs []
   where
     go [] [] ty = return ([],ty)
-    go es is (T.Pi _ _ (Name [] b)) = go es [] $ instantiate (reverse is !!) b
+    go es is (T.Pi _ _ (Name [] b)) = go es [] $ instantiate (is !!) b
     go [] is (T.Pi fl a (Name ns (Scope b))) =
         return ([], T.Pi fl a $ Name ns $ Scope $ b >>= \v -> return $ case v of
             B i | i >= length ns -> F $ reverse is !! (i - length ns)
@@ -245,7 +244,7 @@ typeCheckApps lc ctx exprs = go exprs []
     go _ _ ty = throwError [emsgLC lc "" $ pretty "Expected pi type" $$
                                            pretty "Actual type:" <+> prettyOpen ctx ty]
 
-instantiateType :: Eq a => Ctx Int [String] Term b a -> [String] -> Term a -> Either Int (TermInCtx Int [String] Term b)
+instantiateType :: (Eq a, Show a) => Ctx Int [String] Term b a -> [String] -> Term a -> Either Int (TermInCtx Int [String] Term b)
 instantiateType ctx [] ty = Right (TermInCtx ctx ty)
 instantiateType ctx (v:vs) (T.Arr a b) =
     either (Left . succ) Right $ instantiateType (Snoc ctx [v] a) vs $ nf WHNF (fmap F b)

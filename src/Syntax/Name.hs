@@ -12,6 +12,7 @@ import Prelude.Extras
 import Bound
 import Data.List
 import Data.Maybe
+import Control.Monad
 
 data Name n b f a = Name { name :: n, scope :: Scope b f a } deriving Show
 type Names n = Name [n] Int
@@ -20,7 +21,9 @@ instance (Eq b, Monad f, Eq1 f, Eq a) => Eq (Name n b f a) where
     Name _ s1 == Name _ s2 = s1 == s2
 
 instance Bound (Name n b) where
-    Name n s >>>= k = Name n (s >>>= k)
+    Name n (Scope s) >>>= k = Name n $ Scope $ s >>= \v -> case v of
+        B b -> return (B b)
+        F t -> liftM (F . return) (t >>= k)
 
 instance Functor f => Functor (Name n b f) where
     fmap f (Name n s) = Name n (fmap f s)

@@ -39,6 +39,7 @@ ppTermCtx ctx t@(PCon me) = text "path" <+> maybe empty (ppTermPrec (prec t + 1)
 ppTermCtx ctx t@(At _ _ e1 e2) = ppTermPrec (prec t) ctx e1 <+> text "@" <+> ppTermPrec (prec t + 1) ctx e2
 ppTermCtx ctx t@(Coe es) = text "coe" <+> hsep (map (ppTermPrec (prec t + 1) ctx) es)
 ppTermCtx ctx t@(Iso es) = text "iso" <+> hsep (map (ppTermPrec (prec t + 1) ctx) es)
+ppTermCtx ctx t@(Squeeze es) = text "squeeze" <+> hsep (map (ppTermPrec (prec t + 1) ctx) es)
 
 ppNamesPrec :: Int -> [(String,Int)] -> Names String Term Doc -> ([Doc], Doc)
 ppNamesPrec p ctx n =
@@ -64,6 +65,7 @@ prec Interval        = 10
 prec ICon{}          = 10
 prec (Coe [])        = 10
 prec (Iso [])        = 10
+prec (Squeeze [])    = 10
 prec App{}           = 9
 prec Con{}           = 9
 prec DataType{}      = 9
@@ -71,6 +73,7 @@ prec Path{}          = 9
 prec PCon{}          = 9
 prec Coe{}           = 9
 prec Iso{}           = 9
+prec Squeeze{}       = 9
 prec At{}            = 8
 prec PathImp{}       = 7
 prec Arr{}           = 6

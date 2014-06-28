@@ -52,8 +52,12 @@ data Term a
     | At (Term a) (Term a) (Term a) (Term a)
     | Coe [Term a]
     | Iso [Term a]
-data ICon = ILeft | IRight deriving Eq
-data RTPattern = RTPattern Int [RTPattern] | RTPatternVar | RTPatternI ICon
+    | Squeeze [Term a]
+    deriving Show
+data ICon = ILeft | IRight deriving (Eq,Show)
+data RTPattern = RTPattern Int [RTPattern] | RTPatternVar | RTPatternI ICon deriving Show
+
+instance Show1 Term where showsPrec1 = showsPrec
 
 instance Eq a => Eq (Term a) where
     Var a          == Var a'            = a == a'
@@ -76,6 +80,7 @@ instance Eq a => Eq (Term a) where
     At _ _ a b     == At _ _ a' b'      = a == a' && b == b'
     Coe as         == Coe as'           = as == as'
     Iso as         == Iso as'           = as == as'
+    Squeeze as     == Squeeze as'       = as == as'
     _              == _                 = False
 
 class POrd a where
@@ -134,6 +139,7 @@ instance Traversable Term where
     traverse f (Con c n as)          = Con c n                     <$> traverse (traverse f) as
     traverse f (Coe as)              = Coe                         <$> traverse (traverse f) as
     traverse f (Iso as)              = Iso                         <$> traverse (traverse f) as
+    traverse f (Squeeze as)          = Squeeze                     <$> traverse (traverse f) as
     traverse f (FunCall n cs)        = FunCall n                   <$> traverse (\(Name p c) -> Name p <$> traverse f c) cs
     traverse f (FunSyn n e)          = FunSyn n                    <$> traverse f e
     traverse f (DataType d as)       = DataType d                  <$> traverse (traverse f) as
@@ -161,6 +167,7 @@ instance Monad Term where
     At e1 e2 e3 e4       >>= k = At (e1 >>= k) (e2 >>= k) (e3 >>= k) (e4 >>= k)
     Coe es               >>= k = Coe $ map (>>= k) es
     Iso es               >>= k = Iso $ map (>>= k) es
+    Squeeze es           >>= k = Squeeze $ map (>>= k) es
 
 data Pattern v = Pattern v [Pattern v]
 
@@ -191,6 +198,7 @@ collectDataTypes (PCon me)                     = maybe [] collectDataTypes me
 collectDataTypes (At e1 e2 e3 e4)              = collectDataTypes e1 ++ collectDataTypes e2 ++ collectDataTypes e3 ++ collectDataTypes e4
 collectDataTypes (Coe es)                      = es >>= collectDataTypes
 collectDataTypes (Iso es)                      = es >>= collectDataTypes
+collectDataTypes (Squeeze es)                  = es >>= collectDataTypes
 
 apps :: Term a -> [Term a] -> Term a
 apps e [] = e
