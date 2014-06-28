@@ -49,6 +49,9 @@ data Term a
     | Path [Term a]
     | PathImp (Maybe (Term a)) (Term a) (Term a)
     | PCon (Maybe (Term a))
+    | At (Term a) (Term a) (Term a) (Term a)
+    | Coe [Term a]
+    | Iso [Term a]
 data ICon = ILeft | IRight deriving Eq
 data RTPattern = RTPattern Int [RTPattern] | RTPatternVar | RTPatternI ICon
 
@@ -70,6 +73,9 @@ instance Eq a => Eq (Term a) where
     PathImp ma b c == Path [a',b',c']   = maybe True (== a') ma && b == b' && c == c'
     PathImp ma b c == PathImp ma' b' c' = maybe True id (liftM2 (==) ma ma') && b == b' && c == c'
     PCon f         == PCon f'           = f == f'
+    At _ _ a b     == At _ _ a' b'      = a == a' && b == b'
+    Coe as         == Coe as'           = as == as'
+    Iso as         == Iso as'           = as == as'
     _              == _                 = False
 
 class POrd a where
@@ -120,12 +126,15 @@ instance Traversable Term where
     traverse f (Var a)               = Var                         <$> f a
     traverse f (App e1 e2)           = App                         <$> traverse f e1 <*> traverse f e2
     traverse f (Lam (Name n e))      = Lam . Name n                <$> traverse f e
+    traverse f (At e1 e2 e3 e4)      = At                          <$> traverse f e1 <*> traverse f e2 <*> traverse f e3 <*> traverse f e4
     traverse f (Arr e1 e2)           = Arr                         <$> traverse f e1 <*> traverse f e2
     traverse f (Pi b e1 (Name n e2)) = (\e1' -> Pi b e1' . Name n) <$> traverse f e1 <*> traverse f e2
     traverse f (PathImp me1 e2 e3)   = PathImp                     <$> traverse (traverse f) me1 <*> traverse f e2 <*> traverse f e3
     traverse f (PCon e)              = PCon                        <$> traverse (traverse f) e
     traverse f (Path es)             = Path                        <$> traverse (traverse f) es
     traverse f (Con c n as)          = Con c n                     <$> traverse (traverse f) as
+    traverse f (Coe as)              = Coe                         <$> traverse (traverse f) as
+    traverse f (Iso as)              = Iso                         <$> traverse (traverse f) as
     traverse f (FunCall n cs)        = FunCall n                   <$> traverse (\(Name p c) -> Name p <$> traverse f c) cs
     traverse f (FunSyn n e)          = FunSyn n                    <$> traverse f e
     traverse f (DataType d as)       = DataType d                  <$> traverse (traverse f) as
@@ -150,6 +159,9 @@ instance Monad Term where
     Path es              >>= k = Path $ map (>>= k) es
     PathImp me1 e2 e3    >>= k = PathImp (fmap (>>= k) me1) (e2 >>= k) (e3 >>= k)
     PCon e               >>= k = PCon $ fmap (>>= k) e
+    At e1 e2 e3 e4       >>= k = At (e1 >>= k) (e2 >>= k) (e3 >>= k) (e4 >>= k)
+    Coe es               >>= k = Coe $ map (>>= k) es
+    Iso es               >>= k = Iso $ map (>>= k) es
 
 data Pattern v = Pattern v [Pattern v]
 
@@ -177,6 +189,9 @@ collectDataTypes (ICon _)                      = []
 collectDataTypes (Path es)                     = es >>= collectDataTypes
 collectDataTypes (PathImp me1 e2 e3)           = maybe [] collectDataTypes me1 ++ collectDataTypes e2 ++ collectDataTypes e3
 collectDataTypes (PCon me)                     = maybe [] collectDataTypes me
+collectDataTypes (At e1 e2 e3 e4)              = collectDataTypes e1 ++ collectDataTypes e2 ++ collectDataTypes e3 ++ collectDataTypes e4
+collectDataTypes (Coe es)                      = es >>= collectDataTypes
+collectDataTypes (Iso es)                      = es >>= collectDataTypes
 
 apps :: Term a -> [Term a] -> Term a
 apps e [] = e

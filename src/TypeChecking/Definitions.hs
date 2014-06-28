@@ -134,12 +134,12 @@ typeCheckPDef (PDefData arg params cons) =
     replaceLevel (T.Pi fl r1 (Name vars (Scope r2))) lvl = T.Pi fl r1 $ Name vars $ Scope (replaceLevel r2 lvl)
     replaceLevel _ lvl = T.Universe lvl
     
-    checkPositivity :: Monad m => Term a -> EDocM m ()
+    checkPositivity :: Eq a => Monad m => Term a -> EDocM m ()
     checkPositivity (T.Arr a b)                   = checkNoNegative (nf WHNF a) >> checkPositivity (nf WHNF b)
     checkPositivity (T.Pi _ a (Name _ (Scope b))) = checkNoNegative (nf WHNF a) >> checkPositivity (nf WHNF b)
     checkPositivity _                             = return ()
     
-    checkNoNegative :: Monad m => Term a -> EDocM m ()
+    checkNoNegative :: Eq a => Monad m => Term a -> EDocM m ()
     checkNoNegative (T.Arr a b)                   = checkNoDataType a >> checkNoNegative (nf WHNF b)
     checkNoNegative (T.Pi _ a (Name _ (Scope b))) = checkNoDataType a >> checkNoNegative (nf WHNF b)
     checkNoNegative _                             = return ()
