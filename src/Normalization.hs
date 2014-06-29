@@ -58,8 +58,21 @@ nf mode e = go e []
         (PCon (Just t1), t2) -> go t1 (t2:ts)
         (t1, t2)             -> apps (At (go a []) (go b []) (go t1 []) (go t2 [])) (nfs mode ts)
     go (Coe es) ts = case es ++ ts of
-        e1:e2:e3:e4:es' | nf NF e2 == nf NF e4 || isStationary e1 -> go e3 es'
-        es'                                                       -> Coe (nfs mode es')
+        es'@(e1:e2:e3:e4:es'') ->
+            let e1' = nf WHNF e1
+                e2' = nf NF e2
+                e4' = nf NF e4
+            in case (e2' == e4' || isStationary e1', e2' == ICon ILeft && e4' == ICon IRight,
+                                                     e2' == ICon IRight && e4' == ICon ILeft, e1') of
+                (True, _, _, _) -> go e3 es''
+                (_, b1, b2, Iso [t1,t2,t3,t4,t5,t6]) | b1 || b2 -> go (App (if b1 then t3 else t4) e3) es''
+                (_, b1, b2, _) | b1 || b2 -> case nf NF $ App (fmap F e1') (Var (B 0)) of
+                    Iso [t1,t2,t3,t4,t5,t6, Var (B 0)] -> case sequenceA $ Iso [t1,t2,t3,t4,t5,t6] of
+                        F (Iso [t1',t2',t3',t4',t5',t6']) -> go (App (if b1 then t3' else t4') e3) es''
+                        _ -> Coe (nfs mode es')
+                    _ -> Coe (nfs mode es')
+                _ -> Coe (nfs mode es')
+        es' -> Coe (nfs mode es')
     go (Iso es) ts = case map (nf WHNF) (es ++ ts) of
         t1:t2:t3:t4:t5:t6: ICon ILeft  : _ -> go t1 []
         t1:t2:t3:t4:t5:t6: ICon IRight : _ -> go t2 []

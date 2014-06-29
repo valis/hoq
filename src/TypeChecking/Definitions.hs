@@ -101,7 +101,7 @@ typeCheckPDef (PDefData arg params cons) =
             addConstructorCheck con name i (Left conType)
             return conLevel
         lift $ deleteDataType name
-        lift $ addDataType name $ T.Universe (maximum lvls)
+        lift $ addDataType name $ T.Universe $ if null lvls then NoLevel else maximum lvls
     else do
         (CtxFrom ctx, dataType, _) <- checkTele Nil params (T.Universe NoLevel)
         addDataTypeCheck arg dataType
@@ -111,7 +111,7 @@ typeCheckPDef (PDefData arg params cons) =
             addConstructorCheck con name i $ Right (abstractTermInCtx ctx conType)
             return conLevel
         lift $ deleteDataType name
-        lift $ addDataType name $ replaceLevel dataType (maximum lvls)
+        lift $ addDataType name $ replaceLevel dataType $ if null lvls then NoLevel else maximum lvls
   where
     name = unArg arg
     
