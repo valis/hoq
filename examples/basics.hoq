@@ -43,7 +43,7 @@ ack (suc m) (suc n) = ack m (ack (suc m) n)
 
 -- Interval type
 -- I is a type with constructors left : I and right : I
--- coe and squeeze are primitive operators which satisfy rules as described below
+-- coe and squeeze are primitive operators which satisfy the following rules:
 -- 
 -- coe : (A : I -> Type) (i : I) -> A i -> (j : I) -> A j
 -- coe A i a i = a

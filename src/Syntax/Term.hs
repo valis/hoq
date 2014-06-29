@@ -81,7 +81,10 @@ instance Eq a => Eq (Term a) where
             in l2 == es && s == Scope (addApps (length n) $ Var $ F $ apps t l1)
         go t1 es t2@Lam{} es' = go t2 es' t1 es
         go (Arr a b) es (Arr a' b') es' = a == a' && b == b' && es == es'
-        go (Pi _ a b) es (Pi _ a' b') es' = a == a' && b == b' && es == es'
+        go e1@Pi{} es e2@Pi{} es' = es == es' && pcompare e1 e2 == Just EQ
+        go (Pi fl a ns) es (Arr a' b') es' =
+            a == a' && es == es' && fmap F b' == either (Pi fl $ fmap F a) id (namesToVar ns)
+        go e@Arr{} es e'@Pi{} es' = go e' es' e es
         go (Con c _ as) es (Con c' _ as') es' = c == c' && as ++ es == as' ++ es'
         go (FunCall n _) es (FunCall n' _) es' = n == n' && es == es'
         go (FunSyn n _) es (FunSyn n' _) es' = n == n' && es == es'
@@ -110,12 +113,36 @@ instance Eq a => Eq (Term a) where
         addApps 0 t = t
         addApps d t = addApps (d - 1) $ App t $ Var $ B (d - 1)
 
+namesToVar :: Names n Term a -> Either (Names n Term (Var () a)) (Term (Var () a))
+namesToVar (Name (_:ns) (Scope b)) | not (null ns) = Left $ Name ns $ Scope $ b >>= \v -> case v of
+    B i | i == length ns - 1 -> return $ F $ Var $ B ()
+        | otherwise          -> return (B i)
+    F t                      -> fmap (F . Var . F) t
+namesToVar (Name _ (Scope b)) = Right $ b >>= \v -> case v of
+    B _ -> return $ B ()
+    F t -> fmap F t
+
 class POrd a where
     pcompare :: a -> a -> Maybe Ordering
 
 instance Eq a => POrd (Term a) where
-    pcompare (Pi _ a (Name _ (Scope b))) (Pi _ a' (Name _ (Scope b')))
-                                                              = contraCovariant (pcompare a a') (pcompare b b')
+    pcompare (Pi fl a (Name n b)) (Pi fl' a' (Name n' b')) = contraCovariant (pcompare a a') $
+        let d = length n - length n'
+            d' = -d
+        in case () of
+            _ | d' > 0 -> pcompare (fromScope b) $ Pi fl' (fmap F a') (Name (drop (length n) n') $ Scope $ unscope b' >>= \v -> case v of
+                B i | i >= d'   -> return $ F $ Var $ B (i - d')
+                    | otherwise -> return (B i)
+                F t             -> fmap (F . Var . F) t)
+            _ | d > 0 -> pcompare (Pi fl (fmap F a) $ Name (drop (length n') n) $ Scope $ unscope b >>= \v -> case v of
+                B i | i >= d    -> return $ F $ Var $ B (i - d)
+                    | otherwise -> return (B i)
+                F t             -> fmap (F . Var . F) t) (fromScope b')
+            _ -> pcompare (fromScope b) (fromScope b')
+    pcompare (Pi fl a ns) (Arr a' b')                         = contraCovariant (pcompare a a') $
+        pcompare (either (Pi fl $ fmap F a) id $ namesToVar ns) (fmap F b')
+    pcompare (Arr a b) (Pi fl a' ns')                         = contraCovariant (pcompare a a') $
+        pcompare (fmap F b) (either (Pi fl $ fmap F a') id $ namesToVar ns')
     pcompare (Arr a b) (Arr a' b')                            = contraCovariant (pcompare a a') (pcompare b b')
     pcompare (Universe u) (Universe u')                       = Just $ compare (level u) (level u')
     pcompare (Path []) (Path [])                              = Just EQ
