@@ -60,28 +60,55 @@ data RTPattern = RTPattern Int [RTPattern] | RTPatternVar | RTPatternI ICon deri
 instance Show1 Term where showsPrec1 = showsPrec
 
 instance Eq a => Eq (Term a) where
-    Var a          == Var a'            = a == a'
-    App a b        == App a' b'         = a == a' && b == b'
-    Lam n          == Lam n'            = n == n'
-    Arr a b        == Arr a' b'         = a == a' && b == b'
-    Pi _ a b       == Pi _ a' b'        = a == a' && b == b'
-    Con c _ a      == Con c' _ a'       = c == c' && a == a'
-    FunCall n _    == FunCall n' _      = n == n'
-    FunSyn n _     == FunSyn n' _       = n == n'
-    Universe u     == Universe u'       = u == u'
-    DataType d a   == DataType d' a'    = d == d' && a == a'
-    Interval       == Interval          = True
-    ICon c         == ICon c'           = c == c'
-    Path as        == Path as'          = as == as'
-    Path [a,b,c]   == PathImp ma' b' c' = maybe True (== a) ma' && b == b' && c == c'
-    PathImp ma b c == Path [a',b',c']   = maybe True (== a') ma && b == b' && c == c'
-    PathImp ma b c == PathImp ma' b' c' = maybe True id (liftM2 (==) ma ma') && b == b' && c == c'
-    PCon f         == PCon f'           = f == f'
-    At _ _ a b     == At _ _ a' b'      = a == a' && b == b'
-    Coe as         == Coe as'           = as == as'
-    Iso as         == Iso as'           = as == as'
-    Squeeze as     == Squeeze as'       = as == as'
-    _              == _                 = False
+    e1 == e2 = go e1 [] e2 []
+      where
+        go (Var a) es (Var a') es' = a == a' && es == es'
+        go (App a b) es e2 es' = go a (b:es) e2 es'
+        go e1 es (App a b) es' = go e1 es a (b:es')
+        go (Lam (Name n s)) es (Lam (Name n' s')) es' = es == es' &&
+            let d = length n - length n'
+                d' = -d
+            in case () of
+                _ | d  > 0 -> s == Scope (addApps d $ fmap (succ d) $ unscope s')
+                _ | d' > 0 -> Scope (addApps d' $ fmap (succ d') $ unscope s) == s'
+                _          -> s == s'
+         where
+            succ :: Int -> Var Int a -> Var Int a
+            succ d (B i) = B (d + i)
+            succ _ (F a) = F a
+        go (Lam (Name n s)) es t es' =
+            let (l1,l2) = splitAt (length es' - length es) es'
+            in l2 == es && s == Scope (addApps (length n) $ Var $ F $ apps t l1)
+        go t1 es t2@Lam{} es' = go t2 es' t1 es
+        go (Arr a b) es (Arr a' b') es' = a == a' && b == b' && es == es'
+        go (Pi _ a b) es (Pi _ a' b') es' = a == a' && b == b' && es == es'
+        go (Con c _ as) es (Con c' _ as') es' = c == c' && as ++ es == as' ++ es'
+        go (FunCall n _) es (FunCall n' _) es' = n == n' && es == es'
+        go (FunSyn n _) es (FunSyn n' _) es' = n == n' && es == es'
+        go (Universe u) es (Universe u') es' = u == u' && es == es'
+        go (DataType d as) es (DataType d' as') es' = d == d' && as ++ es == as' ++ es'
+        go Interval es Interval es' = es == es'
+        go (ICon c) es (ICon c') es' = c == c' && es == es'
+        go (Path as) es (Path as') es' = as ++ es == as' ++ es'
+        go (Path as) es (PathImp ma' b' c') es' = case as ++ es of
+            a:b:c:es1 -> maybe True (== a) ma' && b == b' && c == c' && es1 == es'
+            _       -> False
+        go e@PathImp{} es e'@Path{} es' = go e' es' e es
+        go (PathImp ma b c) es (PathImp ma' b' c') es' = maybe True id (liftM2 (==) ma ma') && b == b' && c == c' && es == es'
+        go (PCon f) es (PCon f') es' = maybe [] return f ++ es == maybe [] return f' ++ es'
+        go (PCon e) es e' es' = case maybe [] return e ++ es of
+            e1:es1 -> e1 == Lam (Name ["x"] $ Scope $ At (error "PCon") (error "PCon") (Var $ F e') $ Var $ B 0) && es1 == es'
+            _ -> False
+        go e es e'@PCon{} es' = go e' es' e es
+        go (At _ _ a b) es (At _ _ a' b') es' = a == a' && b == b' && es == es'
+        go (Coe as) es (Coe as') es' = as ++ es == as' ++ es'
+        go (Iso as) es (Iso as') es' = as ++ es == as' ++ es'
+        go (Squeeze as) es (Squeeze as') es' = as ++ es == as' ++ es'
+        go _ _ _ _ = False
+        
+        addApps :: Int -> Term (Var Int a) -> Term (Var Int a)
+        addApps 0 t = t
+        addApps d t = addApps (d - 1) $ App t $ Var $ B (d - 1)
 
 class POrd a where
     pcompare :: a -> a -> Maybe Ordering

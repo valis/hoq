@@ -2,7 +2,6 @@ module Normalization
     ( NF(..), nf
     ) where
 
-import Debug.Trace
 import Control.Monad
 import Data.Traversable
 
@@ -70,7 +69,7 @@ nf mode e = go e []
         ICon IRight : j : _ -> if mode == WHNF then j else nf mode j
         _ : ICon ILeft  : _ -> ICon ILeft
         i : ICon IRight : _ -> if mode == WHNF then i else nf mode i
-        es'                 -> traceShow (head es') $ Squeeze $ nfs mode (es ++ ts)
+        es'                 -> Squeeze $ nfs mode (es ++ ts)
 
 isStationary :: (Eq a, Show a) => Term a -> Bool
 isStationary t = case sequenceA (nf NF $ App (fmap F t) $ Var $ B ()) of
