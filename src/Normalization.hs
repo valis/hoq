@@ -39,9 +39,9 @@ nf mode e = go e []
             nfm = if mode == WHNF then id else nf mode
         in if lt1 < lvars
             then Lam $ Name (drop lt1 vars) $ Scope $ nfm $ unscope e >>= \var -> case var of
-                B b -> if b < lt1 then fmap (F . Var) (t1 !! b) else return $ B (b - lt1)
+                B b | b >= lvars - lt1 -> fmap (F . Var) $ t1 !! (lvars - b - 1)
                 _   -> return var
-            else go (instantiate (t1 !!) e) t2
+            else go (instantiate (reverse t1 !!) e) t2
     go (FunSyn _ term) ts = go term ts
     go fc@(FunCall _ []) ts = apps fc (nfs mode ts)
     go fc@(FunCall _ cases@(Name pats _ : _)) ts =

@@ -61,11 +61,11 @@ ack (suc m) (suc n) = ack m (ack (suc m) n)
 -- @ is an eliminator for Path, it has type Path A a a' -> I -> A
 -- path f @ i = f i
 
-transport : (A : Type) (B : A -> Type) (a a' : A) -> a = a' -> B a -> B a'
-transport A B _ _ p x = coe (\i -> B (p @ i)) left x right
-
 idp : (A : Type) (a : A) -> a = a
 idp A a = path (\_ -> a)
+
+transport : (A : Type) (B : A -> Type) (a a' : A) -> a = a' -> B a -> B a'
+transport A B _ _ p x = coe (\i -> B (p @ i)) left x right
 
 J : (A : Type) (B : (a a' : A) -> a = a' -> Type) -> ((a : A) -> B a a (idp A a)) -> (a a' : A) (p : a = a') -> B a a' p
 J A B d a a' p = coe (\i -> B a (p @ i) (path (\j -> p @ squeeze i j))) left (d a) right

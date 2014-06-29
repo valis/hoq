@@ -87,6 +87,7 @@ typeCheckPDef (PDefCases arg ety cases) = do
                         (term, _) <- typeCheckCtx ctx expr $ Just (nf WHNF ty')
                         return $ Just $ Name rtpats $ toScope $
                             reverseTerm (length $ contextNames ctx) (abstractTermInCtx ctx term)
+                        `catchError` \errs -> warn errs >> return Nothing
         checkCoverage ty cases
         return $ FunCall (unArg arg) (catMaybes names)
     return ()
