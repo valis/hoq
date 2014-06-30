@@ -42,11 +42,12 @@ addDataTypeCheck arg ty = do
         DataTypeE _   : _ -> throwError [multipleDeclaration arg var]
         _                 -> lift (addDataType var ty)
 
-addConstructorCheck :: Monad m => Arg -> String -> Int -> Either (Term String) (Term (Var Int String)) -> TCM m ()
-addConstructorCheck arg dt i ty = do
+addConstructorCheck :: Monad m => Arg -> String
+    -> Either (Term String, Term String) (Term (Var Int String), Term (Var Int String)) -> TCM m ()
+addConstructorCheck arg dt ty = do
     let var = unArg arg
     mr <- lift $ getEntry var (Just dt)
     case mr of
-        FunctionE _ _    : _ -> throwError [multipleDeclaration arg var]
-        ConstructorE _ _ : _ -> throwError [multipleDeclaration arg var]
-        _                    -> lift (addConstructor var dt i ty)
+        FunctionE _ _  : _ -> throwError [multipleDeclaration arg var]
+        ConstructorE _ : _ -> throwError [multipleDeclaration arg var]
+        _                  -> lift (addConstructor var dt ty)

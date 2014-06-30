@@ -24,8 +24,8 @@ nf mode e = go e []
     go (PCon Nothing)       [] = PCon Nothing
     go (PCon Nothing)    (e:_) = PCon $ Just $ if mode == NF then nf NF e                else e
     go (PCon (Just e))      _  = PCon $ Just $ if mode == NF then nf NF e                else e
-    go (Con c n es)         [] = Con c n     $ if mode == NF then map (nf NF) es         else es
-    go (Con c n es)         ts = Con c n     $ if mode == NF then map (nf NF) (es ++ ts) else es ++ ts
+    go (Con c n es cs)      [] = Con c n      (if mode == NF then map (nf NF) es         else es) cs
+    go (Con c n es cs)      ts = Con c n      (if mode == NF then map (nf NF) (es ++ ts) else es ++ ts) cs
     go (DataType d es)      [] = DataType d  $ if mode == NF then map (nf NF) es         else es
     go (DataType d es)      ts = DataType d  $ if mode == NF then map (nf NF) (es ++ ts) else es ++ ts
     go (Path es)            [] = Path        $ if mode == NF then map (nf NF) es         else es
@@ -97,7 +97,7 @@ instantiatePat :: (Eq a, Show a) => [RTPattern] -> [Term a] -> Maybe [Term a]
 instantiatePat [] [] = Just []
 instantiatePat (RTPatternVar : pats) (term:terms) = fmap (term:) (instantiatePat pats terms)
 instantiatePat (RTPattern con pats1 : pats) (term:terms) = case nf WHNF term of
-    Con i n terms1 | i == con -> liftM2 (++) (instantiatePat pats1 terms1) (instantiatePat pats terms)
+    Con i n terms1 _ | i == con -> liftM2 (++) (instantiatePat pats1 terms1) (instantiatePat pats terms)
     _ -> Nothing
 instantiatePat (RTPatternI con : pats) (term:terms) = case nf WHNF term of
     ICon i | i == con -> instantiatePat pats terms

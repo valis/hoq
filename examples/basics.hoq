@@ -69,3 +69,7 @@ transport A B _ _ p x = coe (\i -> B (p @ i)) left x right
 
 J : (A : Type) (B : (a a' : A) -> a = a' -> Type) -> ((a : A) -> B a a (idp A a)) -> (a a' : A) (p : a = a') -> B a a' p
 J A B d a a' p = coe (\i -> B a (p @ i) (path (\j -> p @ squeeze i j))) left (d a) right
+
+-- Data types with conditions
+data Z = positive Nat | negative Nat with
+    negative zero = positive zero

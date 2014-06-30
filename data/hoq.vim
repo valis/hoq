@@ -5,7 +5,7 @@ elseif exists("b:current_syntax")
 endif
 
 syn keyword hoqConstructor     left right path coe iso squeeze
-syn keyword hoqType            data I Path
+syn keyword hoqType            data I Path with
 syn match   hoqLineComment     "---*\([^-!#$%&\*\+./<=>\?@\\^|~].*\)\?$"
 syn region  hoqBlockComment    start="{-"  end="-}" contains=hoqBlockComment
 syn match   hoqNumber          "\<[0-9]\+\>"

@@ -3,15 +3,20 @@ entrypoints Defs, Expr;
 comment "--";
 comment "{-" "-}";
 
+layout "with";
 layout toplevel;
 
-Defs.         Defs     ::= [Def];
-DefType.      Def      ::= PIdent ":" Expr;
-DefFun.       Def      ::= Pattern "=" Expr;
-DefFunEmpty.  Def      ::= Pattern;
-DefData.      Def      ::= "data" PIdent [DataTele] "=" [Con];
-DefDataEmpty. Def      ::= "data" PIdent [DataTele];
-separator     Def      ";";
+Defs.         Defs  ::= [Def];
+DefType.      Def   ::= PIdent ":" Expr;
+DefFun.       Def   ::= FunCase;
+DefFunEmpty.  Def   ::= Pattern;
+DefData.      Def   ::= "data" PIdent [DataTele] "=" [Con];
+DefDataWith.  Def   ::= "data" PIdent [DataTele] "=" [Con] "with" "{" [FunCase] "}";
+DefDataEmpty. Def   ::= "data" PIdent [DataTele];
+separator     Def   ";";
+
+FunCase.   FunCase  ::= Pattern "=" Expr;
+separator  FunCase  ";";
 
 Pattern.   Pattern  ::= PIdent [ParPat];
 ParVar.    ParPat   ::= Arg;

@@ -17,10 +17,12 @@ import TypeChecking.Monad
 import Normalization
 
 type Tele = [([Arg], Expr)]
-data PDef = PDefSyn Arg Expr | PDefCases Arg Expr [([ParPat], Maybe Expr)] | PDefData Arg Tele [(Arg,Tele)]
+data PDef = PDefSyn Arg Expr
+          | PDefCases Arg Expr [([ParPat], Maybe Expr)]
+          | PDefData Arg Tele [(Arg,Tele)] [(E.Pattern, Expr)]
 
 theSameAs :: String -> Def -> Bool
-theSameAs name (DefFun (E.Pattern (PIdent (_,name')) _) _) = name == name'
+theSameAs name (DefFun (FunCase (E.Pattern (PIdent (_,name')) _) _)) = name == name'
 theSameAs name (DefFunEmpty (E.Pattern (PIdent (_,name')) _)) = name == name'
 theSameAs _ _ = False
 
@@ -33,12 +35,12 @@ splitDefs (DefType p@(PIdent (lc,name)) ty : defs) =
             splitDefs defs
         (defs1,defs2) -> do
             pdefs <- splitDefs defs2
-            let defToPDef (DefFun (E.Pattern _ pats) expr) = (pats, Just expr)
+            let defToPDef (DefFun (FunCase (E.Pattern _ pats) expr)) = (pats, Just expr)
                 defToPDef (DefFunEmpty (E.Pattern _ pats)) = (pats, Nothing)
                 defToPDef _                                = error "defToPDef"
             return $ PDefCases (Arg p) ty (map defToPDef defs1) : pdefs
-splitDefs (DefFun (E.Pattern p []) expr : defs) = liftM (PDefSyn (Arg p) expr :) (splitDefs defs)
-splitDefs (DefFun (E.Pattern (PIdent (lc,name)) _) _ : defs) = do
+splitDefs (DefFun (FunCase (E.Pattern p []) expr) : defs) = liftM (PDefSyn (Arg p) expr :) (splitDefs defs)
+splitDefs (DefFun (FunCase (E.Pattern (PIdent (lc,name)) _) _) : defs) = do
     warn [inferErrorMsg lc "the argument"]
     splitDefs $ dropWhile (theSameAs name) defs
 splitDefs (DefFunEmpty (E.Pattern (PIdent (lc,name)) []) : defs) = do
@@ -47,8 +49,9 @@ splitDefs (DefFunEmpty (E.Pattern (PIdent (lc,name)) []) : defs) = do
 splitDefs (DefFunEmpty (E.Pattern (PIdent (lc,name)) _) : defs) = do
     warn [inferErrorMsg lc "the argument"]
     splitDefs $ dropWhile (theSameAs name) defs
-splitDefs (DefDataEmpty p teles : defs) = splitDefs (DefData p teles [] : defs)
-splitDefs (DefData p teles cons : defs) = do
+splitDefs (DefDataEmpty p teles : defs) = splitDefs (DefDataWith p teles [] [] : defs)
+splitDefs (DefData p teles cons : defs) = splitDefs (DefDataWith p teles cons [] : defs)
+splitDefs (DefDataWith p teles cons conds : defs) = do
     dataTeles <- forM teles $ \(DataTele _ e1 e2) -> liftM (\vs -> (vs, e2)) (exprToVars e1)
     conTeles  <- forM cons $ \(E.Con p teles) -> do
         teles' <- forM teles $ \tele ->
@@ -57,7 +60,7 @@ splitDefs (DefData p teles cons : defs) = do
                 TypeTele e2     -> return ([], e2)
         return (Arg p, teles')
     pdefs <- splitDefs defs
-    return (PDefData (Arg p) dataTeles conTeles : pdefs)
+    return (PDefData (Arg p) dataTeles conTeles (map (\(FunCase pat expr) -> (pat, expr)) conds) : pdefs)
 
 typeCheckDefs :: MonadFix m => [Def] -> TCM m ()
 typeCheckDefs defs = splitDefs defs >>= mapM_ (\t -> typeCheckPDef t `catchError` warn)
@@ -87,18 +90,18 @@ typeCheckPDef (PDefCases arg ety cases) = do
                         (term, _) <- typeCheckCtx ctx expr $ Just (nf WHNF ty')
                         return $ Just $ Name rtpats $ toScope $
                             reverseTerm (length $ contextNames ctx) (abstractTermInCtx ctx term)
-                        `catchError` \errs -> warn errs >> return Nothing
+                `catchError` \errs -> warn errs >> return Nothing
         checkCoverage ty cases
         return $ FunCall (unArg arg) (catMaybes names)
     return ()
-typeCheckPDef (PDefData arg params cons) =
+typeCheckPDef (PDefData arg params cons conds) =
     if null params 
     then do
         addDataTypeCheck arg (T.Universe NoLevel)
         lvls <- forM (zip cons [0..]) $ \((con,tele),i) -> do
             (_, conType, conLevel) <- checkTele Nil tele $ DataType name []
             checkPositivity (nf WHNF conType)
-            addConstructorCheck con name i (Left conType)
+            addConstructorCheck con name $ Left (T.Con i (unArg con) [] [], conType)
             return conLevel
         lift $ deleteDataType name
         lift $ addDataType name $ T.Universe $ if null lvls then NoLevel else maximum lvls
@@ -108,7 +111,7 @@ typeCheckPDef (PDefData arg params cons) =
         lvls <- forM (zip cons [0..]) $ \((con,tele),i) -> do
             (_, conType, conLevel) <- checkTele ctx tele $ DataType name []
             checkPositivity (nf WHNF conType)
-            addConstructorCheck con name i $ Right (abstractTermInCtx ctx conType)
+            addConstructorCheck con name $ Right (T.Con i (unArg con) [] [], abstractTermInCtx ctx conType)
             return conLevel
         lift $ deleteDataType name
         lift $ addDataType name $ replaceLevel dataType $ if null lvls then NoLevel else maximum lvls

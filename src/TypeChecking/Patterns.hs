@@ -35,6 +35,19 @@ data TermsInCtx a where
 instance Error () where
     noMsg = ()
 
+getCon :: Monad m => (Int,Int) -> Ctx Int [String] Term String a
+    -> Either (Term String) (Term (Var Int String)) -> Term a -> EDocM m (Term a)
+getCon _  ctx (Left con) _                                    = return $ fmap (liftBase ctx) con
+getCon _  ctx (Right (T.Con i con [] [])) ty                  = return $ T.Con i con [] []
+getCon _  ctx (Right con@(T.Con i _ _ _)) (DataType _ params) = return $ liftTermWithParams ctx params con
+getCon lc ctx (Right (T.Con _ con _ _)) _                     = throwError [inferParamsErrorMsg lc con]
+getCon _ _ _ _                                                = error "getCon"
+
+liftTermWithParams :: Ctx Int [String] Term String a -> [Term a] -> Term (Var Int String) -> Term a
+liftTermWithParams ctx params term = term >>= \v -> case v of
+    B i -> reverse params !! i
+    F t -> return (liftBase ctx t)
+
 typeCheckPattern :: (Monad m, Eq a, Show a) => Ctx Int [String] Term String a
     -> Term a -> ParPat -> ErrorT () (TCM m) (TermInCtx Int [String] Term a, RTPattern)
 typeCheckPattern ctx ty (ParLeft _) = return (TermInCtx Nil $ ICon ILeft, RTPatternI ILeft)
@@ -46,19 +59,20 @@ typeCheckPattern ctx ty (ParVar arg) = do
         DataType dt _ -> Just dt
         _             -> Nothing
     case cons of
-        []       -> return (TermInCtx (Snoc Nil [var] ty) $ T.Var (B 0), RTPatternVar)
-        [(i,_)]  -> return (TermInCtx Nil $ T.Con i var [], RTPattern i [])
-        _        -> lift $ throwError [inferErrorMsg (argGetPos arg) $ "data constructor " ++ show var]
-typeCheckPattern ctx (DataType dt params) (ParPat _ (E.Pattern (PIdent (lc,conName)) pats)) = do
+        []    -> return (TermInCtx (Snoc Nil [var] ty) $ T.Var (B 0), RTPatternVar)
+        [con] -> do
+            con'@(T.Con i _ _ _) <- lift $ getCon (argGetPos arg) ctx (either (Left . fst) (Right . fst) con) ty
+            return (TermInCtx Nil con', RTPattern i [])
+        _ -> lift $ throwError [inferErrorMsg (argGetPos arg) $ "data constructor " ++ show var]
+typeCheckPattern ctx dty@(DataType dt params) (ParPat _ (E.Pattern (PIdent (lc,conName)) pats)) = do
     cons <- lift $ lift $ getConstructor conName (Just dt)
-    (i, conType) <- case cons of
-        []                     -> lift $ throwError [notInScope lc "data constructor" conName]
-        (i, Left  conType) : _ -> return (i, fmap (liftBase ctx) conType)
-        (i, Right conType) : _ -> return (i, conType >>= \v -> case v of
-                                                                B i -> reverse params !! i
-                                                                F a -> T.Var $ liftBase ctx a)
+    (i, conds, conType) <- case cons of
+        []      -> lift $ throwError [notInScope lc "data constructor" conName]
+        con : _ -> do
+            T.Con i _ _ cs <- lift $ getCon lc ctx (either (Left . fst) (Right . fst) con) dty
+            return (i, cs, either (fmap (liftBase ctx) . snd) (liftTermWithParams ctx params . snd) con)
     (TermsInCtx ctx' terms _, rtpats) <- typeCheckPatterns ctx conType pats
-    return (TermInCtx ctx' $ T.Con i conName terms, RTPattern i rtpats)
+    return (TermInCtx ctx' $ T.Con i conName terms $ map (fmap $ liftBase ctx') conds, RTPattern i rtpats)
 typeCheckPattern ctx ty (ParPat (PPar (lc,_)) _) = lift $
     throwError [emsgLC lc "" $ pretty "Unexpected pattern" $$
                                pretty "Expected type:" <+> prettyOpen ctx ty]

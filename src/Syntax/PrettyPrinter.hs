@@ -26,7 +26,7 @@ ppTermCtx ctx t@(Pi b e n) =
 ppTermCtx ctx t@(Lam n) =
     let (as, t') = ppNamesPrec (prec t) ctx n
     in text "\\" <> hsep as <+> arrow <+> t'
-ppTermCtx ctx t@(Con _ n as) = text n <+> hsep (map (ppTermPrec (prec t + 1) ctx) as)
+ppTermCtx ctx t@(Con _ n as _) = text n <+> hsep (map (ppTermPrec (prec t + 1) ctx) as)
 ppTermCtx _ (FunSyn n _) = text n
 ppTermCtx _ (FunCall n _) = text n
 ppTermCtx ctx t@(DataType d as) = text d <+> hsep (map (ppTermPrec (prec t + 1) ctx) as)
@@ -57,7 +57,7 @@ prec Var{}           = 10
 prec Universe{}      = 10
 prec FunSyn{}        = 10
 prec FunCall{}       = 10
-prec (Con _ _ [])    = 10
+prec (Con _ _ [] _)  = 10
 prec (DataType _ []) = 10
 prec (Path [])       = 10
 prec (PCon Nothing)  = 10

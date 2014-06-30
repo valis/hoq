@@ -2,7 +2,7 @@
 
 module TypeChecking.Expressions
     ( typeCheck, typeCheckCtx
-    , notInScope, inferErrorMsg
+    , notInScope, inferErrorMsg, inferParamsErrorMsg
     , prettyOpen, exprToVars
     , checkUniverses, reverseTerm
     ) where
@@ -23,6 +23,9 @@ notInScope lc s a = emsgLC lc ("Not in scope: " ++ (if null s then "" else s ++ 
 
 inferErrorMsg :: (Int,Int) -> String -> EMsg f
 inferErrorMsg lc s = emsgLC lc ("Cannot infer type of " ++ s) enull
+
+inferParamsErrorMsg :: Show a => (Int,Int) -> a -> EMsg f
+inferParamsErrorMsg lc d = emsgLC lc ("Cannot infer parameters of data constructor " ++ show d) enull
 
 prettyOpen :: (Pretty b f, Monad f) => Ctx Int [b] f b a -> f a -> EDoc f
 prettyOpen ctx term = epretty $ liftM pretty $ close (!!) ctx term
@@ -77,16 +80,18 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
                     Just (DataType d _) -> Just d
                     _                   -> Nothing
                 case mt of
-                    [FunctionE te ty]           -> return (fmap (liftBase ctx) te, fmap (liftBase ctx) ty)
-                    [DataTypeE ty]              -> return (DataType var []       , fmap (liftBase ctx) ty)
-                    [ConstructorE i (Left ty)]  -> return (T.Con i  var []       , fmap (liftBase ctx) ty)
-                    [ConstructorE i (Right ty)] -> case mty of
-                        Just (DataType _ params) -> return (T.Con i var [], ty >>= \v -> case v of
-                            B i -> reverse params !! i
-                            F a -> return $ liftBase ctx a)
+                    [FunctionE te ty]                -> return (fmap (liftBase ctx) te , fmap (liftBase ctx) ty)
+                    [DataTypeE ty]                   -> return (DataType var []        , fmap (liftBase ctx) ty)
+                    [ConstructorE (Left  (con, ty))] -> return (fmap (liftBase ctx) con, fmap (liftBase ctx) ty)
+                    [ConstructorE (Right (con, ty))] -> case mty of
+                        Just (DataType _ params) ->
+                            let liftTerm te = te >>= \v -> case v of
+                                    B i -> reverse params !! i
+                                    F a -> return (liftBase ctx a)
+                            in return (liftTerm con, liftTerm ty)
                         Just ty -> throwError [emsgLC lc "" $ pretty "Expected type:" <+> prettyOpen ctx ty $$
                                                               pretty ("But given data constructor " ++ show var)]
-                        Nothing -> throwError [emsgLC lc ("Cannot infer parameters of data constructor " ++ show var) enull]
+                        Nothing -> throwError [inferParamsErrorMsg lc var]
                     [] -> do
                         cons <- lift (getConstructorDataTypes var)
                         let DataType dataType _ = fromJust mty

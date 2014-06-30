@@ -39,7 +39,7 @@ data Term a
     | Lam (Names String Term a)
     | Arr (Term a) (Term a)
     | Pi Bool (Term a) (Names String Term a)
-    | Con Int String [Term a]
+    | Con Int String [Term a] [Names RTPattern Term a]
     | FunCall String [Names RTPattern Term a]
     | FunSyn  String (Term a)
     | Universe Level
@@ -85,7 +85,7 @@ instance Eq a => Eq (Term a) where
         go (Pi fl a ns) es (Arr a' b') es' =
             a == a' && es == es' && fmap F b' == either (Pi fl $ fmap F a) id (namesToVar ns)
         go e@Arr{} es e'@Pi{} es' = go e' es' e es
-        go (Con c _ as) es (Con c' _ as') es' = c == c' && as ++ es == as' ++ es'
+        go (Con c _ as _) es (Con c' _ as' _) es' = c == c' && as ++ es == as' ++ es'
         go (FunCall n _) es (FunCall n' _) es' = n == n' && es == es'
         go (FunSyn n _) es (FunSyn n' _) es' = n == n' && es == es'
         go (Universe u) es (Universe u') es' = u == u' && es == es'
@@ -190,7 +190,7 @@ instance Traversable Term where
     traverse f (PathImp me1 e2 e3)   = PathImp                     <$> traverse (traverse f) me1 <*> traverse f e2 <*> traverse f e3
     traverse f (PCon e)              = PCon                        <$> traverse (traverse f) e
     traverse f (Path es)             = Path                        <$> traverse (traverse f) es
-    traverse f (Con c n as)          = Con c n                     <$> traverse (traverse f) as
+    traverse f (Con c n as cs)       = Con c n                     <$> traverse (traverse f) as <*> traverse (\(Name p c) -> Name p <$> traverse f c) cs
     traverse f (Coe as)              = Coe                         <$> traverse (traverse f) as
     traverse f (Iso as)              = Iso                         <$> traverse (traverse f) as
     traverse f (Squeeze as)          = Squeeze                     <$> traverse (traverse f) as
@@ -208,7 +208,7 @@ instance Monad Term where
     Lam e                >>= k = Lam  (e >>>= k)
     Arr e1 e2            >>= k = Arr  (e1 >>= k) (e2 >>= k)
     Pi b e1 e2           >>= k = Pi b (e1 >>= k) (e2 >>>= k)
-    Con c n as           >>= k = Con c n $ map (>>= k) as
+    Con c n as cs        >>= k = Con c n (map (>>= k) as) $ map (>>>= k) cs
     FunCall n cs         >>= k = FunCall n $ map (>>>= k) cs
     FunSyn n e           >>= k = FunSyn n (e >>= k)
     Universe l           >>= _ = Universe l
@@ -239,7 +239,7 @@ collectDataTypes (App e1 e2)                   = collectDataTypes e1 ++ collectD
 collectDataTypes (Lam (Name _ (Scope e)))      = collectDataTypes e
 collectDataTypes (Arr e1 e2)                   = collectDataTypes e1 ++ collectDataTypes e2
 collectDataTypes (Pi _ e1 (Name _ (Scope e2))) = collectDataTypes e1 ++ collectDataTypes e2
-collectDataTypes (Con _ _ as)                  = as >>= collectDataTypes
+collectDataTypes (Con _ _ as _)                = as >>= collectDataTypes
 collectDataTypes (FunCall _ _)                 = []
 collectDataTypes (FunSyn _ _)                  = []
 collectDataTypes (DataType d as)               = d : (as >>= collectDataTypes)
@@ -256,5 +256,8 @@ collectDataTypes (Squeeze es)                  = es >>= collectDataTypes
 
 apps :: Term a -> [Term a] -> Term a
 apps e [] = e
-apps (Con c n as) es = Con c n (as ++ es)
+apps (Con c n as cs) es = Con c n (as ++ es) cs
+apps (Coe as) es = Coe (as ++ es)
+apps (Iso as) es = Iso (as ++ es)
+apps (Squeeze as) es = Squeeze (as ++ es)
 apps e1 (e2:es) = apps (App e1 e2) es
