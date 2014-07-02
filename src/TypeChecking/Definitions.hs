@@ -124,9 +124,6 @@ typeCheckPDef (PDefData arg params cons conds) = mdo
   where
     name = unArg arg
     
-    -- typeCheckCondition :: Monad m => Ctx Int [String] Term String a -> [ParPat] -> Expr -> TCM m (Names RTPattern Term a)
-    -- typeCheckCondition ctx pats expr = do
-    
     checkTele :: (Monad m, Eq a, Show a) => Ctx Int [String] Term String a -> Tele -> Term a ->
         TCM m (CtxFrom Int [String] Term String, Term a, Level)
     checkTele ctx [] term = return (CtxFrom ctx, term, NoLevel)

@@ -93,3 +93,15 @@ biso-not-not = idp Bool true
 -- Data types with conditions
 data Z = positive Nat | negative Nat with
     negative zero = positive zero
+
+-- Now, this works,
+succ : Z -> Z
+succ (positive x)       = positive (suc x)
+succ (negative zero)    = positive (suc zero)
+succ (negative (suc x)) = negative x
+
+-- but this don't
+succ' : Z -> Z
+succ' (positive x)       = positive (suc x)
+succ' (negative zero)    = positive zero
+succ' (negative (suc x)) = negative x

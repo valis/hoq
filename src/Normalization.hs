@@ -24,8 +24,8 @@ nf mode e = go e []
     go (PCon Nothing)       [] = PCon Nothing
     go (PCon Nothing)    (e:_) = PCon $ Just $ if mode == NF then nf NF e                else e
     go (PCon (Just e))      _  = PCon $ Just $ if mode == NF then nf NF e                else e
-    go (Con c n es cs)      [] = Con c n      (if mode == NF then map (nf NF) es         else es) cs
-    go (Con c n es cs)      ts = Con c n      (if mode == NF then map (nf NF) (es ++ ts) else es ++ ts) cs
+    go (Con c n es [])      [] = Con c n      (if mode == NF then map (nf NF) es         else es) []
+    go (Con c n es [])      ts = Con c n      (if mode == NF then map (nf NF) (es ++ ts) else es ++ ts) []
     go (DataType d es)      [] = DataType d  $ if mode == NF then map (nf NF) es         else es
     go (DataType d es)      ts = DataType d  $ if mode == NF then map (nf NF) (es ++ ts) else es ++ ts
     go (Path es)            [] = Path        $ if mode == NF then map (nf NF) es         else es
@@ -43,6 +43,15 @@ nf mode e = go e []
                 _   -> return var
             else go (instantiate (reverse t1 !!) e) t2
     go (FunSyn _ term) ts = go term ts
+    go (Con c n es conds@(Name pats _ : _)) ts =
+        let lpats = length pats
+            es' = if null ts then es else es ++ ts
+            (t1,t2) = splitAt lpats es'
+            lt1 = length t1
+        in case (lt1 < lpats, instantiateCases conds t1) of
+            (True , _      ) -> Con c n (if mode == NF then map (nf NF) es' else es') conds
+            (False, Just r ) -> go r t2
+            (False, Nothing) -> Con c n (if mode == NF then map (nf NF) es' else es') conds
     go fc@(FunCall _ []) ts = apps fc (nfs mode ts)
     go fc@(FunCall _ cases@(Name pats _ : _)) ts =
         let lpats = length pats
