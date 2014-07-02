@@ -43,24 +43,15 @@ nf mode e = go e []
                 _   -> return var
             else go (instantiate (reverse t1 !!) e) t2
     go (FunSyn _ term) ts = go term ts
-    go (Con c n es conds@(Name pats _ : _)) ts =
-        let lpats = length pats
-            es' = if null ts then es else es ++ ts
-            (t1,t2) = splitAt lpats es'
-            lt1 = length t1
-        in case (lt1 < lpats, instantiateCases conds t1) of
-            (True , _      ) -> Con c n (if mode == NF then map (nf NF) es' else es') conds
-            (False, Just r ) -> go r t2
-            (False, Nothing) -> Con c n (if mode == NF then map (nf NF) es' else es') conds
+    go (Con c n es conds) ts =
+        let es' = if null ts then es else es ++ ts in
+        case instantiateCases conds es' of
+            Just (r,ts') -> go r ts'
+            Nothing      -> Con c n (if mode == NF then map (nf NF) es' else es') conds
     go fc@(FunCall _ []) ts = apps fc (nfs mode ts)
-    go fc@(FunCall _ cases@(Name pats _ : _)) ts =
-        let lpats = length pats
-            (t1,t2) = splitAt lpats ts
-            lt1 = length t1
-        in case (lt1 < lpats, instantiateCases cases t1) of
-            (True , _      ) -> apps fc (nfs mode ts)
-            (False, Just r ) -> go r t2
-            (False, Nothing) -> apps fc (nfs mode ts)
+    go fc@(FunCall _ cases) ts = case instantiateCases cases ts of
+        Just (r,ts') -> go r ts'
+        Nothing      -> apps fc (nfs mode ts)
     go (At a b e1 e2) ts = case (nf WHNF e1, nf WHNF e2) of
         (_, ICon ILeft)      -> go a ts
         (_, ICon IRight)     -> go b ts
@@ -103,7 +94,7 @@ nfs NF terms = map (nf NF) terms
 nfs _  terms = terms
 
 instantiatePat :: (Eq a, Show a) => [RTPattern] -> [Term a] -> Maybe [Term a]
-instantiatePat [] [] = Just []
+instantiatePat [] _ = Just []
 instantiatePat (RTPatternVar : pats) (term:terms) = fmap (term:) (instantiatePat pats terms)
 instantiatePat (RTPattern con pats1 : pats) (term:terms) = case nf WHNF term of
     Con i n terms1 _ | i == con -> liftM2 (++) (instantiatePat pats1 terms1) (instantiatePat pats terms)
@@ -113,6 +104,6 @@ instantiatePat (RTPatternI con : pats) (term:terms) = case nf WHNF term of
     _ -> Nothing
 instantiatePat _ _ = Nothing
 
-instantiateCases :: (Eq a, Show a) => [Names RTPattern Term a] -> [Term a] -> Maybe (Term a)
-instantiateCases cases terms = msum $ flip map cases $ \(Name pats term) ->
-    fmap (\ts -> instantiate (ts !!) term) (instantiatePat pats terms)
+instantiateCases :: (Eq a, Show a) => [ClosedNames RTPattern Term] -> [Term a] -> Maybe (Term a, [Term a])
+instantiateCases cases terms = msum $ flip map cases $ \(ClosedName pats term) ->
+    fmap (\ts -> (instantiate (ts !!) term, drop (length pats) terms)) (instantiatePat pats terms)

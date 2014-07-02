@@ -39,8 +39,8 @@ data Term a
     | Lam (Names String Term a)
     | Arr (Term a) (Term a)
     | Pi Bool (Term a) (Names String Term a)
-    | Con Int String [Term a] [Names RTPattern Term a]
-    | FunCall String [Names RTPattern Term a]
+    | Con Int String [Term a] [ClosedNames RTPattern Term]
+    | FunCall String [ClosedNames RTPattern Term]
     | FunSyn  String (Term a)
     | Universe Level
     | DataType String [Term a]
@@ -53,9 +53,11 @@ data Term a
     | Coe [Term a]
     | Iso [Term a]
     | Squeeze [Term a]
-    deriving Show
 data ICon = ILeft | IRight deriving (Eq,Show)
 data RTPattern = RTPattern Int [RTPattern] | RTPatternVar | RTPatternI ICon deriving Show
+
+instance Show a => Show (Term a) where
+    show _ = "Not implemented"
 
 instance Show1 Term where showsPrec1 = showsPrec
 
@@ -190,13 +192,13 @@ instance Traversable Term where
     traverse f (PathImp me1 e2 e3)   = PathImp                     <$> traverse (traverse f) me1 <*> traverse f e2 <*> traverse f e3
     traverse f (PCon e)              = PCon                        <$> traverse (traverse f) e
     traverse f (Path es)             = Path                        <$> traverse (traverse f) es
-    traverse f (Con c n as cs)       = Con c n                     <$> traverse (traverse f) as <*> traverse (\(Name p c) -> Name p <$> traverse f c) cs
+    traverse f (Con c n as cs)       = (\as' -> Con c n as' cs)    <$> traverse (traverse f) as
     traverse f (Coe as)              = Coe                         <$> traverse (traverse f) as
     traverse f (Iso as)              = Iso                         <$> traverse (traverse f) as
     traverse f (Squeeze as)          = Squeeze                     <$> traverse (traverse f) as
-    traverse f (FunCall n cs)        = FunCall n                   <$> traverse (\(Name p c) -> Name p <$> traverse f c) cs
     traverse f (FunSyn n e)          = FunSyn n                    <$> traverse f e
     traverse f (DataType d as)       = DataType d                  <$> traverse (traverse f) as
+    traverse _ (FunCall n cs)        = pure (FunCall n cs)
     traverse _ (Universe l)          = pure (Universe l)
     traverse _ Interval              = pure Interval
     traverse _ (ICon c)              = pure (ICon c)
@@ -208,8 +210,8 @@ instance Monad Term where
     Lam e                >>= k = Lam  (e >>>= k)
     Arr e1 e2            >>= k = Arr  (e1 >>= k) (e2 >>= k)
     Pi b e1 e2           >>= k = Pi b (e1 >>= k) (e2 >>>= k)
-    Con c n as cs        >>= k = Con c n (map (>>= k) as) $ map (>>>= k) cs
-    FunCall n cs         >>= k = FunCall n $ map (>>>= k) cs
+    Con c n as cs        >>= k = Con c n (map (>>= k) as) cs
+    FunCall n cs         >>= k = FunCall n cs
     FunSyn n e           >>= k = FunSyn n (e >>= k)
     Universe l           >>= _ = Universe l
     DataType d as        >>= k = DataType d $ map (>>= k) as

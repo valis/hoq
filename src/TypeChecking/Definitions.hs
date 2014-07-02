@@ -7,6 +7,7 @@ module TypeChecking.Definitions
 import Control.Monad
 import Control.Monad.Fix
 import Control.Monad.Error
+import Data.Maybe
 import Data.List
 
 import Syntax.Expr as E
@@ -89,7 +90,7 @@ typeCheckPDef (PDefCases arg ety cases) = mdo
                     return Nothing
                 Right (TermsInCtx ctx _ ty', rtpats) -> do
                     (term, _) <- typeCheckCtx ctx expr $ Just (nf WHNF ty')
-                    return $ Just $ Name rtpats $ toScope $
+                    return $ Just $ ClosedName rtpats $ fromJust $ closed $ toScope $
                         reverseTerm (length $ contextNames ctx) (abstractTermInCtx ctx term)
     checkCoverage ty cases
 typeCheckPDef (PDefData arg params cons conds) = mdo
@@ -117,7 +118,7 @@ typeCheckPDef (PDefData arg params cons conds) = mdo
                 Right (TermsInCtx ctx' _ ty', rtpats) -> do
                     (term, _) <- typeCheckCtx (ctx +++ ctx') expr $ Just (nf WHNF ty')
                     let term' = toScope $ reverseTerm (length $ contextNames ctx') $ abstractTermInCtx ctx' term
-                    return $ Just (con, Name rtpats term')
+                    return $ Just (con, ClosedName rtpats $ fromJust $ closed term')
     lift $ deleteDataType name
     let lvls = map (\(_,_,_,lvl) -> lvl) cons'
     lift $ addDataType name $ replaceLevel dataType $ if null lvls then NoLevel else maximum lvls

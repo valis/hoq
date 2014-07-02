@@ -1,5 +1,8 @@
+{-# LANGUAGE RankNTypes #-}
+
 module Syntax.Name
     ( Name(..), Names
+    , ClosedName(..), ClosedNames
     , instantiateName, instantiateNames
     , instantiateNames1
     ) where
@@ -8,8 +11,11 @@ import Prelude.Extras
 import Bound
 import Control.Monad
 
-data Name n b f a = Name { name :: n, scope :: Scope b f a } deriving Show
+data Name n b f a = Name n (Scope b f a) deriving Show
 type Names n = Name [n] Int
+
+data ClosedName n b f = ClosedName n (forall a. Scope b f a)
+type ClosedNames n = ClosedName [n] Int
 
 instance (Eq b, Monad f, Eq1 f, Eq a) => Eq (Name n b f a) where
     Name _ s1 == Name _ s2 = s1 == s2

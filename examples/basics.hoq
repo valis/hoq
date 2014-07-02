@@ -105,3 +105,8 @@ succ' : Z -> Z
 succ' (positive x)       = positive (suc x)
 succ' (negative zero)    = positive zero
 succ' (negative (suc x)) = negative x
+
+-- We can define higher inductive types using data types with conditions and the interval object
+data Circle = base | loop I with
+    loop left  = base
+    loop right = base

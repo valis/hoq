@@ -68,7 +68,7 @@ typeCheckPattern ctx dty@(DataType dt params) (ParPat _ (E.Pattern (PIdent (lc,c
             T.Con i _ _ cs <- lift $ getCon lc ctx (either (Left . fst) (Right . fst) con) dty
             return (i, cs, either (fmap (liftBase ctx) . snd) (liftTermWithParams ctx params . snd) con)
     (TermsInCtx ctx' terms _, rtpats) <- typeCheckPatterns ctx conType pats
-    return (TermInCtx ctx' $ T.Con i conName terms $ map (fmap $ liftBase ctx') conds, RTPattern i rtpats)
+    return (TermInCtx ctx' $ T.Con i conName terms conds, RTPattern i rtpats)
 typeCheckPattern ctx ty (ParPat (PPar (lc,_)) _) = lift $
     throwError [emsgLC lc "" $ pretty "Unexpected pattern" $$
                                pretty "Expected type:" <+> prettyOpen ctx ty]
