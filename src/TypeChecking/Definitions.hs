@@ -1,3 +1,5 @@
+{-# LANGUAGE RecursiveDo, GADTs #-}
+
 module TypeChecking.Definitions
     ( typeCheckDefs
     ) where
@@ -5,7 +7,7 @@ module TypeChecking.Definitions
 import Control.Monad
 import Control.Monad.Fix
 import Control.Monad.Error
-import Data.Maybe
+import Data.List
 
 import Syntax.Expr as E
 import Syntax.Term as T
@@ -69,54 +71,61 @@ typeCheckPDef :: MonadFix m => PDef -> TCM m ()
 typeCheckPDef (PDefSyn arg expr) = do
     (term, ty) <- typeCheck expr Nothing
     addFunctionCheck arg (FunSyn (unArg arg) term) ty
-typeCheckPDef (PDefCases arg ety cases) = do
+typeCheckPDef (PDefCases arg ety cases) = mdo
     (ty, u) <- typeCheck ety Nothing
     case u of
         T.Universe _ -> return ()
         _            -> throwError [emsgLC (getPos ety) "" $ pretty "Expected a type" $$
                                                              pretty "Actual type:" <+> prettyOpen Nil ty]
-    mfix $ \te -> do
-        addFunctionCheck arg te ty
-        names <- forM cases $ \(pats,mexpr) -> case mexpr of
-            Nothing -> return Nothing
-            Just expr -> do
-                mr <- runErrorT $ typeCheckPatterns Nil (nf WHNF ty) pats
-                case mr of
-                    Left _ -> do
-                        let msg = "If the absurd pattern is given the right hand side must be omitted"
-                        warn [emsgLC (getPos expr) msg enull]
-                        return Nothing
-                    Right (TermsInCtx ctx terms ty', rtpats) -> do
-                        (term, _) <- typeCheckCtx ctx expr $ Just (nf WHNF ty')
-                        return $ Just $ Name rtpats $ toScope $
-                            reverseTerm (length $ contextNames ctx) (abstractTermInCtx ctx term)
-                `catchError` \errs -> warn errs >> return Nothing
-        checkCoverage ty cases
-        return $ FunCall (unArg arg) (catMaybes names)
-    return ()
-typeCheckPDef (PDefData arg params cons conds) =
-    if null params 
-    then do
-        addDataTypeCheck arg (T.Universe NoLevel)
-        lvls <- forM (zip cons [0..]) $ \((con,tele),i) -> do
-            (_, conType, conLevel) <- checkTele Nil tele $ DataType name []
-            checkPositivity (nf WHNF conType)
-            addConstructorCheck con name $ Left (T.Con i (unArg con) [] [], conType)
-            return conLevel
-        lift $ deleteDataType name
-        lift $ addDataType name $ T.Universe $ if null lvls then NoLevel else maximum lvls
-    else do
-        (CtxFrom ctx, dataType, _) <- checkTele Nil params (T.Universe NoLevel)
-        addDataTypeCheck arg dataType
-        lvls <- forM (zip cons [0..]) $ \((con,tele),i) -> do
-            (_, conType, conLevel) <- checkTele ctx tele $ DataType name []
-            checkPositivity (nf WHNF conType)
-            addConstructorCheck con name $ Right (T.Con i (unArg con) [] [], abstractTermInCtx ctx conType)
-            return conLevel
-        lift $ deleteDataType name
-        lift $ addDataType name $ replaceLevel dataType $ if null lvls then NoLevel else maximum lvls
+    addFunctionCheck arg (FunCall (unArg arg) names) ty
+    names <- forW cases $ \(pats,mexpr) -> case mexpr of
+        Nothing -> return Nothing
+        Just expr -> do
+            mr <- runErrorT $ typeCheckPatterns Nil (nf WHNF ty) pats
+            case mr of
+                Left _ -> do
+                    let msg = "If the absurd pattern is given the right hand side must be omitted"
+                    warn [emsgLC (getPos expr) msg enull]
+                    return Nothing
+                Right (TermsInCtx ctx _ ty', rtpats) -> do
+                    (term, _) <- typeCheckCtx ctx expr $ Just (nf WHNF ty')
+                    return $ Just $ Name rtpats $ toScope $
+                        reverseTerm (length $ contextNames ctx) (abstractTermInCtx ctx term)
+    checkCoverage ty cases
+typeCheckPDef (PDefData arg params cons conds) = mdo
+    (CtxFrom ctx, dataType, _) <- checkTele Nil params (T.Universe NoLevel)
+    addDataTypeCheck arg dataType
+    cons' <- forW (zip cons [0..]) $ \((con,tele),i) -> do
+        (_, conType, conLevel) <- checkTele ctx tele $ DataType name []
+        checkPositivity (nf WHNF conType)
+        let conTerm = T.Con i (unArg con) [] $ map snd $ filter (\(c,_) -> c == unArg con) conds'
+        return $ Just (con, conTerm, conType, conLevel)
+    forM_ cons' $ \(con, te, ty, _) -> addConstructorCheck con name $ case TermsInCtx ctx [te] ty of
+        TermsInCtx Nil  [con'] conType' -> Left  (con', conType')
+        TermsInCtx ctx' [con'] conType' -> Right (abstractTermInCtx ctx' con', abstractTermInCtx ctx' conType')
+        _                               -> error "typeCheckPDef"
+    conds' <- forW conds $ \(E.Pattern (E.PIdent (lc,con)) pats,expr) -> case find (\(c,_,_,_) -> unArg c == con) cons' of
+        Nothing -> do
+            warn [notInScope lc "data constructor" con]
+            return Nothing
+        Just (_,_,ty,_) -> do
+            mr <- runErrorT $ typeCheckPatterns ctx (nf WHNF ty) pats
+            case mr of
+                Left  _ -> do
+                    warn [emsgLC lc "Absurd patterns are not allowed in conditions" enull]
+                    return Nothing
+                Right (TermsInCtx ctx' _ ty', rtpats) -> do
+                    (term, _) <- typeCheckCtx (ctx +++ ctx') expr $ Just (nf WHNF ty')
+                    let term' = toScope $ reverseTerm (length $ contextNames ctx') $ abstractTermInCtx ctx' term
+                    return $ Just (con, Name rtpats term')
+    lift $ deleteDataType name
+    let lvls = map (\(_,_,_,lvl) -> lvl) cons'
+    lift $ addDataType name $ replaceLevel dataType $ if null lvls then NoLevel else maximum lvls
   where
     name = unArg arg
+    
+    -- typeCheckCondition :: Monad m => Ctx Int [String] Term String a -> [ParPat] -> Expr -> TCM m (Names RTPattern Term a)
+    -- typeCheckCondition ctx pats expr = do
     
     checkTele :: (Monad m, Eq a, Show a) => Ctx Int [String] Term String a -> Tele -> Term a ->
         TCM m (CtxFrom Int [String] Term String, Term a, Level)

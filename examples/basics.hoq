@@ -70,6 +70,26 @@ transport A B _ _ p x = coe (\i -> B (p @ i)) left x right
 J : (A : Type) (B : (a a' : A) -> a = a' -> Type) -> ((a : A) -> B a a (idp A a)) -> (a a' : A) (p : a = a') -> B a a' p
 J A B d a a' p = coe (\i -> B a (p @ i) (path (\j -> p @ squeeze i j))) left (d a) right
 
+ext : (A : Type) (B : A -> Type) (f g : (a : A) -> B a) -> ((a : A) -> f a = g a) -> f = g
+ext A B f g p = path (\i a -> p a @ i)
+
+-- Univalence
+not-not : (x : Bool) -> not (not x) = x
+not-not true  = idp Bool true
+not-not false = idp Bool false
+
+biso : Bool = Bool
+biso = path (\i -> iso Bool Bool not not not-not not-not i)
+
+-- coe satisfies the following rules:
+-- coe (iso A B f g p q) left a right = f a
+-- coe (iso A B f g p q) right b left = g b
+biso-not : coe (\i -> biso @ i) left true right = false
+biso-not = idp Bool false
+
+biso-not-not : coe (\i -> biso @ i) right (coe (\i -> biso @ i) left true right) left = true
+biso-not-not = idp Bool true
+
 -- Data types with conditions
 data Z = positive Nat | negative Nat with
     negative zero = positive zero

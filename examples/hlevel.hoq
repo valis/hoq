@@ -11,6 +11,9 @@ proj2 _ _ (pair _ b) = b
 isContr : Type -> Type
 isContr A = Sigma A (\a -> (a' : A) -> a = a')
 
+I-isContr : isContr I
+I-isContr = pair left (\i -> path (\j -> squeeze i j))
+
 isProp : Type -> Type
 isProp A = (a a' : A) -> a = a'
 

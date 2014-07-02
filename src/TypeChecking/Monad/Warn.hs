@@ -3,6 +3,7 @@
 module TypeChecking.Monad.Warn
     ( WarnT, warn, runWarnT
     , throwError, catchError
+    , forW
     ) where
 
 import Control.Monad
@@ -11,6 +12,7 @@ import Control.Monad.Trans
 import Control.Monad.Error.Class
 import Control.Applicative
 import Data.Monoid hiding ((<>))
+import Data.Maybe
 
 newtype WarnT w m a = WarnT { runWarnT :: m (w, Maybe a) }
 
@@ -46,3 +48,6 @@ instance (Monoid w, MonadFix m) => MonadFix (WarnT w m) where
 
 warn :: Monad m => w -> WarnT w m ()
 warn w = WarnT $ return (w, Just ())
+
+forW :: (Monoid w, Monad m) => [a] -> (a -> WarnT w m (Maybe b)) -> WarnT w m [b]
+forW as k = liftM catMaybes $ forM as $ \a -> k a `catchError` \w -> warn w >> return Nothing

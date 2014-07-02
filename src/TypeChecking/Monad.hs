@@ -31,15 +31,15 @@ addFunctionCheck arg te ty = do
     mr <- lift (getEntry var Nothing)
     case mr of
         [] -> lift (addFunction var te ty)
-        _  -> throwError [multipleDeclaration arg var]
+        _  -> warn [multipleDeclaration arg var]
 
 addDataTypeCheck :: Monad m => Arg -> Term String -> TCM m ()
 addDataTypeCheck arg ty = do
     let var = unArg arg
     mr <- lift (getEntry var Nothing)
     case mr of
-        FunctionE _ _ : _ -> throwError [multipleDeclaration arg var]
-        DataTypeE _   : _ -> throwError [multipleDeclaration arg var]
+        FunctionE _ _ : _ -> warn [multipleDeclaration arg var]
+        DataTypeE _   : _ -> warn [multipleDeclaration arg var]
         _                 -> lift (addDataType var ty)
 
 addConstructorCheck :: Monad m => Arg -> String
@@ -48,6 +48,6 @@ addConstructorCheck arg dt ty = do
     let var = unArg arg
     mr <- lift $ getEntry var (Just dt)
     case mr of
-        FunctionE _ _  : _ -> throwError [multipleDeclaration arg var]
-        ConstructorE _ : _ -> throwError [multipleDeclaration arg var]
+        FunctionE _ _  : _ -> warn [multipleDeclaration arg var]
+        ConstructorE _ : _ -> warn [multipleDeclaration arg var]
         _                  -> lift (addConstructor var dt ty)

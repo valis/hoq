@@ -15,6 +15,9 @@ data CtxFrom i s f a where
 data TermInCtx i s f a where
     TermInCtx :: (Eq b, Show b) => Ctx i s f a b -> f b -> TermInCtx i s f a
 
+data TermsInCtx i s f a where
+    TermsInCtx :: (Eq b, Show b) => Ctx i s f a b -> [f b] -> f b -> TermsInCtx i s f a
+
 lookupIndex :: Monad f => (s -> Maybe i) -> Ctx i s f b a -> Maybe (f a, f a)
 lookupIndex c Nil = Nothing
 lookupIndex c (Snoc ctx s t) = case c s of

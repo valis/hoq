@@ -2,7 +2,6 @@
 
 module TypeChecking.Patterns
     ( typeCheckPatterns
-    , TermsInCtx(..)
     , checkCoverage
     ) where
 
@@ -28,9 +27,6 @@ checkCoverageD ctx term patss | any null patss = return ()
 
 checkCoverage :: Monad m => Term String -> [([ParPat], Maybe Expr)] -> TCM m ()
 checkCoverage _ _ = return () -- TODO
-
-data TermsInCtx a where
-    TermsInCtx :: (Eq b, Show b) => Ctx Int [String] Term a b -> [Term b] -> Term b -> TermsInCtx a
 
 instance Error () where
     noMsg = ()
@@ -78,7 +74,7 @@ typeCheckPattern ctx ty (ParPat (PPar (lc,_)) _) = lift $
                                pretty "Expected type:" <+> prettyOpen ctx ty]
 
 typeCheckPatterns :: (Monad m, Eq a, Show a) => Ctx Int [String] Term String a -> Term a -> [ParPat]
-    -> ErrorT () (TCM m) (TermsInCtx a, [RTPattern])
+    -> ErrorT () (TCM m) (TermsInCtx Int [String] Term a, [RTPattern])
 typeCheckPatterns _ ty [] = return (TermsInCtx Nil [] ty, [])
 typeCheckPatterns ctx (T.Arr a b) (pat:pats) = do
     (TermInCtx ctx' te, rtpat) <- typeCheckPattern ctx (nf WHNF a) pat
