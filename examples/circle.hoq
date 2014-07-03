@@ -1,0 +1,148 @@
+data Nat = zero | suc Nat
+
+data Z = positive Nat | negative Nat with
+    negative zero = positive zero
+
+Z-isSet : (x y : Z) (p q : x = y) -> p = q
+Z-isSet () -- not implemented
+
+succ : Z -> Z
+succ (positive x)       = positive (suc x)
+succ (negative zero)    = positive (suc zero)
+succ (negative (suc x)) = negative x
+
+pred : Z -> Z
+pred (positive zero)    = negative (suc zero)
+pred (positive (suc x)) = positive x
+pred (negative x)       = negative (suc x)
+
+data Circle = base | loop I with
+    loop left  = base
+    loop right = base
+
+idp : (A : Type) (a : A) -> a = a
+idp A a = path (\_ -> a)
+
+transport : (A : Type) (B : A -> Type) (a a' : A) -> a = a' -> B a -> B a'
+transport A B _ _ p x = coe (\i -> B (p @ i)) left x right
+
+psqueeze : (A : Type) (a a' : A) (p : a = a') (i : I) -> a = p @ i
+psqueeze A a a' p i = path (\j -> p @ squeeze i j)
+
+J : (A : Type) (a : A) (B : (a' : A) -> a = a' -> Type) -> B a (idp A a) -> (a' : A) (p : a = a') -> B a' p
+J A a B b a' p = coe (\i -> B (p @ i) (psqueeze A a a' p i)) left b right
+
+inv : (A : Type) (a a' : A) -> a = a' -> a' = a
+inv A a a' p = transport A (\x -> x = a) a a' p (idp A a)
+
+comp : (A : Type) (a a' a'' : A) -> a = a' -> a' = a'' -> a = a''
+comp A a a' a'' p q = transport A (\x -> a = x) a' a'' q p
+
+comp' : base = base -> base = base -> base = base
+comp' = comp Circle base base base
+
+inv' : base = base -> base = base
+inv' = inv Circle base base
+
+wind : Z -> base = base
+wind (positive zero)    = idp Circle base
+wind (positive (suc x)) = comp' (wind (positive x)) (path loop)
+wind (negative (suc x)) = comp' (wind (negative x)) (inv' (path loop))
+
+pred-succ : (x : Z) -> pred (succ x) = x
+pred-succ (positive x) = idp Z (positive x)
+pred-succ (negative (suc x)) = idp Z (negative (suc x))
+
+succ-pred : (x : Z) -> succ (pred x) = x
+succ-pred (positive (suc x)) = idp Z (positive (suc x))
+succ-pred (negative x) = idp Z (negative x)
+
+iter : I -> Type
+iter i = iso Z Z succ pred pred-succ succ-pred i
+
+code : Circle -> Type
+code base     = Z
+code (loop i) = iter i
+
+encode : (x : Circle) -> base = x -> code x
+encode _ p = coe (\i -> code (p @ i)) left (positive zero) right
+
+assoc : (p q r : base = base) -> comp' (comp' p q) r = comp' p (comp' q r)
+assoc p q = J Circle base
+    (\x s -> comp Circle base base x (comp' p q) s = comp Circle base base x p (comp Circle base base x q s))
+    (idp (base = base) (comp' p q)) base
+
+map : (A B : Type) (f : A -> B) -> (a a' : A) -> a = a' -> f a = f a'
+map A B f a a' p = transport A (\x -> f a = f x) a a' p (idp B (f a))
+
+inv-idp : (p : base = base) -> comp' (inv' p) p = idp Circle base
+inv-idp = J Circle base (\x q -> comp Circle x base x (inv Circle base x q) q = idp Circle x)
+    (idp (base = base) (idp Circle base)) base
+
+wind-succ-loop : (x : Z) -> comp' (wind (pred x)) (path loop) = wind x
+wind-succ-loop (positive (suc x)) = idp (base = base) (wind (positive (suc x)))
+wind-succ-loop (negative x) =
+    comp (base = base) (comp' (comp' (wind (negative x)) (inv' (path loop))) (path loop))
+                       (comp' (wind (negative x)) (comp' (inv' (path loop)) (path loop)))
+                       (wind (negative x))
+    (assoc (wind (negative x)) (inv' (path loop)) (path loop))
+    (map (base = base) (base = base) (comp' (wind (negative x)))
+        (comp' (inv' (path loop)) (path loop)) (idp Circle base) (inv-idp (path loop)))
+
+decode : (x : Circle) -> code x -> base = x
+decode base     = wind
+decode (loop i) =
+    coe (\j -> Path (\k -> iter k -> base = loop k) wind (\y -> wind-succ-loop y @ j)) left
+    (path (\k y -> comp Circle base base (loop k) (wind (coe iter k y left)) (psqueeze Circle base base (path loop) k)))
+    right @ i
+
+encode-decode : (x : Circle) (p : base = x) -> decode x (encode x p) = p
+encode-decode = J Circle base (\x p -> decode x (encode x p) = p) (idp (base = base) (idp Circle base))
+
+coe-comp : (p q : base = base) (z : Z) ->
+    coe (\i -> code (comp' p q @ i)) left z right =
+    coe (\i -> code (q @ i)) left (coe (\i -> code (p @ i)) left z right) right
+coe-comp p q z = J Circle base (\x s -> coe (\i -> code (comp Circle base base x p s @ i)) left z right =
+    coe (\i -> code (s @ i)) left (coe (\i -> code (p @ i)) left z right) right)
+    (idp Z (coe (\i -> code (p @ i)) left z right)) base q
+
+coe-inv : (p : base = base) (z : Z) -> coe (\i -> code (inv' p @ i)) left z right = coe (\i -> code (p @ i)) right z left
+coe-inv = J Circle base (\x s -> (y : code x) ->
+    coe (\i -> code (inv Circle base x s @ i)) left y right = coe (\i -> code (s @ i)) right y left) (idp Z) base
+
+decode-encode-base : (z : Z) -> encode base (wind z) = z
+decode-encode-base (positive zero) = idp Z (positive zero)
+decode-encode-base (positive (suc x)) =
+    comp Z (coe (\i -> code (comp' (wind (positive x)) (path loop) @ i)) left (positive zero) right)
+           (succ (coe (\i -> code (wind (positive x) @ i)) left (positive zero) right))
+           (positive (suc x))
+    (coe-comp (wind (positive x)) (path loop) (positive zero))
+    (map Z Z succ (coe (\i -> code (wind (positive x) @ i)) left (positive zero) right) (positive x)
+        (decode-encode-base (positive x)))
+decode-encode-base (negative (suc x)) =
+    comp Z (coe (\i -> code (comp' (wind (negative x)) (inv' (path loop)) @ i)) left (positive zero) right)
+           (coe (\i -> code (inv' (path loop) @ i)) left (coe (\i -> code (wind (negative x) @ i)) left (positive zero) right) right)
+           (negative (suc x))
+    (coe-comp (wind (negative x)) (inv' (path loop)) (positive zero))
+    (comp Z (coe (\i -> code (inv' (path loop) @ i)) left (coe (\i -> code (wind (negative x) @ i)) left (positive zero) right) right)
+            (pred (coe (\i -> code (wind (negative x) @ i)) left (positive zero) right))
+            (negative (suc x))
+    (coe-inv (path loop) (coe (\i -> code (wind (negative x) @ i)) left (positive zero) right))
+    (map Z Z pred (coe (\i -> code (wind (negative x) @ i)) left (positive zero) right) (negative x) (decode-encode-base (negative x)))
+    )
+
+Circle-elim' : (P : Circle -> Type) (b : P base) -> transport Circle P base base (path loop) b = b -> (x : Circle) -> P x
+Circle-elim' P b t base     = b
+Circle-elim' P b t (loop i) = 
+    coe  (\j -> Path (\k -> P (loop k)) b (t @ j)) left
+    (path (\j -> coe (\k -> P (loop k)) left b j)) right @ i
+
+decode-encode : (x : Circle) (z : code x) -> encode x (decode x z) = z
+decode-encode = Circle-elim' (\x -> (z : code x) -> encode x (decode x z) = z) decode-encode-base
+    (path (\i z -> Z-isSet (coe (\i -> code (wind z @ i)) left (positive zero) right) z
+    (transport Circle (\x -> (z : code x) -> encode x (decode x z) = z) base base (path loop) decode-encode-base z)
+    (decode-encode-base z) @ i))
+
+Circle-loop-space-is-Z : (base = base) = Z
+Circle-loop-space-is-Z =
+    path (\i -> iso (base = base) Z (encode base) (decode base) (encode-decode base) (decode-encode base) i)

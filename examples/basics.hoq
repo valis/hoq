@@ -110,3 +110,13 @@ succ' (negative (suc x)) = negative x
 data Circle = base | loop I with
     loop left  = base
     loop right = base
+
+Circle-elim : (P : Circle -> Type) (b : P base) -> Path (\i -> P (loop i)) b b -> (x : Circle) -> P x
+Circle-elim P b t base     = b
+Circle-elim P b t (loop i) = t @ i
+
+Circle-elim' : (P : Circle -> Type) (b : P base) -> transport Circle P base base (path loop) b = b -> (x : Circle) -> P x
+Circle-elim' P b t base     = b
+Circle-elim' P b t (loop i) = 
+    coe  (\j -> Path (\k -> P (loop k)) b (t @ j)) left
+    (path (\j -> coe (\k -> P (loop k)) left b j)) right @ i
