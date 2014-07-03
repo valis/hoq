@@ -56,9 +56,9 @@ ack (suc m) (suc n) = ack m (ack (suc m) n)
 -- squeeze i right = i
 
 -- Path types
--- Path A a a' is a type with constructor path : (f : I -> A) -> Path A (f left) (f right)
--- a = a' is a synonym for Path A a a'
--- @ is an eliminator for Path, it has type Path A a a' -> I -> A
+-- Path A a a' is a type with constructor path : (f : (i : I) -> A i) -> Path A (f left) (f right)
+-- a = a' is a synonym for Path (\_ -> A) a a'
+-- @ is an eliminator for Path, it has type Path A a a' -> (i : I) -> A i
 -- path f @ i = f i
 
 idp : (A : Type) (a : A) -> a = a

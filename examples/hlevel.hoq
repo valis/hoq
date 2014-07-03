@@ -62,9 +62,9 @@ isProp-isProp : (A : Type) -> isProp (isProp A)
 isProp-isProp A f g = path (\i a a' -> prop-set A f a a' (f a a') (g a a') @ i)
 
 Sigma-eq : (A : Type) (B : A -> Type) (a a' : A) (b : B a) (b' : B a') (p : a = a')
-    -> transport A B a a' p b = b' -> Path (Sigma A B) (pair a b) (pair a' b')
+    -> transport A B a a' p b = b' -> Path (\_ -> Sigma A B) (pair a b) (pair a' b')
 Sigma-eq A B a a' b b' p = J A a
-    (\a' p -> (b' : B a') -> transport A B a a' p b = b' -> Path (Sigma A B) (pair a b) (pair a' b'))
+    (\a' p -> (b' : B a') -> transport A B a a' p b = b' -> Path (\_ -> Sigma A B) (pair a b) (pair a' b'))
     (\b' q -> path (\i -> pair a (q @ i))) a' p b'
 
 isContr-isProp : (A : Type) -> isProp (isContr A)

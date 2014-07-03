@@ -10,6 +10,7 @@ module TypeChecking.Expressions
 import Control.Monad
 import Data.List
 import Data.Maybe
+import Data.Traversable
 
 import Syntax.Expr as E
 import Syntax.Term as T
@@ -129,11 +130,12 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
     go ctx e@PathCon{} [] (Just ty) = throwError [emsgLC (getPos e) "Not implemented yet" enull] -- TODO
     go ctx e'@PathCon{} [e] (Just ty) = do
         (mt1,t2,t3) <- case ty of
-            T.Path [t1,t2,t3]   -> return (Just t1, t2, t3)
-            T.PathImp mt1 t2 t3 -> return (mt1, t2, t3)
+            T.Path [t1,t2,t3]   -> return (Just $ T.Pi True T.Interval $
+                Name ["i"] $ toScope $ T.App (fmap F t1) $ T.Var (B 0), t2, t3)
+            T.PathImp mt1 t2 t3 -> return (fmap (T.Arr T.Interval) mt1, t2, t3)
             _                   -> throwError [emsgLC (getPos e') "" $ pretty "Expected type:" <+> prettyOpen ctx ty $$
                                                                        pretty "Actual type: Path"]
-        (r,t) <- go ctx e [] $ fmap (T.Arr T.Interval) mt1
+        (r,t) <- go ctx e [] mt1
         let left  = T.App r (ICon ILeft)
             right = T.App r (ICon IRight)
         actExpType ctx (T.PathImp Nothing left right) ty (getPos e')
@@ -145,18 +147,19 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
                 (tes, ty) <- typeCheckApps (getPos e1) ctx es (nf WHNF a)
                 return (apps (T.At b c r1 r2) tes, ty)
         case nf WHNF t1 of
-            T.Path [a,b,c]         -> tcApps a b c
+            T.Path [a,b,c]         -> tcApps (T.App a r2) b c
             T.PathImp (Just a) b c -> tcApps a b c
             T.PathImp Nothing  _ _ -> throwError [emsgLC (getPos e1) "Cannot infer type" enull]
             t1'                    -> throwError [emsgLC (getPos e1) "" $ pretty "Expected type: Path" $$
                                                                           pretty "Actual type:" <+> prettyOpen ctx t1']
     go ctx e@E.Coe{} es Nothing | length es < 4 = throwError [emsgLC (getPos e) "Not implemented yet" enull] -- TODO
-    go ctx E.Coe{} (e1:e2:e3:e4:es) Nothing = do
+    go ctx e@E.Coe{} (e1:e2:e3:e4:es) Nothing = do
         (r1, _) <- go ctx e1 [] $ Just $ T.Arr T.Interval (T.Universe NoLevel) -- TODO
         (r2, _) <- go ctx e2 [] $ Just T.Interval
         (r3, _) <- go ctx e3 [] $ Just $ nf WHNF (T.App r1 r2)
         (r4, _) <- go ctx e4 [] $ Just T.Interval
-        return (T.Coe [r1,r2,r3,r4], T.App r1 r4)
+        (tes, ty) <- typeCheckApps (getPos e) ctx es $ nf WHNF (T.App r1 r4)
+        return (T.Coe $ [r1,r2,r3,r4] ++ tes, ty)
     go ctx e@E.Iso{} es Nothing | length es < 7 = throwError [emsgLC (getPos e) "Not implemented yet" enull] -- TODO
     go ctx E.Iso{} [e1,e2,e3,e4,e5,e6,e7] Nothing = do
         (r1, t1) <- go ctx e1 [] Nothing
@@ -201,18 +204,23 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
     go ctx e@E.Path{} [] Nothing = throwError [inferErrorMsg (getPos e) "Path"]
     go ctx e@E.Path{} [] (Just ty) = throwError [emsgLC (getPos e) "Not implemented yet" enull] -- TODO
     go ctx E.Path{} (e1:es) Nothing | length es < 3 = do
-        (r1,t1) <- go ctx e1 [] Nothing
-        let r1' = nf WHNF r1
-        case (checkIsType ctx e1 t1, es) of
-            ([], [])      -> return (T.Path [r1], T.Arr r1 $ T.Arr r1 t1)
-            ([], [e2])    -> do
-                (r2,_) <- go ctx e2 [] (Just r1')
-                return (T.Path [r1,r2], T.Arr r1 t1)
-            ([], [e2,e3]) -> do
-                (r2,_) <- go ctx e2 [] (Just r1')
-                (r3,_) <- go ctx e3 [] (Just r1')
-                return (T.Path [r1,r2,r3], t1)
-            (errs, _)     -> throwError errs
+        (r1,t1) <- go ctx e1 [] $ Just $ T.Arr T.Interval (T.Universe NoLevel) -- TODO
+        let t1' = case t1 of
+                T.Arr _ u -> u
+                T.Pi _ _ (Name _ s) -> case sequenceA (fromScope s) of
+                    F u -> u
+                    B _ -> error "typeCheckCtx.Path"
+                _ -> error "typeCheckCtx.Path"
+        case es of
+            []      -> return (T.Path [r1], T.Arr (T.App r1 $ ICon ILeft) $ T.Arr (T.App r1 $ ICon IRight) t1')
+            [e2]    -> do
+                (r2,_) <- go ctx e2 [] $ Just $ nf WHNF $ T.App r1 (ICon ILeft)
+                return (T.Path [r1,r2], T.Arr (T.App r1 $ ICon IRight) t1')
+            [e2,e3] -> do
+                (r2,_) <- go ctx e2 [] $ Just $ nf WHNF $ T.App r1 (ICon ILeft)
+                (r3,_) <- go ctx e3 [] $ Just $ nf WHNF $ T.App r1 (ICon IRight)
+                return (T.Path [r1,r2,r3], t1')
+            _ -> error "typeCheckCtx.Path"
     go ctx (E.PathImp e1 e2) [] Nothing = do
         (r1,t1) <- go ctx e1 [] Nothing
         (r2,_)  <- go ctx e2 [] $ Just (nf WHNF t1)

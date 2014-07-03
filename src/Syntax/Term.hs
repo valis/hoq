@@ -96,7 +96,8 @@ instance Eq a => Eq (Term a) where
         go (ICon c) es (ICon c') es' = c == c' && es == es'
         go (Path as) es (Path as') es' = as ++ es == as' ++ es'
         go (Path as) es (PathImp ma' b' c') es' = case as ++ es of
-            a:b:c:es1 -> maybe True (== a) ma' && b == b' && c == c' && es1 == es'
+            a:b:c:es1 -> maybe True (\a' -> Lam (Name ["x"] (toScope $ fmap F a')) == a) ma'
+                && b == b' && c == c' && es1 == es'
             _       -> False
         go e@PathImp{} es e'@Path{} es' = go e' es' e es
         go (PathImp ma b c) es (PathImp ma' b' c') es' = maybe True id (liftM2 (==) ma ma') && b == b' && c == c' && es == es'
@@ -148,11 +149,18 @@ instance Eq a => POrd (Term a) where
     pcompare (Arr a b) (Arr a' b')                            = contraCovariant (pcompare a a') (pcompare b b')
     pcompare (Universe u) (Universe u')                       = Just $ compare (level u) (level u')
     pcompare (Path []) (Path [])                              = Just EQ
+    pcompare (Path (Lam (Name [_] a):as))
+             (Path (Lam (Name [_] a'):as'))                   = if as == as' then pcompare (fromScope a) (fromScope a')
+                                                                                                         else Nothing
     pcompare (Path (a:as)) (Path (a':as'))                    = if as == as'          then pcompare a a' else Nothing
-    pcompare (Path [a,b,c]) (PathImp Nothing   b' c')         = if b == b' && c == c' then Just EQ       else Nothing
-    pcompare (Path [a,b,c]) (PathImp (Just a') b' c')         = if b == b' && c == c' then pcompare a a' else Nothing
+    pcompare (Path [a,b,c]) (PathImp Nothing b' c')           = if b == b' && c == c' then Just EQ       else Nothing
+    pcompare (Path [Lam (Name [_] s),b,c])
+             (PathImp (Just a') b' c')                        = if b == b' && c == c' then pcompare (fromScope s) (fmap F a')
+                                                                                                         else Nothing
     pcompare (PathImp Nothing  b c) (Path [a',b',c'])         = if b == b' && c == c' then Just EQ       else Nothing
-    pcompare (PathImp (Just a) b c) (Path [a',b',c'])         = if b == b' && c == c' then pcompare a a' else Nothing
+    pcompare (PathImp (Just a) b c)
+             (Path [Lam (Name [_] s),b',c'])                  = if b == b' && c == c' then pcompare (fmap F a) (fromScope s)
+                                                                                                         else Nothing
     pcompare (PathImp (Just a) b c) (PathImp (Just a') b' c') = if b == b' && c == c' then pcompare a a' else Nothing
     pcompare (PathImp _  b c) (PathImp _ b' c')               = if b == b' && c == c' then Just EQ       else Nothing
     pcompare e1 e2                                            = if e1 == e2           then Just EQ       else Nothing
