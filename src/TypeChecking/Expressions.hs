@@ -78,14 +78,14 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
             Just r  -> return r
             Nothing -> do
                 mt <- lift $ getEntry var $ case mty of
-                    Just (DataType d _) -> Just d
-                    _                   -> Nothing
+                    Just (DataType d _ _) -> Just d
+                    _                     -> Nothing
                 case mt of
                     [FunctionE te ty]                  -> return (fmap (liftBase ctx) te , fmap (liftBase ctx) ty)
-                    [DataTypeE ty]                     -> return (DataType var []        , fmap (liftBase ctx) ty)
+                    [DataTypeE ty e]                   -> return (DataType var e []      , fmap (liftBase ctx) ty)
                     [ConstructorE _ (Left  (con, ty))] -> return (fmap (liftBase ctx) con, fmap (liftBase ctx) ty)
                     [ConstructorE _ (Right (con, ty))] -> case mty of
-                        Just (DataType _ params) ->
+                        Just (DataType _ _ params) ->
                             let liftTerm te = te >>= \v -> case v of
                                     B i -> reverse params !! i
                                     F a -> return (liftBase ctx a)
@@ -95,7 +95,7 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
                         Nothing -> throwError [inferParamsErrorMsg lc var]
                     [] -> do
                         cons <- lift (getConstructorDataTypes var)
-                        let DataType dataType _ = fromJust mty
+                        let DataType dataType _ _ = fromJust mty
                         case cons of
                             []    -> throwError [notInScope lc "" var]
                             [act] -> throwError [emsgLC lc "" $
@@ -108,7 +108,7 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
         (tes,ty') <- typeCheckApps (argGetPos x) ctx exprs (nf WHNF ty)
         case (mty, ty') of
             (Nothing, _)  -> return ()
-            (Just (DataType edt _), DataType adt []) -> unless (edt == adt) $
+            (Just (DataType edt _ _), DataType adt _ []) -> unless (edt == adt) $
                 throwError [emsgLC lc "" $ pretty ("Expected data type: " ++ edt) $$
                                            pretty ("Actual data type: " ++ adt)]
             (Just ety, _) -> actExpType ctx ty' ety lc

@@ -14,9 +14,9 @@ getCon :: Monad m => (Int,Int) -> Ctx Int [String] Term String a
     -> Either (Term String) (Term (Var Int String)) -> Term a -> EDocM m (Term a)
 getCon _  ctx (Left con) _                                    = return $ fmap (liftBase ctx) con
 getCon _  ctx (Right (T.Con i con [] [])) ty                  = return $ T.Con i con [] []
-getCon _  ctx (Right con@(T.Con i _ _ _)) (DataType _ params) = return $ liftTermWithParams ctx params con
-getCon lc ctx (Right (T.Con _ con _ _)) _                     = throwError [inferParamsErrorMsg lc con]
-getCon _ _ _ _                                                = error "getCon"
+getCon _  ctx (Right con@(T.Con i _ _ _)) (DataType _ _ params) = return $ liftTermWithParams ctx params con
+getCon lc ctx (Right (T.Con _ con _ _)) _                       = throwError [inferParamsErrorMsg lc con]
+getCon _ _ _ _                                                  = error "getCon"
 
 liftTermWithParams :: Ctx Int [String] Term String a -> [Term a] -> Term (Var Int String) -> Term a
 liftTermWithParams ctx params term = term >>= \v -> case v of
@@ -27,19 +27,22 @@ typeCheckPattern :: (Monad m, Eq a, Show a) => Ctx Int [String] Term String a
     -> Term a -> ParPat -> TCM m (Bool, TermInCtx Int [String] Term a, T.Pattern)
 typeCheckPattern ctx ty (ParLeft _)  = return (False, TermInCtx Nil $ ICon ILeft , T.PatternI ILeft)
 typeCheckPattern ctx ty (ParRight _) = return (False, TermInCtx Nil $ ICon IRight, T.PatternI IRight)
-typeCheckPattern ctx ty (ParEmpty _) = return (True, TermInCtx (Snoc Nil ["_"] ty) $ T.Var (B 0), T.PatternVar)
+typeCheckPattern ctx ty@(DataType _ True _) (ParEmpty _) =
+    return (True, TermInCtx (Snoc Nil ["_"] ty) $ T.Var (B 0), T.PatternVar)
+typeCheckPattern ctx ty (ParEmpty (PPar (lc,_))) =
+    throwError [emsgLC lc "" $ pretty "Expected non-empty type: " <+> prettyOpen ctx ty]
 typeCheckPattern ctx ty (ParVar arg) = do
     let var = unArg arg
     cons <- lift $ getConstructor var $ case ty of
-        DataType dt _ -> Just dt
-        _             -> Nothing
+        DataType dt _ _ -> Just dt
+        _               -> Nothing
     case cons of
         []        -> return (False, TermInCtx (Snoc Nil [var] ty) $ T.Var (B 0), T.PatternVar)
         [(_,con)] -> do
             con'@(T.Con i _ _ _) <- getCon (argGetPos arg) ctx (either (Left . fst) (Right . fst) con) ty
             return (False, TermInCtx Nil con', T.Pattern i [])
         _ -> throwError [inferErrorMsg (argGetPos arg) $ "data constructor " ++ show var]
-typeCheckPattern ctx dty@(DataType dt params) (ParPat _ (E.Pattern (PIdent (lc,conName)) pats)) = do
+typeCheckPattern ctx dty@(DataType dt _ params) (ParPat _ (E.Pattern (PIdent (lc,conName)) pats)) = do
     cons <- lift $ getConstructor conName (Just dt)
     case cons of
         []        -> throwError [notInScope lc "data constructor" conName]

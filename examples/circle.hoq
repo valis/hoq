@@ -4,7 +4,7 @@ data Z = positive Nat | negative Nat with
     negative zero = positive zero
 
 Z-isSet : (x y : Z) (p q : x = y) -> p = q
-Z-isSet () -- not implemented
+Z-isSet = NotImplemented
 
 succ : Z -> Z
 succ (positive x)       = positive (suc x)

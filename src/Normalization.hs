@@ -22,14 +22,14 @@ nf mode e = go e []
     go e@Interval           _  = e
     go e@(ICon _)           _  = e
     go (PCon Nothing)       [] = PCon Nothing
-    go (PCon Nothing)    (e:_) = PCon $ Just $ if mode == NF then nf NF e                else e
-    go (PCon (Just e))      _  = PCon $ Just $ if mode == NF then nf NF e                else e
-    go (Con c n es [])      [] = Con c n      (if mode == NF then map (nf NF) es         else es) []
-    go (Con c n es [])      ts = Con c n      (if mode == NF then map (nf NF) (es ++ ts) else es ++ ts) []
-    go (DataType d es)      [] = DataType d  $ if mode == NF then map (nf NF) es         else es
-    go (DataType d es)      ts = DataType d  $ if mode == NF then map (nf NF) (es ++ ts) else es ++ ts
-    go (Path es)            [] = Path        $ if mode == NF then map (nf NF) es         else es
-    go (Path es)            ts = Path        $ if mode == NF then map (nf NF) (es ++ ts) else es ++ ts
+    go (PCon Nothing)    (e:_) = PCon $ Just  $ if mode == NF then nf NF e                else e
+    go (PCon (Just e))      _  = PCon $ Just  $ if mode == NF then nf NF e                else e
+    go (Con c n es [])      [] = Con c n       (if mode == NF then map (nf NF) es         else es) []
+    go (Con c n es [])      ts = Con c n       (if mode == NF then map (nf NF) (es ++ ts) else es ++ ts) []
+    go (DataType d e es)    [] = DataType d e $ if mode == NF then map (nf NF) es         else es
+    go (DataType d e es)    ts = DataType d e $ if mode == NF then map (nf NF) (es ++ ts) else es ++ ts
+    go (Path es)            [] = Path         $ if mode == NF then map (nf NF) es         else es
+    go (Path es)            ts = Path         $ if mode == NF then map (nf NF) (es ++ ts) else es ++ ts
     go (PathImp ma b c)     _  | mode == NF = PathImp (fmap (nf NF) ma) (nf NF b) (nf NF c)
     go e@PathImp{}          _  = e
     go (Lam (Name vars e)) ts =

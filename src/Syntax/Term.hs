@@ -42,7 +42,7 @@ data Term a
     | FunCall String [ClosedNames Pattern Term]
     | FunSyn  String (Term a)
     | Universe Level
-    | DataType String [Term a]
+    | DataType String Bool [Term a]
     | Interval
     | ICon ICon
     | Path [Term a]
@@ -90,7 +90,7 @@ instance Eq a => Eq (Term a) where
         go (FunCall n _) es (FunCall n' _) es' = n == n' && es == es'
         go (FunSyn n _) es (FunSyn n' _) es' = n == n' && es == es'
         go (Universe u) es (Universe u') es' = u == u' && es == es'
-        go (DataType d as) es (DataType d' as') es' = d == d' && as ++ es == as' ++ es'
+        go (DataType d _ as) es (DataType d' _ as') es' = d == d' && as ++ es == as' ++ es'
         go Interval es Interval es' = es == es'
         go (ICon c) es (ICon c') es' = c == c' && es == es'
         go (Path as) es (Path as') es' = as ++ es == as' ++ es'
@@ -204,7 +204,7 @@ instance Traversable Term where
     traverse f (Iso as)              = Iso                         <$> traverse (traverse f) as
     traverse f (Squeeze as)          = Squeeze                     <$> traverse (traverse f) as
     traverse f (FunSyn n e)          = FunSyn n                    <$> traverse f e
-    traverse f (DataType d as)       = DataType d                  <$> traverse (traverse f) as
+    traverse f (DataType d e as)     = DataType d e                <$> traverse (traverse f) as
     traverse _ (FunCall n cs)        = pure (FunCall n cs)
     traverse _ (Universe l)          = pure (Universe l)
     traverse _ Interval              = pure Interval
@@ -221,7 +221,7 @@ instance Monad Term where
     FunCall n cs         >>= k = FunCall n cs
     FunSyn n e           >>= k = FunSyn n (e >>= k)
     Universe l           >>= _ = Universe l
-    DataType d as        >>= k = DataType d $ map (>>= k) as
+    DataType d e as      >>= k = DataType d e $ map (>>= k) as
     Interval             >>= _ = Interval
     ICon c               >>= _ = ICon c
     Path es              >>= k = Path $ map (>>= k) es
@@ -241,7 +241,7 @@ collectDataTypes (Pi _ e1 (Name _ (Scope e2))) = collectDataTypes e1 ++ collectD
 collectDataTypes (Con _ _ as _)                = as >>= collectDataTypes
 collectDataTypes (FunCall _ _)                 = []
 collectDataTypes (FunSyn _ _)                  = []
-collectDataTypes (DataType d as)               = d : (as >>= collectDataTypes)
+collectDataTypes (DataType d _ as)             = d : (as >>= collectDataTypes)
 collectDataTypes (Universe _)                  = []
 collectDataTypes Interval                      = []
 collectDataTypes (ICon _)                      = []

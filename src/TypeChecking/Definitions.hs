@@ -97,9 +97,9 @@ typeCheckPDef (PDefCases arg ety cases) = mdo
     return ()
 typeCheckPDef (PDefData arg params cons conds) = mdo
     (CtxFrom ctx, dataType, _) <- checkTele Nil params (T.Universe NoLevel)
-    addDataTypeCheck arg dataType
+    addDataTypeCheck arg dataType (null cons)
     cons' <- forW (zip cons [0..]) $ \((con,tele),i) -> do
-        (_, conType, conLevel) <- checkTele ctx tele $ DataType name []
+        (_, conType, conLevel) <- checkTele ctx tele $ DataType name False []
         checkPositivity (nf WHNF conType)
         let conTerm = T.Con i (unArg con) [] $ map snd $ filter (\(c,_) -> c == unArg con) conds'
         return $ Just (con, conTerm, conType, conLevel)
@@ -119,7 +119,7 @@ typeCheckPDef (PDefData arg params cons conds) = mdo
             return $ Just (con, ClosedName rtpats $ fromJust $ closed term')
     lift $ deleteDataType name
     let lvls = map (\(_,_,_,lvl) -> lvl) cons'
-    lift $ addDataType name $ replaceLevel dataType $ if null lvls then NoLevel else maximum lvls
+    lift $ addDataType name (replaceLevel dataType $ if null lvls then NoLevel else maximum lvls) (null cons)
   where
     name = unArg arg
     
