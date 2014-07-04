@@ -81,10 +81,10 @@ typeCheckCtx ctx expr ty = go ctx expr [] ty
                     Just (DataType d _) -> Just d
                     _                   -> Nothing
                 case mt of
-                    [FunctionE te ty]                -> return (fmap (liftBase ctx) te , fmap (liftBase ctx) ty)
-                    [DataTypeE ty]                   -> return (DataType var []        , fmap (liftBase ctx) ty)
-                    [ConstructorE (Left  (con, ty))] -> return (fmap (liftBase ctx) con, fmap (liftBase ctx) ty)
-                    [ConstructorE (Right (con, ty))] -> case mty of
+                    [FunctionE te ty]                  -> return (fmap (liftBase ctx) te , fmap (liftBase ctx) ty)
+                    [DataTypeE ty]                     -> return (DataType var []        , fmap (liftBase ctx) ty)
+                    [ConstructorE _ (Left  (con, ty))] -> return (fmap (liftBase ctx) con, fmap (liftBase ctx) ty)
+                    [ConstructorE _ (Right (con, ty))] -> case mty of
                         Just (DataType _ params) ->
                             let liftTerm te = te >>= \v -> case v of
                                     B i -> reverse params !! i

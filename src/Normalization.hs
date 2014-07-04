@@ -93,17 +93,17 @@ nfs :: (Eq a, Show a) => NF -> [Term a] -> [Term a]
 nfs NF terms = map (nf NF) terms
 nfs _  terms = terms
 
-instantiatePat :: (Eq a, Show a) => [RTPattern] -> [Term a] -> Maybe [Term a]
+instantiatePat :: (Eq a, Show a) => [Pattern] -> [Term a] -> Maybe [Term a]
 instantiatePat [] _ = Just []
-instantiatePat (RTPatternVar : pats) (term:terms) = fmap (term:) (instantiatePat pats terms)
-instantiatePat (RTPattern con pats1 : pats) (term:terms) = case nf WHNF term of
+instantiatePat (PatternVar : pats) (term:terms) = fmap (term:) (instantiatePat pats terms)
+instantiatePat (Pattern con pats1 : pats) (term:terms) = case nf WHNF term of
     Con i n terms1 _ | i == con -> liftM2 (++) (instantiatePat pats1 terms1) (instantiatePat pats terms)
     _ -> Nothing
-instantiatePat (RTPatternI con : pats) (term:terms) = case nf WHNF term of
+instantiatePat (PatternI con : pats) (term:terms) = case nf WHNF term of
     ICon i | i == con -> instantiatePat pats terms
     _ -> Nothing
 instantiatePat _ _ = Nothing
 
-instantiateCases :: (Eq a, Show a) => [ClosedNames RTPattern Term] -> [Term a] -> Maybe (Term a, [Term a])
+instantiateCases :: (Eq a, Show a) => [ClosedNames Pattern Term] -> [Term a] -> Maybe (Term a, [Term a])
 instantiateCases cases terms = msum $ flip map cases $ \(ClosedName pats term) ->
     fmap (\ts -> (instantiate (ts !!) term, drop (length pats) terms)) (instantiatePat pats terms)

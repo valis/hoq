@@ -1,7 +1,7 @@
 module Syntax.Term
     ( Term(..), ICon(..)
     , Level(..), level
-    , Pattern(..), RTPattern(..)
+    , Pattern(..)
     , module Syntax.Name, module Bound
     , POrd(..), lessOrEqual, greaterOrEqual
     , collectDataTypes, apps
@@ -12,7 +12,6 @@ import Data.Function
 import Bound
 import Data.Traversable hiding (mapM)
 import Data.Foldable hiding (msum)
-import Data.Monoid(mappend)
 import Control.Applicative
 import Control.Monad
 
@@ -39,8 +38,8 @@ data Term a
     | Lam (Names String Term a)
     | Arr (Term a) (Term a)
     | Pi Bool (Term a) (Names String Term a)
-    | Con Int String [Term a] [ClosedNames RTPattern Term]
-    | FunCall String [ClosedNames RTPattern Term]
+    | Con Int String [Term a] [ClosedNames Pattern Term]
+    | FunCall String [ClosedNames Pattern Term]
     | FunSyn  String (Term a)
     | Universe Level
     | DataType String [Term a]
@@ -54,7 +53,7 @@ data Term a
     | Iso [Term a]
     | Squeeze [Term a]
 data ICon = ILeft | IRight deriving (Eq,Show)
-data RTPattern = RTPattern Int [RTPattern] | RTPatternVar | RTPatternI ICon deriving Show
+data Pattern = Pattern Int [Pattern] | PatternVar | PatternI ICon deriving Show
 
 instance Show a => Show (Term a) where
     show _ = "Not implemented"
@@ -232,16 +231,6 @@ instance Monad Term where
     Coe es               >>= k = Coe $ map (>>= k) es
     Iso es               >>= k = Iso $ map (>>= k) es
     Squeeze es           >>= k = Squeeze $ map (>>= k) es
-
-data Pattern v = Pattern v [Pattern v]
-
-instance Functor  Pattern where
-    fmap f (Pattern v pats) = Pattern (f v) $ map (fmap f) pats
-
-instance Foldable Pattern where
-    foldMap f (Pattern v []) = f v
-    foldMap f (Pattern _ [pat]) = foldMap f pat
-    foldMap f (Pattern v (pat:pats)) = foldMap f pat `mappend` foldMap f (Pattern v pats)
 
 collectDataTypes :: Term a                    -> [String]
 collectDataTypes (Var _)                       = []

@@ -21,7 +21,7 @@ import Normalization
 
 type Tele = [([Arg], Expr)]
 data PDef = PDefSyn Arg Expr
-          | PDefCases Arg Expr [([ParPat], Maybe Expr)]
+          | PDefCases Arg Expr [((Int, Int), [ParPat], Maybe Expr)]
           | PDefData Arg Tele [(Arg,Tele)] [(E.Pattern, Expr)]
 
 theSameAs :: String -> Def -> Bool
@@ -38,9 +38,9 @@ splitDefs (DefType p@(PIdent (lc,name)) ty : defs) =
             splitDefs defs
         (defs1,defs2) -> do
             pdefs <- splitDefs defs2
-            let defToPDef (DefFun (FunCase (E.Pattern _ pats) expr)) = (pats, Just expr)
-                defToPDef (DefFunEmpty (E.Pattern _ pats)) = (pats, Nothing)
-                defToPDef _                                = error "defToPDef"
+            let defToPDef (DefFun (FunCase (E.Pattern (PIdent (lc,_)) pats) expr)) = (lc, pats, Just expr)
+                defToPDef (DefFunEmpty (E.Pattern (PIdent (lc,_)) pats))           = (lc, pats, Nothing)
+                defToPDef _                                                        = error "defToPDef"
             return $ PDefCases (Arg p) ty (map defToPDef defs1) : pdefs
 splitDefs (DefFun (FunCase (E.Pattern p []) expr) : defs) = liftM (PDefSyn (Arg p) expr :) (splitDefs defs)
 splitDefs (DefFun (FunCase (E.Pattern (PIdent (lc,name)) _) _) : defs) = do
@@ -79,20 +79,22 @@ typeCheckPDef (PDefCases arg ety cases) = mdo
         _            -> throwError [emsgLC (getPos ety) "" $ pretty "Expected a type" $$
                                                              pretty "Actual type:" <+> prettyOpen Nil ty]
     addFunctionCheck arg (FunCall (unArg arg) names) ty
-    names <- forW cases $ \(pats,mexpr) -> case mexpr of
-        Nothing -> return Nothing
-        Just expr -> do
-            mr <- runErrorT $ typeCheckPatterns Nil (nf WHNF ty) pats
-            case mr of
-                Left _ -> do
-                    let msg = "If the absurd pattern is given the right hand side must be omitted"
-                    warn [emsgLC (getPos expr) msg enull]
-                    return Nothing
-                Right (TermsInCtx ctx _ ty', rtpats) -> do
-                    (term, _) <- typeCheckCtx ctx expr $ Just (nf WHNF ty')
-                    return $ Just $ ClosedName rtpats $ fromJust $ closed $ toScope $
-                        reverseTerm (length $ contextNames ctx) (abstractTermInCtx ctx term)
-    checkCoverage ty cases
+    names <- forW cases $ \(_,pats,mexpr) ->  do
+        (bf, TermsInCtx ctx _ ty', rtpats) <- typeCheckPatterns Nil (nf WHNF ty) pats
+        case (bf,mexpr) of
+            (True,  Nothing) -> return Nothing
+            (False, Nothing) -> do
+                let msg = "The right hand side can be omitted only if the absurd pattern is given"
+                warn [emsgLC (argGetPos arg) msg enull]
+                return Nothing
+            (_, Just expr) -> do
+                let msg = "If the absurd pattern is given the right hand side must be omitted"
+                when bf $ warn [emsgLC (getPos expr) msg enull]
+                (term, _) <- typeCheckCtx ctx expr $ Just (nf WHNF ty')
+                return $ Just $ ClosedName rtpats $ fromJust $ closed $ toScope $
+                    reverseTerm (length $ contextNames ctx) (abstractTermInCtx ctx term)
+    -- checkCoverage ty cases
+    return ()
 typeCheckPDef (PDefData arg params cons conds) = mdo
     (CtxFrom ctx, dataType, _) <- checkTele Nil params (T.Universe NoLevel)
     addDataTypeCheck arg dataType
@@ -101,7 +103,7 @@ typeCheckPDef (PDefData arg params cons conds) = mdo
         checkPositivity (nf WHNF conType)
         let conTerm = T.Con i (unArg con) [] $ map snd $ filter (\(c,_) -> c == unArg con) conds'
         return $ Just (con, conTerm, conType, conLevel)
-    forM_ cons' $ \(con, te, ty, _) -> addConstructorCheck con name $ case TermsInCtx ctx [te] ty of
+    forM_ cons' $ \(con, te, ty, _) -> addConstructorCheck con name (length cons) $ case TermsInCtx ctx [te] ty of
         TermsInCtx Nil  [con'] conType' -> Left  (con', conType')
         TermsInCtx ctx' [con'] conType' -> Right (abstractTermInCtx ctx' con', abstractTermInCtx ctx' conType')
         _                               -> error "typeCheckPDef"
@@ -110,15 +112,11 @@ typeCheckPDef (PDefData arg params cons conds) = mdo
             warn [notInScope lc "data constructor" con]
             return Nothing
         Just (_,_,ty,_) -> do
-            mr <- runErrorT $ typeCheckPatterns ctx (nf WHNF ty) pats
-            case mr of
-                Left  _ -> do
-                    warn [emsgLC lc "Absurd patterns are not allowed in conditions" enull]
-                    return Nothing
-                Right (TermsInCtx ctx' _ ty', rtpats) -> do
-                    (term, _) <- typeCheckCtx (ctx +++ ctx') expr $ Just (nf WHNF ty')
-                    let term' = toScope $ reverseTerm (length $ contextNames ctx') $ abstractTermInCtx ctx' term
-                    return $ Just (con, ClosedName rtpats $ fromJust $ closed term')
+            (bf, TermsInCtx ctx' _ ty', rtpats) <- typeCheckPatterns ctx (nf WHNF ty) pats
+            when bf $ warn [emsgLC lc "Absurd patterns are not allowed in conditions" enull]
+            (term, _) <- typeCheckCtx (ctx +++ ctx') expr $ Just (nf WHNF ty')
+            let term' = toScope $ reverseTerm (length $ contextNames ctx') $ abstractTermInCtx ctx' term
+            return $ Just (con, ClosedName rtpats $ fromJust $ closed term')
     lift $ deleteDataType name
     let lvls = map (\(_,_,_,lvl) -> lvl) cons'
     lift $ addDataType name $ replaceLevel dataType $ if null lvls then NoLevel else maximum lvls
