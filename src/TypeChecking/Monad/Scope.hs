@@ -17,12 +17,12 @@ import Data.List
 import Data.Maybe
 
 data Entry f = FunctionE (f String) (f String)
-             | DataTypeE (f String) Bool
+             | DataTypeE (f String) Int
              | ConstructorE Int (Either (f String, f String) (f (Var Int String), f (Var Int String)))
 
 data ScopeState f = ScopeState
     { functions    :: [(String, (f String, f String))]
-    , dataTypes    :: [(String, (f String, Bool))]
+    , dataTypes    :: [(String, (f String, Int))]
     , constructors :: [((String, String), (Int, Either (f String, f String) (f (Var Int String), f (Var Int String))))]
     }
 
@@ -32,7 +32,7 @@ newtype ScopeT f m a = ScopeT { unScopeT :: StateT (ScopeState f) m a }
 addFunction :: (Monad f, Monad m) => String -> f String -> f String -> ScopeT f m ()
 addFunction v te ty = ScopeT $ modify $ \scope -> scope { functions = (v, (te, ty)) : functions scope }
 
-addDataType :: (Monad f, Monad m) => String -> f String -> Bool -> ScopeT f m ()
+addDataType :: (Monad f, Monad m) => String -> f String -> Int -> ScopeT f m ()
 addDataType v ty b = ScopeT $ modify $ \scope -> scope { dataTypes = (v, (ty, b)) : dataTypes scope }
 
 addConstructor :: (Monad f, Monad m) => String -> String -> Int

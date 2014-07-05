@@ -42,7 +42,7 @@ data Term a
     | FunCall String [ClosedNames Pattern Term]
     | FunSyn  String (Term a)
     | Universe Level
-    | DataType String Bool [Term a]
+    | DataType String Int [Term a]
     | Interval
     | ICon ICon
     | Path [Term a]

@@ -1,0 +1,116 @@
+data Bool = false | true
+
+-- Incomplete
+itest1 : I -> Bool -> Bool
+itest1 left true = false
+itest1 right _ = true
+itest1 left _ = true
+itest1 _ false = false
+
+-- OK
+itest2 : I -> Bool -> Bool
+itest2 left true = false
+itest2 right _ = true
+itest2 left _ = true
+itest2 _ false = false
+itest2 _ true = false
+
+-- Unreachable 22
+itest3 : I -> Bool -> Bool
+itest3 left true = false
+itest3 right _ = true
+itest3 right _ = true
+itest3 _ _ = false
+
+-- OK
+not : Bool -> Bool
+not true = false
+not false = true
+
+-- OK
+and : Bool -> Bool -> Bool
+and true true = true
+and _ _ = false
+
+-- OK
+and1 : Bool -> Bool -> Bool
+and1 true true = true
+and1 false true = false
+and1 _ _ = false
+
+-- OK
+and2 : Bool -> Bool -> Bool
+and2 true _ = true
+and2 false false = false
+and2 _ _ = false
+
+-- Unreachable 52
+and3 : Bool -> Bool -> Bool
+and3 true _ = true
+and3 false true = false
+and3 false false = false
+and3 _ _ = false
+
+-- Unreachable 58
+test : Bool -> Bool
+test true = false
+test _ = true
+test = \_ -> false
+
+-- Unreachable 64
+btest1 : Bool -> Bool
+btest1 true = false
+btest1 = \_ -> true
+btest1 = \_ -> false
+
+-- Unreachable 69
+btest2 : Bool -> Bool
+btest2 true  = false
+btest2 true  = true
+btest2 false = false
+
+-- Incomplete
+btest3 : Bool -> Bool -> Bool
+btest3 true false = false
+btest3 _ true = false
+
+-- OK
+btest4 : Bool -> Bool -> Bool
+btest4 true _ = false
+btest4 _ false = true
+btest4 false true = false
+
+-- Unreachable 88
+btest5 : Bool -> Bool -> Bool
+btest5 true _ = false
+btest5 _ false = true
+btest5 false true = false
+btest5 false false = false
+
+data List (A : Type) = nil | cons A (List A)
+
+-- Incomplete
+ltest1 : (A : Type) -> List A -> List A -> List A
+ltest1 A nil ys = ys
+ltest1 A (cons x nil) ys = ys
+ltest1 A (cons x1 (cons x2 xs)) nil = xs
+
+-- OK
+ltest2 : (A : Type) -> List A -> List A -> List A
+ltest2 A nil ys = ys
+ltest2 A _ nil = nil
+ltest2 A (cons _ xs) (cons _ _) = xs
+
+-- OK
+ltest3 : (A : Type) -> List A -> List A -> List A
+ltest3 A nil ys = ys
+ltest3 A (cons x nil) ys = ys
+ltest3 A (cons x1 _) nil = cons x1 nil
+ltest3 A (cons x1 (cons x2 xs)) (cons y ys) = ys
+
+-- Unreachable 116
+ltest4 : (A : Type) -> List A -> List A -> List A
+ltest4 A nil ys = ys
+ltest4 A (cons x nil) ys = ys
+ltest4 A (cons x1 (cons x2 xs)) ys = ys
+ltest4 A (cons x1 _) nil = cons x1 nil

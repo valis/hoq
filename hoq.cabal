@@ -15,7 +15,10 @@ data-dir:            data
 data-files:          hoq.vim
 extra-source-files:  README.md,
                      src/Syntax/Grammar.cf,
-                     examples/basics.hoq
+                     examples/basics.hoq,
+                     examples/hlevel.hoq,
+                     examples/circle.hoq,
+                     examples/lem.hoq
 
 source-repository head
   type:     git
@@ -33,6 +36,7 @@ executable hoq
                        Syntax.ErrorDoc,
                        Syntax.Context,
                        TypeChecking.Patterns,
+                       TypeChecking.Coverage,
                        TypeChecking.Definitions,
                        TypeChecking.Expressions,
                        TypeChecking.Monad.Scope,

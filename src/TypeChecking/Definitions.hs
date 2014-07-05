@@ -16,6 +16,7 @@ import Syntax.Context
 import Syntax.ErrorDoc
 import TypeChecking.Expressions
 import TypeChecking.Patterns
+import TypeChecking.Coverage
 import TypeChecking.Monad
 import Normalization
 
@@ -79,31 +80,35 @@ typeCheckPDef (PDefCases arg ety cases) = mdo
         _            -> throwError [emsgLC (getPos ety) "" $ pretty "Expected a type" $$
                                                              pretty "Actual type:" <+> prettyOpen Nil ty]
     addFunctionCheck arg (FunCall (unArg arg) names) ty
-    names <- forW cases $ \(_,pats,mexpr) ->  do
-        (bf, TermsInCtx ctx _ ty', rtpats) <- typeCheckPatterns Nil (nf WHNF ty) pats
+    namesAndPats <- forW cases $ \(lc,pats,mexpr) ->  do
+        (bf, TermsInCtx ctx _ ty', rtpats, cpats) <- typeCheckPatterns Nil (nf WHNF ty) pats
         case (bf,mexpr) of
             (True,  Nothing) -> return Nothing
             (False, Nothing) -> do
                 let msg = "The right hand side can be omitted only if the absurd pattern is given"
                 warn [emsgLC (argGetPos arg) msg enull]
                 return Nothing
-            (_, Just expr) -> do
+            (True, Just expr) -> do
                 let msg = "If the absurd pattern is given the right hand side must be omitted"
-                when bf $ warn [emsgLC (getPos expr) msg enull]
+                warn [emsgLC (getPos expr) msg enull]
+                return Nothing
+            (False, Just expr) -> do
                 (term, _) <- typeCheckCtx ctx expr $ Just (nf WHNF ty')
-                return $ Just $ ClosedName rtpats $ fromJust $ closed $ toScope $
-                    reverseTerm (length $ contextNames ctx) (abstractTermInCtx ctx term)
-    -- checkCoverage ty cases
-    return ()
+                return $ Just (ClosedName rtpats $ fromJust $ closed $ toScope $
+                    reverseTerm (length $ contextNames ctx) (abstractTermInCtx ctx term), (lc, cpats))
+    let names = map fst namesAndPats
+    case checkCoverage (map snd namesAndPats) of
+        Nothing -> warn [emsgLC (argGetPos arg) "Incomplete pattern matching" enull]
+        Just uc -> warn $ map (\lc -> emsgLC lc "Unreachable clause" enull) uc
 typeCheckPDef (PDefData arg params cons conds) = mdo
     (CtxFrom ctx, dataType, _) <- checkTele Nil params (T.Universe NoLevel)
-    addDataTypeCheck arg dataType (null cons)
+    addDataTypeCheck arg dataType lcons
     cons' <- forW (zip cons [0..]) $ \((con,tele),i) -> do
-        (_, conType, conLevel) <- checkTele ctx tele $ DataType name False []
+        (_, conType, conLevel) <- checkTele ctx tele $ DataType name lcons []
         checkPositivity (nf WHNF conType)
         let conTerm = T.Con i (unArg con) [] $ map snd $ filter (\(c,_) -> c == unArg con) conds'
         return $ Just (con, conTerm, conType, conLevel)
-    forM_ cons' $ \(con, te, ty, _) -> addConstructorCheck con name (length cons) $ case TermsInCtx ctx [te] ty of
+    forM_ cons' $ \(con, te, ty, _) -> addConstructorCheck con name lcons $ case TermsInCtx ctx [te] ty of
         TermsInCtx Nil  [con'] conType' -> Left  (con', conType')
         TermsInCtx ctx' [con'] conType' -> Right (abstractTermInCtx ctx' con', abstractTermInCtx ctx' conType')
         _                               -> error "typeCheckPDef"
@@ -112,15 +117,16 @@ typeCheckPDef (PDefData arg params cons conds) = mdo
             warn [notInScope lc "data constructor" con]
             return Nothing
         Just (_,_,ty,_) -> do
-            (bf, TermsInCtx ctx' _ ty', rtpats) <- typeCheckPatterns ctx (nf WHNF ty) pats
+            (bf, TermsInCtx ctx' _ ty', rtpats, _) <- typeCheckPatterns ctx (nf WHNF ty) pats
             when bf $ warn [emsgLC lc "Absurd patterns are not allowed in conditions" enull]
             (term, _) <- typeCheckCtx (ctx +++ ctx') expr $ Just (nf WHNF ty')
             let term' = toScope $ reverseTerm (length $ contextNames ctx') $ abstractTermInCtx ctx' term
             return $ Just (con, ClosedName rtpats $ fromJust $ closed term')
     lift $ deleteDataType name
     let lvls = map (\(_,_,_,lvl) -> lvl) cons'
-    lift $ addDataType name (replaceLevel dataType $ if null lvls then NoLevel else maximum lvls) (null cons)
+    lift $ addDataType name (replaceLevel dataType $ if null lvls then NoLevel else maximum lvls) lcons
   where
+    lcons = length cons
     name = unArg arg
     
     checkTele :: (Monad m, Eq a, Show a) => Ctx Int [String] Term String a -> Tele -> Term a ->
