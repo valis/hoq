@@ -1,4 +1,4 @@
-module TypeChecking.Coverage
+module TypeChecking.Definitions.Coverage
     ( checkCoverage
     , Pattern(..)
     ) where

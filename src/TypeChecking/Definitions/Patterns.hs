@@ -1,4 +1,4 @@
-module TypeChecking.Patterns
+module TypeChecking.Definitions.Patterns
     ( typeCheckPatterns
     ) where
 
@@ -7,7 +7,7 @@ import Syntax.Term as T
 import Syntax.ErrorDoc
 import Syntax.Context
 import TypeChecking.Monad
-import TypeChecking.Coverage as C
+import TypeChecking.Definitions.Coverage as C
 import TypeChecking.Expressions
 import Normalization
 
