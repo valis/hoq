@@ -1,21 +1,22 @@
+{-# LANGUAGE GADTs #-}
+
 module Syntax.Term
     ( Term(..), ICon(..)
     , Level(..), level
-    , Pattern(..)
-    , module Syntax.Name, module Bound
-    , POrd(..), lessOrEqual, greaterOrEqual
-    , collectDataTypes, apps
+    , Pattern(..), Explicit(..)
+    , module Syntax.Context
+    , POrd(..), lessOrEqual
+    , collectDataTypes
     ) where
 
 import Prelude.Extras
 import Data.Function
-import Bound
 import Data.Traversable hiding (mapM)
 import Data.Foldable hiding (msum)
 import Control.Applicative
 import Control.Monad
 
-import Syntax.Name
+import Syntax.Context
 
 data Level = Level Int | NoLevel
 
@@ -35,74 +36,51 @@ level NoLevel = 0
 data Term a
     = Var a
     | App (Term a) (Term a)
-    | Lam (Names String Term a)
-    | Arr (Term a) (Term a)
-    | Pi Bool (Term a) (Names String Term a)
-    | Con Int String [Term a] [ClosedNames Pattern Term]
-    | FunCall String [ClosedNames Pattern Term]
+    | Lam (Scope1 String Term a)
+    | Pi (Term a) (Scope String Term a)
+    | Con Int String [Scope Pattern Term String] [Term a]
+    | FunCall String [Scope Pattern Term String]
     | FunSyn  String (Term a)
     | Universe Level
     | DataType String Int [Term a]
     | Interval
     | ICon ICon
-    | Path [Term a]
-    | PathImp (Maybe (Term a)) (Term a) (Term a)
+    | Path Explicit (Maybe (Term a)) [Term a]
     | PCon (Maybe (Term a))
     | At (Term a) (Term a) (Term a) (Term a)
     | Coe [Term a]
     | Iso [Term a]
     | Squeeze [Term a]
-data ICon = ILeft | IRight deriving (Eq,Show)
-data Pattern = Pattern Int [Pattern] | PatternVar | PatternI ICon deriving Show
-
-instance Show a => Show (Term a) where
-    show _ = "Not implemented"
-
-instance Show1 Term where showsPrec1 = showsPrec
+data ICon = ILeft | IRight deriving Eq
+data Pattern = Pattern Int [Pattern] | PatternVar | PatternI ICon | PatternAny
+data Type a = Type (Term a) Level
+data Explicit = Explicit | Implicit
 
 instance Eq a => Eq (Term a) where
     e1 == e2 = go e1 [] e2 []
       where
+        go :: Eq a => Term a -> [Term a] -> Term a -> [Term a] -> Bool
         go (Var a) es (Var a') es' = a == a' && es == es'
         go (App a b) es e2 es' = go a (b:es) e2 es'
         go e1 es (App a b) es' = go e1 es a (b:es')
-        go (Lam (Name n s)) es (Lam (Name n' s')) es' = es == es' &&
-            let d = length n - length n'
-                d' = -d
-            in case () of
-                _ | d  > 0 -> s == Scope (addApps d $ fmap (succ d) $ unscope s')
-                _ | d' > 0 -> Scope (addApps d' $ fmap (succ d') $ unscope s) == s'
-                _          -> s == s'
-         where
-            succ :: Int -> Var Int a -> Var Int a
-            succ d (B i) = B (d + i)
-            succ _ (F a) = F a
-        go (Lam (Name n s)) es t es' =
+        go (Lam s) es (Lam s') es' = s == s' && es == es'
+        go (Lam (Scope1 _ s)) es t es' =
             let (l1,l2) = splitAt (length es' - length es) es'
-            in l2 == es && s == Scope (addApps (length n) $ Var $ F $ apps t l1)
-        go t1 es t2@Lam{} es' = go t2 es' t1 es
-        go (Arr a b) es (Arr a' b') es' = a == a' && b == b' && es == es'
-        go e1@Pi{} es e2@Pi{} es' = es == es' && pcompare e1 e2 == Just EQ
-        go (Pi fl a ns) es (Arr a' b') es' =
-            a == a' && es == es' && fmap F b' == either (Pi fl $ fmap F a) id (namesToVar ns)
-        go e@Arr{} es e'@Pi{} es' = go e' es' e es
-        go (Con c _ as _) es (Con c' _ as' _) es' = c == c' && as ++ es == as' ++ es'
+            in l2 == es && go s [] (fmap Free t) (map (fmap Free) l1 ++ [Var Bound])
+        go t es t'@Lam{} es' = go t' es' t es
+        go e1@Pi{} es e2@Pi{} es' = pcompare e1 e2 == Just EQ && es == es'
+        go (Con c _ _ as) es (Con c' _ _ as') es' = c == c' && as ++ es == as' ++ es'
         go (FunCall n _) es (FunCall n' _) es' = n == n' && es == es'
         go (FunSyn n _) es (FunSyn n' _) es' = n == n' && es == es'
         go (Universe u) es (Universe u') es' = u == u' && es == es'
         go (DataType d _ as) es (DataType d' _ as') es' = d == d' && as ++ es == as' ++ es'
         go Interval es Interval es' = es == es'
         go (ICon c) es (ICon c') es' = c == c' && es == es'
-        go (Path as) es (Path as') es' = as ++ es == as' ++ es'
-        go (Path as) es (PathImp ma' b' c') es' = case as ++ es of
-            a:b:c:es1 -> maybe True (\a' -> Lam (Name ["x"] (toScope $ fmap F a')) == a) ma'
-                && b == b' && c == c' && es1 == es'
-            _       -> False
-        go e@PathImp{} es e'@Path{} es' = go e' es' e es
-        go (PathImp ma b c) es (PathImp ma' b' c') es' = maybe True id (liftM2 (==) ma ma') && b == b' && c == c' && es == es'
+        go (Path Explicit a as) es (Path Explicit a' as') es' = a == a' && as ++ es == as' ++ es'
+        go (Path _ _ as) es (Path _ _ as') es' = as ++ es == as' ++ es'
         go (PCon f) es (PCon f') es' = maybe [] return f ++ es == maybe [] return f' ++ es'
         go (PCon e) es e' es' = case maybe [] return e ++ es of
-            e1:es1 -> e1 == Lam (Name ["x"] $ Scope $ At (error "PCon") (error "PCon") (Var $ F e') $ Var $ B 0) && es1 == es'
+            e1:es1 -> e1 == Lam (Scope1 "" $ At (error "") (error "") (fmap Free e') $ Var Bound) && es1 == es'
             _ -> False
         go e es e'@PCon{} es' = go e' es' e es
         go (At _ _ a b) es (At _ _ a' b') es' = a == a' && b == b' && es == es'
@@ -110,59 +88,22 @@ instance Eq a => Eq (Term a) where
         go (Iso as) es (Iso as') es' = as ++ es == as' ++ es'
         go (Squeeze as) es (Squeeze as') es' = as ++ es == as' ++ es'
         go _ _ _ _ = False
-        
-        addApps :: Int -> Term (Var Int a) -> Term (Var Int a)
-        addApps 0 t = t
-        addApps d t = addApps (d - 1) $ App t $ Var $ B (d - 1)
 
-namesToVar :: Names n Term a -> Either (Names n Term (Var () a)) (Term (Var () a))
-namesToVar (Name (_:ns) (Scope b)) | not (null ns) = Left $ Name ns $ Scope $ b >>= \v -> case v of
-    B i | i == length ns - 1 -> return $ F $ Var $ B ()
-        | otherwise          -> return (B i)
-    F t                      -> fmap (F . Var . F) t
-namesToVar (Name _ (Scope b)) = Right $ b >>= \v -> case v of
-    B _ -> return $ B ()
-    F t -> fmap F t
+instance Eq1 Term where (==#) = (==)
 
 class POrd a where
     pcompare :: a -> a -> Maybe Ordering
 
 instance Eq a => POrd (Term a) where
-    pcompare (Pi fl a (Name n b)) (Pi fl' a' (Name n' b')) = contraCovariant (pcompare a a') $
-        let d = length n - length n'
-            d' = -d
-        in case () of
-            _ | d' > 0 -> pcompare (fromScope b) $ Pi fl' (fmap F a') (Name (drop (length n) n') $ Scope $ unscope b' >>= \v -> case v of
-                B i | i >= d'   -> return $ F $ Var $ B (i - d')
-                    | otherwise -> return (B i)
-                F t             -> fmap (F . Var . F) t)
-            _ | d > 0 -> pcompare (Pi fl (fmap F a) $ Name (drop (length n') n) $ Scope $ unscope b >>= \v -> case v of
-                B i | i >= d    -> return $ F $ Var $ B (i - d)
-                    | otherwise -> return (B i)
-                F t             -> fmap (F . Var . F) t) (fromScope b')
-            _ -> pcompare (fromScope b) (fromScope b')
-    pcompare (Pi fl a ns) (Arr a' b')                         = contraCovariant (pcompare a a') $
-        pcompare (either (Pi fl $ fmap F a) id $ namesToVar ns) (fmap F b')
-    pcompare (Arr a b) (Pi fl a' ns')                         = contraCovariant (pcompare a a') $
-        pcompare (fmap F b) (either (Pi fl $ fmap F a') id $ namesToVar ns')
-    pcompare (Arr a b) (Arr a' b')                            = contraCovariant (pcompare a a') (pcompare b b')
-    pcompare (Universe u) (Universe u')                       = Just $ compare (level u) (level u')
-    pcompare (Path []) (Path [])                              = Just EQ
-    pcompare (Path (Lam (Name [_] a):as))
-             (Path (Lam (Name [_] a'):as'))                   = if as == as' then pcompare (fromScope a) (fromScope a')
-                                                                                                         else Nothing
-    pcompare (Path (a:as)) (Path (a':as'))                    = if as == as'          then pcompare a a' else Nothing
-    pcompare (Path [a,b,c]) (PathImp Nothing b' c')           = if b == b' && c == c' then Just EQ       else Nothing
-    pcompare (Path [Lam (Name [_] s),b,c])
-             (PathImp (Just a') b' c')                        = if b == b' && c == c' then pcompare (fromScope s) (fmap F a')
-                                                                                                         else Nothing
-    pcompare (PathImp Nothing  b c) (Path [a',b',c'])         = if b == b' && c == c' then Just EQ       else Nothing
-    pcompare (PathImp (Just a) b c)
-             (Path [Lam (Name [_] s),b',c'])                  = if b == b' && c == c' then pcompare (fmap F a) (fromScope s)
-                                                                                                         else Nothing
-    pcompare (PathImp (Just a) b c) (PathImp (Just a') b' c') = if b == b' && c == c' then pcompare a a' else Nothing
-    pcompare (PathImp _  b c) (PathImp _ b' c')               = if b == b' && c == c' then Just EQ       else Nothing
-    pcompare e1 e2                                            = if e1 == e2           then Just EQ       else Nothing
+    pcompare (Pi a (Scope ctx b)) (Pi a' (Scope ctx' b')) = contraCovariant (pcompare a a') (go a ctx b a' ctx' b')
+      where
+        go :: Eq b => Term b -> Ctx String b a -> Term a -> Term b -> Ctx String b a' -> Term a' -> Maybe Ordering
+        go _ Nil t _ Nil t' = pcompare t t'
+        go _ Nil t s' ctx' t' = pcompare t (Pi s' $ Scope ctx' t')
+        go s ctx t _ Nil t' = pcompare (Pi s $ Scope ctx t) t'
+        go s (Snoc ctx _) t s' (Snoc ctx' _) t' = go (fmap Free s) (liftCtx ctx) t (fmap Free s') (liftCtx ctx') t'
+    pcompare (Universe u) (Universe u') = Just $ compare (level u) (level u')
+    pcompare e1 e2 = if e1 == e2 then Just EQ else Nothing
 
 contraCovariant :: Maybe Ordering -> Maybe Ordering -> Maybe Ordering
 contraCovariant (Just LT) (Just r) | r == EQ || r == GT = Just GT
@@ -175,13 +116,6 @@ lessOrEqual a b = case pcompare a b of
     Just r | r == EQ || r == LT -> True
     _                           -> False
 
-greaterOrEqual :: POrd a => a -> a -> Bool
-greaterOrEqual a b = case pcompare a b of
-    Just r | r == EQ || r == GT -> True
-    _                           -> False
-
-instance Eq1   Term where (==#) = (==)
-
 instance Functor  Term where fmap    = fmapDefault
 instance Foldable Term where foldMap = foldMapDefault
 
@@ -190,73 +124,59 @@ instance Applicative Term where
     (<*>) = ap
 
 instance Traversable Term where
-    traverse f (Var a)               = Var                         <$> f a
-    traverse f (App e1 e2)           = App                         <$> traverse f e1 <*> traverse f e2
-    traverse f (Lam (Name n e))      = Lam . Name n                <$> traverse f e
-    traverse f (At e1 e2 e3 e4)      = At                          <$> traverse f e1 <*> traverse f e2 <*> traverse f e3 <*> traverse f e4
-    traverse f (Arr e1 e2)           = Arr                         <$> traverse f e1 <*> traverse f e2
-    traverse f (Pi b e1 (Name n e2)) = (\e1' -> Pi b e1' . Name n) <$> traverse f e1 <*> traverse f e2
-    traverse f (PathImp me1 e2 e3)   = PathImp                     <$> traverse (traverse f) me1 <*> traverse f e2 <*> traverse f e3
-    traverse f (PCon e)              = PCon                        <$> traverse (traverse f) e
-    traverse f (Path es)             = Path                        <$> traverse (traverse f) es
-    traverse f (Con c n as cs)       = (\as' -> Con c n as' cs)    <$> traverse (traverse f) as
-    traverse f (Coe as)              = Coe                         <$> traverse (traverse f) as
-    traverse f (Iso as)              = Iso                         <$> traverse (traverse f) as
-    traverse f (Squeeze as)          = Squeeze                     <$> traverse (traverse f) as
-    traverse f (FunSyn n e)          = FunSyn n                    <$> traverse f e
-    traverse f (DataType d e as)     = DataType d e                <$> traverse (traverse f) as
-    traverse _ (FunCall n cs)        = pure (FunCall n cs)
-    traverse _ (Universe l)          = pure (Universe l)
-    traverse _ Interval              = pure Interval
-    traverse _ (ICon c)              = pure (ICon c)
+    traverse f (Var a)           = Var          <$> f a
+    traverse f (App e1 e2)       = App          <$> traverse f e1 <*> traverse f e2
+    traverse f (Lam s)           = Lam          <$> traverse f s
+    traverse f (At e1 e2 e3 e4)  = At           <$> traverse f e1 <*> traverse f e2 <*> traverse f e3 <*> traverse f e4
+    traverse f (Pi e1 e2)        = Pi           <$> traverse f e1 <*> traverse f e2
+    traverse f (Path h me es)    = Path h       <$> traverse (traverse f) me <*> traverse (traverse f) es
+    traverse f (PCon e)          = PCon         <$> traverse (traverse f) e
+    traverse f (Con c n cs as)   = Con c n cs   <$> traverse (traverse f) as
+    traverse f (Coe as)          = Coe          <$> traverse (traverse f) as
+    traverse f (Iso as)          = Iso          <$> traverse (traverse f) as
+    traverse f (Squeeze as)      = Squeeze      <$> traverse (traverse f) as
+    traverse f (FunSyn n e)      = FunSyn n     <$> traverse f e
+    traverse f (DataType d e as) = DataType d e <$> traverse (traverse f) as
+    traverse _ (FunCall n cs)    = pure (FunCall n cs)
+    traverse _ (Universe l)      = pure (Universe l)
+    traverse _ Interval          = pure Interval
+    traverse _ (ICon c)          = pure (ICon c)
 
 instance Monad Term where
-    return                     = Var
-    Var a                >>= k = k a
-    App e1 e2            >>= k = App  (e1 >>= k) (e2 >>= k)
-    Lam e                >>= k = Lam  (e >>>= k)
-    Arr e1 e2            >>= k = Arr  (e1 >>= k) (e2 >>= k)
-    Pi b e1 e2           >>= k = Pi b (e1 >>= k) (e2 >>>= k)
-    Con c n as cs        >>= k = Con c n (map (>>= k) as) cs
-    FunCall n cs         >>= k = FunCall n cs
-    FunSyn n e           >>= k = FunSyn n (e >>= k)
-    Universe l           >>= _ = Universe l
-    DataType d e as      >>= k = DataType d e $ map (>>= k) as
-    Interval             >>= _ = Interval
-    ICon c               >>= _ = ICon c
-    Path es              >>= k = Path $ map (>>= k) es
-    PathImp me1 e2 e3    >>= k = PathImp (fmap (>>= k) me1) (e2 >>= k) (e3 >>= k)
-    PCon e               >>= k = PCon $ fmap (>>= k) e
-    At e1 e2 e3 e4       >>= k = At (e1 >>= k) (e2 >>= k) (e3 >>= k) (e4 >>= k)
-    Coe es               >>= k = Coe $ map (>>= k) es
-    Iso es               >>= k = Iso $ map (>>= k) es
-    Squeeze es           >>= k = Squeeze $ map (>>= k) es
+    return                = Var
+    Var a           >>= k = k a
+    App e1 e2       >>= k = App (e1 >>= k) (e2 >>= k)
+    Lam e           >>= k = Lam (e >>>= k)
+    Pi e1 e2        >>= k = Pi (e1 >>= k) (e2 >>>= k)
+    Con c n cs as   >>= k = Con c n cs (map (>>= k) as)
+    FunCall n cs    >>= k = FunCall n cs
+    FunSyn n e      >>= k = FunSyn n (e >>= k)
+    Universe l      >>= _ = Universe l
+    DataType d e as >>= k = DataType d e $ map (>>= k) as
+    Interval        >>= _ = Interval
+    ICon c          >>= _ = ICon c
+    Path h me1 es   >>= k = Path h (fmap (>>= k) me1) $ map (>>= k) es
+    PCon e          >>= k = PCon $ fmap (>>= k) e
+    At e1 e2 e3 e4  >>= k = At (e1 >>= k) (e2 >>= k) (e3 >>= k) (e4 >>= k)
+    Coe es          >>= k = Coe $ map (>>= k) es
+    Iso es          >>= k = Iso $ map (>>= k) es
+    Squeeze es      >>= k = Squeeze $ map (>>= k) es
 
-collectDataTypes :: Term a                    -> [String]
-collectDataTypes (Var _)                       = []
-collectDataTypes (App e1 e2)                   = collectDataTypes e1 ++ collectDataTypes e2
-collectDataTypes (Lam (Name _ (Scope e)))      = collectDataTypes e
-collectDataTypes (Arr e1 e2)                   = collectDataTypes e1 ++ collectDataTypes e2
-collectDataTypes (Pi _ e1 (Name _ (Scope e2))) = collectDataTypes e1 ++ collectDataTypes e2
-collectDataTypes (Con _ _ as _)                = as >>= collectDataTypes
-collectDataTypes (FunCall _ _)                 = []
-collectDataTypes (FunSyn _ _)                  = []
-collectDataTypes (DataType d _ as)             = d : (as >>= collectDataTypes)
-collectDataTypes (Universe _)                  = []
-collectDataTypes Interval                      = []
-collectDataTypes (ICon _)                      = []
-collectDataTypes (Path es)                     = es >>= collectDataTypes
-collectDataTypes (PathImp me1 e2 e3)           = maybe [] collectDataTypes me1 ++ collectDataTypes e2 ++ collectDataTypes e3
-collectDataTypes (PCon me)                     = maybe [] collectDataTypes me
-collectDataTypes (At e1 e2 e3 e4)              = collectDataTypes e1 ++ collectDataTypes e2 ++ collectDataTypes e3 ++ collectDataTypes e4
-collectDataTypes (Coe es)                      = es >>= collectDataTypes
-collectDataTypes (Iso es)                      = es >>= collectDataTypes
-collectDataTypes (Squeeze es)                  = es >>= collectDataTypes
-
-apps :: Term a -> [Term a] -> Term a
-apps e [] = e
-apps (Con c n as cs) es = Con c n (as ++ es) cs
-apps (Coe as) es = Coe (as ++ es)
-apps (Iso as) es = Iso (as ++ es)
-apps (Squeeze as) es = Squeeze (as ++ es)
-apps e1 (e2:es) = apps (App e1 e2) es
+collectDataTypes :: Term a           -> [String]
+collectDataTypes (Var _)              = []
+collectDataTypes (App e1 e2)          = collectDataTypes e1 ++ collectDataTypes e2
+collectDataTypes (Lam (Scope1 _ e))   = collectDataTypes e
+collectDataTypes (Pi e1 (Scope _ e2)) = collectDataTypes e1 ++ collectDataTypes e2
+collectDataTypes (Con _ _ _ as)       = as >>= collectDataTypes
+collectDataTypes (FunCall _ _)        = []
+collectDataTypes (FunSyn _ _)         = []
+collectDataTypes (DataType d _ as)    = d : (as >>= collectDataTypes)
+collectDataTypes (Universe _)         = []
+collectDataTypes Interval             = []
+collectDataTypes (ICon _)             = []
+collectDataTypes (Path _ me1 es)      = maybe [] collectDataTypes me1 ++ (es >>= collectDataTypes)
+collectDataTypes (PCon me)            = maybe [] collectDataTypes me
+collectDataTypes (At _ _ e3 e4)       = collectDataTypes e3 ++ collectDataTypes e4
+collectDataTypes (Coe es)             = es >>= collectDataTypes
+collectDataTypes (Iso es)             = es >>= collectDataTypes
+collectDataTypes (Squeeze es)         = es >>= collectDataTypes

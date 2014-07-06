@@ -26,6 +26,9 @@ n4 = suc n3
 n5 = suc n4
 n6 = suc n5
 
+test : fac n3 = n6
+test = path (\_ -> n6)
+
 downFrom : Nat -> List Nat
 downFrom zero = nil
 downFrom (suc n) = cons n (downFrom n)

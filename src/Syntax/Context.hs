@@ -1,54 +1,100 @@
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GADTs, RankNTypes #-}
 
 module Syntax.Context where
 
-import Bound
+import Prelude.Extras
 import Control.Monad
+import Control.Applicative
+import Data.Monoid
+import Data.Foldable
+import Data.Traversable
 
-data Ctx i s f b a where
-    Nil  :: Ctx i s f b b
-    Snoc :: Ctx i s f b a -> s -> f a -> Ctx i s f b (Var i a)
+data Scoped a = Free a | Bound deriving (Show,Eq)
 
-data CtxFrom i s f a where
-    CtxFrom :: (Eq b, Show b) => Ctx i s f a b -> CtxFrom i s f a
+instance Functor Scoped where
+    fmap _ Bound    = Bound
+    fmap f (Free a) = Free (f a)
 
-data TermInCtx i s f a where
-    TermInCtx :: (Eq b, Show b) => Ctx i s f a b -> f b -> TermInCtx i s f a
+instance Foldable Scoped where
+    foldMap _ Bound    = mempty
+    foldMap f (Free a) = f a
 
-data TermsInCtx i s f a where
-    TermsInCtx :: (Eq b, Show b) => Ctx i s f a b -> [f b] -> f b -> TermsInCtx i s f a
+instance Traversable Scoped where
+    traverse _ Bound    = pure Bound
+    traverse f (Free a) = Free <$> f a
 
-lookupIndex :: Monad f => (s -> Maybe i) -> Ctx i s f b a -> Maybe (f a, f a)
-lookupIndex c Nil = Nothing
-lookupIndex c (Snoc ctx s t) = case c s of
-    Just i  -> Just (return $ B i, liftM F t)
-    Nothing -> fmap (\(te, ty) -> (liftM F te, liftM F ty)) (lookupIndex c ctx)
+data Ctx s b a where
+    Nil  :: Ctx s b b
+    Snoc :: Ctx s b a -> s -> Ctx s b (Scoped a)
 
-liftBase :: Ctx i s f b a -> b -> a
+liftCtx :: Ctx s b a -> Ctx s (Scoped b) (Scoped a)
+liftCtx Nil = Nil
+liftCtx (Snoc ctx s) = Snoc (liftCtx ctx) s
+
+liftBase :: Ctx s b a -> b -> a
 liftBase Nil = id
-liftBase (Snoc ctx _ _) = F . liftBase ctx
+liftBase (Snoc ctx _) = Free . liftBase ctx
 
-close :: Monad f => (s -> i -> b) -> Ctx i s g b a -> f a -> f b
-close c Nil            t = t
-close c (Snoc ctx s _) t = close c ctx $ t >>= \v -> return $ case v of
-    B i -> liftBase ctx (c s i)
-    F a -> a
+class MonadF t where
+    (>>>=) :: Monad f => t f a -> (a -> f b) -> t f b
 
-(+++) :: Ctx i s f a b -> Ctx i s f b c -> Ctx i s f a c
-ctx +++ Nil = ctx
-ctx +++ Snoc ctx' s t = Snoc (ctx +++ ctx') s t
+data Scope1 s f a = Scope1 s (f (Scoped a))
 
-contextNames :: Ctx i s f a b -> [s]
-contextNames Nil = []
-contextNames (Snoc ctx s _) = s : contextNames ctx
+instance (Eq1 f, Eq a) => Eq (Scope1 s f a) where
+    Scope1 _ t1 == Scope1 _ t2 = t1 ==# t2
 
-abstractTermInCtx :: Monad f => Ctx Int [s] f a b -> f b -> f (Var Int a)
-abstractTermInCtx Nil t = liftM F t
-abstractTermInCtx (Snoc ctx s _) t = go (length s) ctx t
-  where
-    go :: Monad f => Int -> Ctx Int [s] f a b -> f (Var Int b) -> f (Var Int a)
-    go _ Nil t = t
-    go n (Snoc ctx s _) t = go (n + length s) ctx $ t >>= \v -> return $ case v of
-        B i     -> B i
-        F (B i) -> B (i + n)
-        F (F a) -> F a
+instance Functor f => Functor (Scope1 s f) where
+    fmap f (Scope1 s t) = Scope1 s $ fmap (fmap f) t
+
+instance Foldable f => Foldable (Scope1 s f) where
+    foldMap f (Scope1 _ t) = foldMap (foldMap f) t
+
+instance Traversable f => Traversable (Scope1 s f) where
+    traverse f (Scope1 s t) = Scope1 s <$> traverse (traverse f) t
+
+instance MonadF (Scope1 s) where
+    Scope1 s t >>>= k = Scope1 s $ t >>= \v -> case v of
+        Bound  -> return Bound
+        Free a -> liftM Free (k a)
+
+instantiate1 :: Monad f => f a -> Scope1 s f a -> f a
+instantiate1 s (Scope1 _ t) = t >>= \v -> case v of
+    Bound  -> s
+    Free a -> return a
+
+data Scope s f b where
+    Scope :: Ctx s b a -> f a -> Scope s f b
+
+instance Functor f => Functor (Scope s f) where
+    fmap f (Scope ctx t) = go f ctx $ \ctx' g -> Scope ctx' (fmap g t)
+      where
+        go :: (b -> c) -> Ctx s b a -> (forall d. Ctx s c d -> (a -> d) -> r) -> r
+        go f Nil c = c Nil f
+        go f (Snoc ctx s) c = go f ctx $ \ctx' f' -> c (Snoc ctx' s) (fmap f')
+
+instance Foldable f => Foldable (Scope s f) where
+    foldMap f (Scope ctx t) = go f ctx t
+      where
+        go :: (Monoid m, Foldable f) => (b -> m) -> Ctx s b a -> f a -> m
+        go f Nil t = foldMap f t
+        go f (Snoc ctx s) t = go (\v -> case v of
+            Bound  -> mempty
+            Free a -> f a) (liftCtx ctx) t
+
+instance Traversable f => Traversable (Scope s f) where
+    traverse f (Scope ctx t) = go f ctx $ \ctx' f' -> Scope ctx' <$> traverse f' t
+      where
+        go :: Applicative p => (b -> p c) -> Ctx s b a -> (forall d. Ctx s c d -> (a -> p d) -> r) -> r
+        go f Nil c = c Nil f
+        go f (Snoc ctx s) c = go f ctx $ \ctx' f' -> c (Snoc ctx' s) $ \v -> case v of
+            Bound  -> pure Bound
+            Free a -> Free <$> f' a
+
+instance MonadF (Scope s) where
+    Scope ctx t >>>= k = go k ctx $ \ctx' k' -> Scope ctx' (t >>= k')
+      where
+        go :: Monad f => (b -> f c) -> Ctx s b a -> (forall d. Ctx s c d -> (a -> f d) -> r) -> r
+        go k Nil c = c Nil k
+        go k (Snoc ctx s) c = go k ctx $ \ctx' k' -> c (Snoc ctx' s) $ \v -> case v of
+            Bound  -> return Bound
+            Free a -> liftM Free (k' a)

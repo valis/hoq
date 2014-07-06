@@ -31,10 +31,9 @@ executable hoq
                        File.Load,
                        Syntax.BNFC.ParGrammar,
                        Syntax.BNFC.LexGrammar,
-                       Syntax.Term, Syntax.Name,
+                       Syntax.Term, Syntax.Context,
                        Syntax.Expr, Syntax.PrettyPrinter,
                        Syntax.ErrorDoc,
-                       Syntax.Context,
                        TypeChecking.Definitions.Patterns,
                        TypeChecking.Definitions.Coverage,
                        TypeChecking.Definitions.DataTypes,
@@ -44,7 +43,7 @@ executable hoq
                        TypeChecking.Monad.Scope,
                        TypeChecking.Monad.Warn,
                        TypeChecking.Monad
-  build-depends:       base >=4.6 && <4.7, bound >=1.0 && <1.1,
+  build-depends:       base >=4.6 && <4.7
                        BNFC >= 2.5, array >= 0.4, pretty >=1.1 && < 1.2,
                        prelude-extras >=0.4 && <0.5, readline >=1.0 && <1.1,
                        mtl >=2.1 && < 2.2
