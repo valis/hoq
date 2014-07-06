@@ -1,12 +1,10 @@
-{-# LANGUAGE GADTs #-}
-
 module Syntax.Term
     ( Term(..), ICon(..)
     , Level(..), level
     , Pattern(..), Explicit(..)
     , module Syntax.Context
     , POrd(..), lessOrEqual
-    , collectDataTypes
+    , collectDataTypes, apps
     ) where
 
 import Prelude.Extras
@@ -95,13 +93,15 @@ class POrd a where
     pcompare :: a -> a -> Maybe Ordering
 
 instance Eq a => POrd (Term a) where
-    pcompare (Pi a (Scope ctx b)) (Pi a' (Scope ctx' b')) = contraCovariant (pcompare a a') (go a ctx b a' ctx' b')
+    pcompare (Pi a (ScopeTerm b)) (Pi a' (Scope _   b')) = contraCovariant (pcompare a a') $ pcompare (fmap Free b) (Pi (fmap Free a') b')
+    pcompare (Pi a (Scope _   b)) (Pi a' (ScopeTerm b')) = contraCovariant (pcompare a a') $ pcompare (Pi (fmap Free a) b) (fmap Free b')
+    pcompare (Pi a            b)  (Pi a'            b')  = contraCovariant (pcompare a a') $ pcompareScopes a b a' b'
       where
-        go :: Eq b => Term b -> Ctx String b a -> Term a -> Term b -> Ctx String b a' -> Term a' -> Maybe Ordering
-        go _ Nil t _ Nil t' = pcompare t t'
-        go _ Nil t s' ctx' t' = pcompare t (Pi s' $ Scope ctx' t')
-        go s ctx t _ Nil t' = pcompare (Pi s $ Scope ctx t) t'
-        go s (Snoc ctx _) t s' (Snoc ctx' _) t' = go (fmap Free s) (liftCtx ctx) t (fmap Free s') (liftCtx ctx') t'
+        pcompareScopes :: Eq a => Term a -> Scope String Term a -> Term a -> Scope String Term a -> Maybe Ordering
+        pcompareScopes _ (ScopeTerm b) _  (ScopeTerm b') = pcompare b b'
+        pcompareScopes _ (ScopeTerm b) a'            b'  = pcompare b (Pi a' b')
+        pcompareScopes a            b  _  (ScopeTerm b') = pcompare (Pi a b) b'
+        pcompareScopes a (Scope _   b) a' (Scope _   b') = pcompareScopes (fmap Free a) b (fmap Free a') b'
     pcompare (Universe u) (Universe u') = Just $ compare (level u) (level u')
     pcompare e1 e2 = if e1 == e2 then Just EQ else Nothing
 
@@ -162,21 +162,29 @@ instance Monad Term where
     Iso es          >>= k = Iso $ map (>>= k) es
     Squeeze es      >>= k = Squeeze $ map (>>= k) es
 
-collectDataTypes :: Term a           -> [String]
-collectDataTypes (Var _)              = []
-collectDataTypes (App e1 e2)          = collectDataTypes e1 ++ collectDataTypes e2
-collectDataTypes (Lam (Scope1 _ e))   = collectDataTypes e
-collectDataTypes (Pi e1 (Scope _ e2)) = collectDataTypes e1 ++ collectDataTypes e2
-collectDataTypes (Con _ _ _ as)       = as >>= collectDataTypes
-collectDataTypes (FunCall _ _)        = []
-collectDataTypes (FunSyn _ _)         = []
-collectDataTypes (DataType d _ as)    = d : (as >>= collectDataTypes)
-collectDataTypes (Universe _)         = []
-collectDataTypes Interval             = []
-collectDataTypes (ICon _)             = []
-collectDataTypes (Path _ me1 es)      = maybe [] collectDataTypes me1 ++ (es >>= collectDataTypes)
-collectDataTypes (PCon me)            = maybe [] collectDataTypes me
-collectDataTypes (At _ _ e3 e4)       = collectDataTypes e3 ++ collectDataTypes e4
-collectDataTypes (Coe es)             = es >>= collectDataTypes
-collectDataTypes (Iso es)             = es >>= collectDataTypes
-collectDataTypes (Squeeze es)         = es >>= collectDataTypes
+collectDataTypes :: Term a         -> [String]
+collectDataTypes (Var _)            = []
+collectDataTypes (App e1 e2)        = collectDataTypes e1 ++ collectDataTypes e2
+collectDataTypes (Lam (Scope1 _ e)) = collectDataTypes e
+collectDataTypes (Pi e s)           = collectDataTypes e ++ go s
+  where
+    go :: Scope s Term a -> [String]
+    go (ScopeTerm t) = collectDataTypes t
+    go (Scope _   s) = go s
+collectDataTypes (Con _ _ _ as)     = as >>= collectDataTypes
+collectDataTypes (FunCall _ _)      = []
+collectDataTypes (FunSyn _ _)       = []
+collectDataTypes (DataType d _ as)  = d : (as >>= collectDataTypes)
+collectDataTypes (Universe _)       = []
+collectDataTypes Interval           = []
+collectDataTypes (ICon _)           = []
+collectDataTypes (Path _ me1 es)    = maybe [] collectDataTypes me1 ++ (es >>= collectDataTypes)
+collectDataTypes (PCon me)          = maybe [] collectDataTypes me
+collectDataTypes (At _ _ e3 e4)     = collectDataTypes e3 ++ collectDataTypes e4
+collectDataTypes (Coe es)           = es >>= collectDataTypes
+collectDataTypes (Iso es)           = es >>= collectDataTypes
+collectDataTypes (Squeeze es)       = es >>= collectDataTypes
+
+apps :: Term a -> [Term a] -> Term a
+apps e [] = e
+apps e1 (e2:es) = apps (App e1 e2) es

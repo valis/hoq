@@ -1,5 +1,3 @@
-{-# LANGUAGE GADTs #-}
-
 module Syntax.PrettyPrinter
     ( ppTerm
     ) where
@@ -21,11 +19,9 @@ ppTermCtx _ (Var d) = d
 ppTermCtx _ (Universe NoLevel) = text "Type"
 ppTermCtx _ (Universe l) = text $ "Type" ++ show l
 ppTermCtx ctx t@(App e1 e2) = ppTermPrec (prec t) ctx e1 <+> ppTermPrec (prec t + 1) ctx e2
-ppTermCtx ctx t@(Pi a (Scope sctx b)) =
-    let (vs, b') = ppScopePrec (prec t) ctx sctx b
-    in (if null vs then ppTermPrec (prec t + 1) ctx a else parens $ hsep vs <+> colon <+> ppTermCtx ctx a) <+> (case b of
-        Pi _ (Scope Snoc{} _) -> empty
-        _ -> arrow) <+> b'
+ppTermCtx ctx t@(Pi a b) =
+    let (vs, b') = ppScopePrec (prec t) ctx b
+    in (if null vs then ppTermPrec (prec t + 1) ctx a else parens $ hsep vs <+> colon <+> ppTermCtx ctx a) <+> b'
 ppTermCtx ctx t@Lam{} = go ctx [] t
   where
     go ctx vars (Lam s@(Scope1 n _)) =
@@ -50,11 +46,12 @@ ppTermCtx ctx t@(Squeeze es) = text "squeeze" <+> ppList ctx t es
 ppList :: [(String,Int)] -> Term Doc -> [Term Doc] -> Doc
 ppList ctx t ts = hsep $ map (ppTermPrec (prec t + 1) ctx) ts
 
-ppScopePrec :: Int -> [(String,Int)] -> Ctx String Doc a -> Term a -> ([Doc], Doc)
-ppScopePrec p ctx Nil t = ([], ppTermPrec p ctx t)
-ppScopePrec p ctx (Snoc sctx v) t =
+ppScopePrec :: Int -> [(String,Int)] -> Scope String Term Doc -> ([Doc], Doc)
+ppScopePrec p ctx (ScopeTerm t@(Pi _ Scope{})) = ([], arrow <+> ppTermPrec p ctx t)
+ppScopePrec p ctx (ScopeTerm t) = ([], ppTermPrec p ctx t)
+ppScopePrec p ctx (Scope v s) =
     let (ctx',v') = renameName v ctx
-        (vs,d) = ppScopePrec p ctx' sctx $ instantiate1 (Var $ liftBase sctx $ text v') (Scope1 v' t)
+        (vs,d) = ppScopePrec p ctx' $ instantiate (Var $ text v') s
     in  (text v' : vs, d)
 
 ppTermPrec :: Int -> [(String,Int)] -> Term Doc -> Doc

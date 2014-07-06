@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs, RankNTypes #-}
+{-# LANGUAGE GADTs #-}
 
 module Syntax.Context where
 
@@ -23,13 +23,15 @@ instance Traversable Scoped where
     traverse _ Bound    = pure Bound
     traverse f (Free a) = Free <$> f a
 
+instance Applicative Scoped where
+    pure              = Free
+    Bound  <*> _      = Bound
+    _      <*> Bound  = Bound
+    Free f <*> Free a = Free (f a)
+
 data Ctx s b a where
     Nil  :: Ctx s b b
     Snoc :: Ctx s b a -> s -> Ctx s b (Scoped a)
-
-liftCtx :: Ctx s b a -> Ctx s (Scoped b) (Scoped a)
-liftCtx Nil = Nil
-liftCtx (Snoc ctx s) = Snoc (liftCtx ctx) s
 
 liftBase :: Ctx s b a -> b -> a
 liftBase Nil = id
@@ -62,39 +64,27 @@ instantiate1 s (Scope1 _ t) = t >>= \v -> case v of
     Bound  -> s
     Free a -> return a
 
-data Scope s f b where
-    Scope :: Ctx s b a -> f a -> Scope s f b
+data Scope s f a = ScopeTerm (f a) | Scope s (Scope s f (Scoped a))
 
 instance Functor f => Functor (Scope s f) where
-    fmap f (Scope ctx t) = go f ctx $ \ctx' g -> Scope ctx' (fmap g t)
-      where
-        go :: (b -> c) -> Ctx s b a -> (forall d. Ctx s c d -> (a -> d) -> r) -> r
-        go f Nil c = c Nil f
-        go f (Snoc ctx s) c = go f ctx $ \ctx' f' -> c (Snoc ctx' s) (fmap f')
+    fmap f (ScopeTerm t) = ScopeTerm (fmap f t)
+    fmap f (Scope s   t) = Scope s $ fmap (fmap f) t
 
 instance Foldable f => Foldable (Scope s f) where
-    foldMap f (Scope ctx t) = go f ctx t
-      where
-        go :: (Monoid m, Foldable f) => (b -> m) -> Ctx s b a -> f a -> m
-        go f Nil t = foldMap f t
-        go f (Snoc ctx s) t = go (\v -> case v of
-            Bound  -> mempty
-            Free a -> f a) (liftCtx ctx) t
+    foldMap f (ScopeTerm t) = foldMap f t
+    foldMap f (Scope _   t) = foldMap (foldMap f) t
 
 instance Traversable f => Traversable (Scope s f) where
-    traverse f (Scope ctx t) = go f ctx $ \ctx' f' -> Scope ctx' <$> traverse f' t
-      where
-        go :: Applicative p => (b -> p c) -> Ctx s b a -> (forall d. Ctx s c d -> (a -> p d) -> r) -> r
-        go f Nil c = c Nil f
-        go f (Snoc ctx s) c = go f ctx $ \ctx' f' -> c (Snoc ctx' s) $ \v -> case v of
-            Bound  -> pure Bound
-            Free a -> Free <$> f' a
+    traverse f (ScopeTerm t) = ScopeTerm <$> traverse f t
+    traverse f (Scope s   t) = Scope s   <$> traverse (traverse f) t
 
 instance MonadF (Scope s) where
-    Scope ctx t >>>= k = go k ctx $ \ctx' k' -> Scope ctx' (t >>= k')
-      where
-        go :: Monad f => (b -> f c) -> Ctx s b a -> (forall d. Ctx s c d -> (a -> f d) -> r) -> r
-        go k Nil c = c Nil k
-        go k (Snoc ctx s) c = go k ctx $ \ctx' k' -> c (Snoc ctx' s) $ \v -> case v of
-            Bound  -> return Bound
-            Free a -> liftM Free (k' a)
+    ScopeTerm t >>>= k = ScopeTerm (t >>=  k)
+    Scope s   t >>>= k = Scope s $ t >>>= \v -> case v of
+        Bound  -> return Bound
+        Free a -> liftM Free (k a)
+
+instantiate :: Monad f => f a -> Scope s f (Scoped a) -> Scope s f a
+instantiate t s = s >>>= \v -> case v of
+    Bound  -> t
+    Free a -> return a

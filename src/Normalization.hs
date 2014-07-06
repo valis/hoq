@@ -9,45 +9,37 @@ import Syntax.Term
 
 data NF = NF | HNF | WHNF deriving Eq
 
-nf :: (Show a, Eq a) => NF -> Term a -> Term a
+nf :: Eq a => NF -> Term a -> Term a
 nf mode e = go e []
   where
-    go (App a b)            ts = go a (b:ts)
-    go e@Var{}              ts = apps e (nfs mode ts)
-    go e@Universe{}         _  = e
-    go (Pi b e (Name v s))  _  | mode == NF = Pi b (nf NF e) $ Name v $ toScope $ nf NF (fromScope s)
-    go e@Pi{}               _  = e
-    go (Arr e1 e2)          _  | mode == NF = Arr (nf NF e1) (nf NF e2)
-    go e@Arr{}              _  = e
-    go e@Interval           _  = e
-    go e@(ICon _)           _  = e
-    go (PCon Nothing)       [] = PCon Nothing
-    go (PCon Nothing)    (e:_) = PCon $ Just  $ if mode == NF then nf NF e                else e
-    go (PCon (Just e))      _  = PCon $ Just  $ if mode == NF then nf NF e                else e
-    go (Con c n es [])      [] = Con c n       (if mode == NF then map (nf NF) es         else es) []
-    go (Con c n es [])      ts = Con c n       (if mode == NF then map (nf NF) (es ++ ts) else es ++ ts) []
-    go (DataType d e es)    [] = DataType d e $ if mode == NF then map (nf NF) es         else es
-    go (DataType d e es)    ts = DataType d e $ if mode == NF then map (nf NF) (es ++ ts) else es ++ ts
-    go (Path es)            [] = Path         $ if mode == NF then map (nf NF) es         else es
-    go (Path es)            ts = Path         $ if mode == NF then map (nf NF) (es ++ ts) else es ++ ts
-    go (PathImp ma b c)     _  | mode == NF = PathImp (fmap (nf NF) ma) (nf NF b) (nf NF c)
-    go e@PathImp{}          _  = e
-    go (Lam (Name vars e)) ts =
-        let lvars = length vars
-            (t1,t2) = splitAt lvars ts
-            lt1 = length t1
-            nfm = if mode == WHNF then id else nf mode
-        in if lt1 < lvars
-            then Lam $ Name (drop lt1 vars) $ Scope $ nfm $ unscope e >>= \var -> case var of
-                B b | b >= lvars - lt1 -> fmap (F . Var) $ t1 !! (lvars - b - 1)
-                _   -> return var
-            else go (instantiate (reverse t1 !!) e) t2
-    go (FunSyn _ term) ts = go term ts
-    go (Con c n es conds) ts =
+    go (App a b)          ts = go a (b:ts)
+    go e@Var{}            ts = apps e (nfs mode ts)
+    go e@Universe{}       _  = e
+    go (Pi a b)           _  | mode == NF = Pi (nf NF a) (nfScope b)
+      where
+        nfScope :: Eq a => Scope s Term a -> Scope s Term a
+        nfScope (ScopeTerm t) = ScopeTerm (nf NF t)
+        nfScope (Scope v   s) = Scope v (nfScope s)
+    go e@Pi{}             _  = e
+    go e@Interval         _  = e
+    go e@(ICon _)         _  = e
+    go (PCon Nothing)     [] = PCon Nothing
+    go (PCon Nothing)  (e:_) = PCon $ Just  $ if mode == NF then nf NF e else e
+    go (PCon (Just e))    _  = PCon $ Just  $ if mode == NF then nf NF e else e
+    go (Con c n [] es)    [] = Con c n []   $ nfs mode es
+    go (Con c n [] es)    ts = Con c n []   $ nfs mode (es ++ ts)
+    go (DataType d e es)  [] = DataType d e $ nfs mode es
+    go (DataType d e es)  ts = DataType d e $ nfs mode (es ++ ts)
+    go (Path h ma es)     [] = Path h (if mode == NF then fmap (nf NF) ma else ma) $ nfs mode es
+    go (Path h ma es)     ts = Path h (if mode == NF then fmap (nf NF) ma else ma) $ nfs mode (es ++ ts)
+    go (Lam (Scope1 v t)) [] = Lam $ Scope1 v $ if mode == WHNF then t else nf mode t
+    go (Lam s)        (t:ts) = go (instantiate1 t s) ts
+    go (FunSyn _ term)    ts = go term ts
+    go (Con c n conds es) ts =
         let es' = if null ts then es else es ++ ts in
         case instantiateCases conds es' of
             Just (r,ts') -> go r ts'
-            Nothing      -> Con c n (if mode == NF then map (nf NF) es' else es') conds
+            Nothing      -> Con c n conds (if mode == NF then map (nf NF) es' else es')
     go fc@(FunCall _ []) ts = apps fc (nfs mode ts)
     go fc@(FunCall _ cases) ts = case instantiateCases cases ts of
         Just (r,ts') -> go r ts'
@@ -66,9 +58,9 @@ nf mode e = go e []
                                                      e2' == ICon IRight && e4' == ICon ILeft, e1') of
                 (True, _, _, _) -> go e3 es''
                 (_, b1, b2, Iso [t1,t2,t3,t4,t5,t6]) | b1 || b2 -> go (App (if b1 then t3 else t4) e3) es''
-                (_, b1, b2, _) | b1 || b2 -> case nf NF $ App (fmap F e1') (Var (B 0)) of
-                    Iso [t1,t2,t3,t4,t5,t6, Var (B 0)] -> case sequenceA $ Iso [t1,t2,t3,t4,t5,t6] of
-                        F (Iso [t1',t2',t3',t4',t5',t6']) -> go (App (if b1 then t3' else t4') e3) es''
+                (_, b1, b2, _) | b1 || b2 -> case nf NF $ App (fmap Free e1') (Var Bound) of
+                    Iso [t1,t2,t3,t4,t5,t6, Var Bound] -> case sequenceA $ Iso [t1,t2,t3,t4,t5,t6] of
+                        Free (Iso [t1',t2',t3',t4',t5',t6']) -> go (App (if b1 then t3' else t4') e3) es''
                         _ -> Coe (nfs mode es')
                     _ -> Coe (nfs mode es')
                 _ -> Coe (nfs mode es')
@@ -84,26 +76,31 @@ nf mode e = go e []
         i : ICon IRight : _ -> if mode == WHNF then i else nf mode i
         es'                 -> Squeeze $ nfs mode (es ++ ts)
 
-isStationary :: (Eq a, Show a) => Term a -> Bool
-isStationary t = case sequenceA (nf NF $ App (fmap F t) $ Var $ B ()) of
-    F _ -> True
-    B _ -> False
+isStationary :: Eq a => Term a -> Bool
+isStationary t = case sequenceA (nf NF $ App (fmap Free t) $ Var Bound) of
+    Free _ -> True
+    Bound  -> False
 
-nfs :: (Eq a, Show a) => NF -> [Term a] -> [Term a]
+nfs :: Eq a => NF -> [Term a] -> [Term a]
 nfs NF terms = map (nf NF) terms
 nfs _  terms = terms
 
-instantiatePat :: (Eq a, Show a) => [Pattern] -> [Term a] -> Maybe [Term a]
+{-
+instantiatePat :: Eq a => [Pattern] -> [Term a] -> Maybe [Term a]
 instantiatePat [] _ = Just []
 instantiatePat (PatternVar : pats) (term:terms) = fmap (term:) (instantiatePat pats terms)
 instantiatePat (Pattern con pats1 : pats) (term:terms) = case nf WHNF term of
-    Con i n terms1 _ | i == con -> liftM2 (++) (instantiatePat pats1 terms1) (instantiatePat pats terms)
+    Con i n _ terms1 | i == con -> liftM2 (++) (instantiatePat pats1 terms1) (instantiatePat pats terms)
     _ -> Nothing
 instantiatePat (PatternI con : pats) (term:terms) = case nf WHNF term of
     ICon i | i == con -> instantiatePat pats terms
     _ -> Nothing
 instantiatePat _ _ = Nothing
+-}
 
-instantiateCases :: (Eq a, Show a) => [ClosedNames Pattern Term] -> [Term a] -> Maybe (Term a, [Term a])
+instantiateCases :: Eq a => [Scope Pattern Term String] -> [Term a] -> Maybe (Term a, [Term a])
+instantiateCases = undefined
+{-
 instantiateCases cases terms = msum $ flip map cases $ \(ClosedName pats term) ->
     fmap (\ts -> (instantiate (ts !!) term, drop (length pats) terms)) (instantiatePat pats terms)
+-}
