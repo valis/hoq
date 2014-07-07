@@ -36,8 +36,8 @@ data Term a
     | App (Term a) (Term a)
     | Lam (Scope1 String Term a)
     | Pi (Term a) (Scope String Term a)
-    | Con Int String [Scope Pattern Term String] [Term a]
-    | FunCall String [Scope Pattern Term String]
+    | Con Int String [([Pattern], Closed (Scope () Term))] [Term a]
+    | FunCall String [([Pattern], Closed (Scope () Term))]
     | FunSyn  String (Term a)
     | Universe Level
     | DataType String Int [Term a]
@@ -50,9 +50,9 @@ data Term a
     | Iso [Term a]
     | Squeeze [Term a]
 data ICon = ILeft | IRight deriving Eq
-data Pattern = Pattern Int [Pattern] | PatternVar | PatternI ICon | PatternAny
 data Type a = Type (Term a) Level
 data Explicit = Explicit | Implicit
+data Pattern = Pattern Int [Pattern] | PatternVar | PatternI ICon | PatternAny
 
 instance Eq a => Eq (Term a) where
     e1 == e2 = go e1 [] e2 []

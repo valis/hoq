@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GADTs, RankNTypes #-}
 
 module Syntax.Context where
 
@@ -8,6 +8,8 @@ import Control.Applicative
 import Data.Monoid
 import Data.Foldable
 import Data.Traversable
+
+newtype Closed f = Closed (forall a. f a)
 
 data Scoped a = Free a | Bound deriving (Show,Eq)
 

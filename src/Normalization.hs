@@ -85,22 +85,17 @@ nfs :: Eq a => NF -> [Term a] -> [Term a]
 nfs NF terms = map (nf NF) terms
 nfs _  terms = terms
 
-{-
-instantiatePat :: Eq a => [Pattern] -> [Term a] -> Maybe [Term a]
-instantiatePat [] _ = Just []
-instantiatePat (PatternVar : pats) (term:terms) = fmap (term:) (instantiatePat pats terms)
-instantiatePat (Pattern con pats1 : pats) (term:terms) = case nf WHNF term of
-    Con i n _ terms1 | i == con -> liftM2 (++) (instantiatePat pats1 terms1) (instantiatePat pats terms)
+instantiatePat :: Eq a => [Pattern] -> Scope () Term a -> [Term a] -> Maybe (Term a, [Term a])
+instantiatePat [] (ScopeTerm term) terms = Just (term, terms)
+instantiatePat (PatternAny : pats) scope (_:terms) = instantiatePat pats scope terms
+instantiatePat (PatternVar : pats) (Scope _ scope) (term:terms) = instantiatePat pats (instantiate term scope) terms
+instantiatePat (PatternI con : pats) scope (term:terms) = case nf WHNF term of
+    ICon i | i == con -> instantiatePat pats scope terms
     _ -> Nothing
-instantiatePat (PatternI con : pats) (term:terms) = case nf WHNF term of
-    ICon i | i == con -> instantiatePat pats terms
+instantiatePat (Pattern con pats1 : pats) scope (term:terms) = case nf WHNF term of
+    Con i n _ terms1 | i == con -> instantiatePat (pats1 ++ pats) scope (terms1 ++ terms)
     _ -> Nothing
-instantiatePat _ _ = Nothing
--}
+instantiatePat _ _ _ = Nothing
 
-instantiateCases :: Eq a => [Scope Pattern Term String] -> [Term a] -> Maybe (Term a, [Term a])
-instantiateCases = undefined
-{-
-instantiateCases cases terms = msum $ flip map cases $ \(ClosedName pats term) ->
-    fmap (\ts -> (instantiate (ts !!) term, drop (length pats) terms)) (instantiatePat pats terms)
--}
+instantiateCases :: Eq a => [([Pattern], Closed (Scope () Term))] -> [Term a] -> Maybe (Term a, [Term a])
+instantiateCases cases terms = msum $ map (\(pats, Closed scope) -> instantiatePat pats scope terms) cases
