@@ -33,7 +33,7 @@ nf mode e = go e []
     go (Path h ma es)     [] = Path h (if mode == NF then fmap (nf NF) ma else ma) $ nfs mode es
     go (Path h ma es)     ts = Path h (if mode == NF then fmap (nf NF) ma else ma) $ nfs mode (es ++ ts)
     go (Lam (Scope1 v t)) [] = Lam $ Scope1 v $ if mode == WHNF then t else nf mode t
-    go (Lam s)        (t:ts) = go (instantiate1 t s) ts
+    go (Lam (Scope1 _ s)) (t:ts) = go (instantiate1 t s) ts
     go (FunSyn _ term)    ts = go term ts
     go (Con c n conds es) ts =
         let es' = if null ts then es else es ++ ts in
@@ -88,7 +88,7 @@ nfs _  terms = terms
 instantiatePat :: Eq a => [Pattern] -> Scope () Term a -> [Term a] -> Maybe (Term a, [Term a])
 instantiatePat [] (ScopeTerm term) terms = Just (term, terms)
 instantiatePat (PatternAny : pats) scope (_:terms) = instantiatePat pats scope terms
-instantiatePat (PatternVar : pats) (Scope _ scope) (term:terms) = instantiatePat pats (instantiate term scope) terms
+instantiatePat (PatternVar : pats) (Scope _ scope) (term:terms) = instantiatePat pats (instantiateScope term scope) terms
 instantiatePat (PatternI con : pats) scope (term:terms) = case nf WHNF term of
     ICon i | i == con -> instantiatePat pats scope terms
     _ -> Nothing

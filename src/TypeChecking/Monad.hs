@@ -6,7 +6,6 @@ module TypeChecking.Monad
     , lift
     ) where
 
-import Bound.Var
 import Control.Monad
 import Control.Monad.Trans(lift)
 
@@ -17,7 +16,7 @@ import Syntax.Expr
 import Syntax.ErrorDoc
 
 type EDocM = WarnT [EMsg Term]
-type TCM m = EDocM (ScopeT Term m)
+type TCM m = EDocM (ScopeT (Term String) (Type String) (Scope String Term String) (Scope String Term String, Level) m)
 
 runTCM :: Monad m => TCM m a -> m (Maybe a)
 runTCM = liftM snd . runScopeT . runWarnT
@@ -25,7 +24,7 @@ runTCM = liftM snd . runScopeT . runWarnT
 multipleDeclaration :: Arg -> String -> EMsg f
 multipleDeclaration arg var = emsgLC (argGetPos arg) ("Multiple declarations of " ++ show var) enull
 
-addFunctionCheck :: Monad m => Arg -> Term String -> Term String -> TCM m ()
+addFunctionCheck :: Monad m => Arg -> Term String -> Type String -> TCM m ()
 addFunctionCheck arg te ty = do
     let var = unArg arg
     mr <- lift (getEntry var Nothing)
@@ -33,7 +32,7 @@ addFunctionCheck arg te ty = do
         [] -> lift (addFunction var te ty)
         _  -> warn [multipleDeclaration arg var]
 
-addDataTypeCheck :: Monad m => Arg -> Term String -> Int -> TCM m ()
+addDataTypeCheck :: Monad m => Arg -> Type String -> Int -> TCM m ()
 addDataTypeCheck arg ty b = do
     let var = unArg arg
     mr <- lift (getEntry var Nothing)
@@ -43,11 +42,11 @@ addDataTypeCheck arg ty b = do
         _                 -> lift (addDataType var ty b)
 
 addConstructorCheck :: Monad m => Arg -> String -> Int
-    -> Either (Term String, Term String) (Term (Var Int String), Term (Var Int String)) -> TCM m ()
-addConstructorCheck arg dt n ty = do
+    -> Scope String Term String -> Scope String Term String -> Level -> TCM m ()
+addConstructorCheck arg dt n te ty lvl = do
     let var = unArg arg
     mr <- lift $ getEntry var (Just dt)
     case mr of
-        FunctionE    _ _ : _ -> warn [multipleDeclaration arg var]
-        ConstructorE _ _ : _ -> warn [multipleDeclaration arg var]
-        _                    -> lift (addConstructor var dt n ty)
+        FunctionE    _ _   : _ -> warn [multipleDeclaration arg var]
+        ConstructorE _ _ _ : _ -> warn [multipleDeclaration arg var]
+        _                      -> lift $ addConstructor var dt n te (ty,lvl)

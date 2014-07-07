@@ -1,6 +1,6 @@
-{-# LANGUAGE GADTs, RankNTypes #-}
+{-# LANGUAGE RankNTypes, ExistentialQuantification #-}
 
-module Syntax.Context where
+module Syntax.Scope where
 
 import Prelude.Extras
 import Control.Monad
@@ -10,8 +10,9 @@ import Data.Foldable
 import Data.Traversable
 
 newtype Closed f = Closed (forall a. f a)
+data SomeEq f = forall a. Eq a => SomeEq (f a)
 
-data Scoped a = Free a | Bound deriving (Show,Eq)
+data Scoped a = Free a | Bound deriving Eq
 
 instance Functor Scoped where
     fmap _ Bound    = Bound
@@ -30,14 +31,6 @@ instance Applicative Scoped where
     Bound  <*> _      = Bound
     _      <*> Bound  = Bound
     Free f <*> Free a = Free (f a)
-
-data Ctx s b a where
-    Nil  :: Ctx s b b
-    Snoc :: Ctx s b a -> s -> Ctx s b (Scoped a)
-
-liftBase :: Ctx s b a -> b -> a
-liftBase Nil = id
-liftBase (Snoc ctx _) = Free . liftBase ctx
 
 class MonadF t where
     (>>>=) :: Monad f => t f a -> (a -> f b) -> t f b
@@ -61,8 +54,8 @@ instance MonadF (Scope1 s) where
         Bound  -> return Bound
         Free a -> liftM Free (k a)
 
-instantiate1 :: Monad f => f a -> Scope1 s f a -> f a
-instantiate1 s (Scope1 _ t) = t >>= \v -> case v of
+instantiate1 :: Monad f => f a -> f (Scoped a) -> f a
+instantiate1 s t = t >>= \v -> case v of
     Bound  -> s
     Free a -> return a
 
@@ -86,7 +79,12 @@ instance MonadF (Scope s) where
         Bound  -> return Bound
         Free a -> liftM Free (k a)
 
-instantiate :: Monad f => f a -> Scope s f (Scoped a) -> Scope s f a
-instantiate t s = s >>>= \v -> case v of
+instantiateScope :: Monad f => f a -> Scope s f (Scoped a) -> Scope s f a
+instantiateScope t s = s >>>= \v -> case v of
     Bound  -> t
     Free a -> return a
+
+instantiate :: Monad f => [f a] -> Scope s f a -> f a
+instantiate t (ScopeTerm s) = s
+instantiate [] _ = error "instantiate"
+instantiate (t:ts) (Scope _ s) = instantiate ts (instantiateScope t s)

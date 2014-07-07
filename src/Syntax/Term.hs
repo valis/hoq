@@ -1,10 +1,11 @@
 module Syntax.Term
-    ( Term(..), ICon(..)
+    ( Term(..), Type(..), ICon(..)
     , Level(..), level
     , Pattern(..), Explicit(..)
-    , module Syntax.Context
+    , module Syntax.Scope
     , POrd(..), lessOrEqual
     , collectDataTypes, apps
+    , dropOnePi
     ) where
 
 import Prelude.Extras
@@ -14,7 +15,7 @@ import Data.Foldable hiding (msum)
 import Control.Applicative
 import Control.Monad
 
-import Syntax.Context
+import Syntax.Scope
 
 data Level = Level Int | NoLevel
 
@@ -26,6 +27,11 @@ instance Ord Level where
 
 instance Show Level where
     show = show . level
+
+instance Enum Level where
+    toEnum 0 = NoLevel
+    toEnum n = Level n
+    fromEnum = level
 
 level :: Level -> Int
 level (Level l) = l
@@ -119,6 +125,9 @@ lessOrEqual a b = case pcompare a b of
 instance Functor  Term where fmap    = fmapDefault
 instance Foldable Term where foldMap = foldMapDefault
 
+instance Functor  Type where
+    fmap f (Type t l) = Type (fmap f t) l
+
 instance Applicative Term where
     pure  = Var
     (<*>) = ap
@@ -188,3 +197,8 @@ collectDataTypes (Squeeze es)       = es >>= collectDataTypes
 apps :: Term a -> [Term a] -> Term a
 apps e [] = e
 apps e1 (e2:es) = apps (App e1 e2) es
+
+dropOnePi :: Term a -> Scope String Term a -> Term (Scoped a)
+dropOnePi a (ScopeTerm b) = fmap Free b
+dropOnePi a (Scope _ (ScopeTerm b)) = b
+dropOnePi a (Scope _ b) = Pi (fmap Free a) b
