@@ -36,8 +36,8 @@ typeCheckDataType p@(PIdent (lc,dt)) params cons conds = mdo
             Nothing -> do
                 warn [notInScope lc "data constructor" con]
                 return Nothing
-            Just (_, _, Type ty lvl) -> do
-                (bf, TermsInCtx ctx' _ ty', rtpats, _) <- typeCheckPatterns ctx (Type (nf WHNF ty) lvl) pats
+            Just (_, _, ty) -> do
+                (bf, TermsInCtx ctx' _ ty', rtpats, _) <- typeCheckPatterns ctx (nfType WHNF ty) pats
                 when bf $ warn [emsgLC lc "Absurd patterns are not allowed in conditions" enull]
                 (term, _) <- typeCheckCtx (ctx +++ ctx') expr (Just ty')
                 return $ Just (con, (rtpats, closed $ mapScope (const ()) $ abstractTermInCtx ctx' term))
@@ -55,10 +55,10 @@ checkTele ctx ((args,expr):tele) term = do
     case extendCtx (map unArg args) Nil (Type r1 lvl1) of
         SomeEq ctx' -> do
             (rctx, Type r2 lvl2) <- checkTele (ctx +++ ctx') tele term
-            return (rctx, Type (T.Pi r1 $ abstractTermInCtx ctx' r2) $ max lvl1 lvl2)
+            return (rctx, Type (T.Pi (Type r1 lvl1) (abstractTermInCtx ctx' r2) lvl2) $ max lvl1 lvl2)
 
 replaceLevel :: Term a -> Level -> Term a
-replaceLevel (T.Pi r1 r2) lvl = T.Pi r1 (replaceLevelScope r2)
+replaceLevel (T.Pi r1 r2 lvl2) lvl = T.Pi r1 (replaceLevelScope r2) lvl2
   where
     replaceLevelScope :: Scope String Term a -> Scope String Term a
     replaceLevelScope (ScopeTerm t) = ScopeTerm (replaceLevel t lvl)
@@ -66,7 +66,7 @@ replaceLevel (T.Pi r1 r2) lvl = T.Pi r1 (replaceLevelScope r2)
 replaceLevel _ lvl = T.Universe lvl
 
 checkPositivity :: (Eq a, Monad m) => PIdent -> Term a -> EDocM m ()
-checkPositivity dt (T.Pi a b) = checkNoNegative dt (nf WHNF a) >> checkPositivityScope b
+checkPositivity dt (T.Pi (Type a _) b _) = checkNoNegative dt (nf WHNF a) >> checkPositivityScope b
   where
     checkPositivityScope :: (Eq a, Monad m) => Scope String Term a -> EDocM m ()
     checkPositivityScope (ScopeTerm t) = checkPositivity dt (nf WHNF t)
@@ -74,7 +74,7 @@ checkPositivity dt (T.Pi a b) = checkNoNegative dt (nf WHNF a) >> checkPositivit
 checkPositivity _ _ = return ()
 
 checkNoNegative :: (Eq a, Monad m) => PIdent -> Term a -> EDocM m ()
-checkNoNegative dt (T.Pi a b) = checkNoDataType dt a >> checkNoNegativeScope b
+checkNoNegative dt (T.Pi (Type a _) b _) = checkNoDataType dt a >> checkNoNegativeScope b
   where
     checkNoNegativeScope :: (Eq a, Monad m) => Scope String Term a -> EDocM m ()
     checkNoNegativeScope (ScopeTerm t) = checkNoNegative dt (nf WHNF t)

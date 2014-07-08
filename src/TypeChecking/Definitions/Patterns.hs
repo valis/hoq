@@ -61,8 +61,8 @@ typeCheckPattern ctx (Type ty _) pat =
 typeCheckPatterns :: (Monad m, Eq a) => Ctx String Type String a -> Type a -> [ParPat]
     -> TCM m (Bool, TermsInCtx a, [T.Pattern], [C.Pattern])
 typeCheckPatterns _ ty [] = return (False, TermsInCtx Nil [] ty, [], [])
-typeCheckPatterns ctx (Type (T.Pi a b) lvl) (pat:pats) = do
-    let a' = Type (nf WHNF a) lvl
+typeCheckPatterns ctx (Type (T.Pi a b lvl) _) (pat:pats) = do
+    let a' = nfType WHNF a
     (bf1, mte, rtpat, cpat) <- typeCheckPattern ctx a' pat
     TermInCtx ctx' te <- case mte of
                             Nothing ->
@@ -71,7 +71,7 @@ typeCheckPatterns ctx (Type (T.Pi a b) lvl) (pat:pats) = do
                                             _         -> "_"
                                 in return $ TermInCtx (Snoc Nil var a') (T.Var Bound)
                             Just te -> return te
-    let b' = instantiate1 te $ fmap (fmap $ liftBase ctx') (dropOnePi a b)
+    let b' = instantiate1 te $ fmap (fmap $ liftBase ctx') (dropOnePi a b lvl)
     (bf2, TermsInCtx ctx'' tes ty, rtpats, cpats) <- typeCheckPatterns (ctx +++ ctx') (Type (nf WHNF b') lvl) pats
     return (bf1 || bf2, TermsInCtx (ctx' +++ ctx'') (fmap (liftBase ctx'') te : tes) ty, rtpat:rtpats, cpat:cpats)
 typeCheckPatterns _ _ (pat:_) = throwError [emsgLC (parPatGetPos pat) "Too many arguments" enull]

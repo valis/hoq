@@ -41,7 +41,7 @@ data Term a
     = Var a
     | App (Term a) (Term a)
     | Lam (Scope1 String Term a)
-    | Pi (Term a) (Scope String Term a)
+    | Pi (Type a) (Scope String Term a) Level
     | Con Int String [([Pattern], Closed (Scope () Term))] [Term a]
     | FunCall String [([Pattern], Closed (Scope () Term))]
     | FunSyn  String (Term a)
@@ -93,25 +93,31 @@ instance Eq a => Eq (Term a) where
         go (Squeeze as) es (Squeeze as') es' = as ++ es == as' ++ es'
         go _ _ _ _ = False
 
+instance Eq a => Eq (Type a) where
+    Type t _ == Type t' _ = t == t'
+
 instance Eq1 Term where (==#) = (==)
 
 class POrd a where
     pcompare :: a -> a -> Maybe Ordering
 
 instance Eq a => POrd (Term a) where
-    pcompare (Pi a (ScopeTerm b)) (Pi a' b'@Scope{}) =
-        contraCovariant (pcompare a a') $ pcompare (fmap Free b) (dropOnePi a' b')
-    pcompare (Pi a b@Scope{}) (Pi a' (ScopeTerm b')) =
-        contraCovariant (pcompare a a') $ pcompare (dropOnePi a b) (fmap Free b')
-    pcompare (Pi a            b)  (Pi a'            b')  = contraCovariant (pcompare a a') $ pcompareScopes a b a' b'
+    pcompare (Pi a (ScopeTerm b) _) (Pi a' b'@Scope{} lvl') =
+        contraCovariant (pcompare a a') $ pcompare (fmap Free b) (dropOnePi a' b' lvl')
+    pcompare (Pi a b@Scope{} lvl) (Pi a' (ScopeTerm b') _) =
+        contraCovariant (pcompare a a') $ pcompare (dropOnePi a b lvl) (fmap Free b')
+    pcompare (Pi a b lvl) (Pi a' b' lvl') = contraCovariant (pcompare a a') $ pcompareScopes a b lvl a' b' lvl'
       where
-        pcompareScopes :: Eq a => Term a -> Scope String Term a -> Term a -> Scope String Term a -> Maybe Ordering
-        pcompareScopes _ (ScopeTerm b) _  (ScopeTerm b') = pcompare b b'
-        pcompareScopes _ (ScopeTerm b) a'            b'  = pcompare b (Pi a' b')
-        pcompareScopes a            b  _  (ScopeTerm b') = pcompare (Pi a b) b'
-        pcompareScopes a (Scope _   b) a' (Scope _   b') = pcompareScopes (fmap Free a) b (fmap Free a') b'
+        pcompareScopes :: Eq a => Type a -> Scope String Term a -> Level -> Type a -> Scope String Term a -> Level -> Maybe Ordering
+        pcompareScopes _ (ScopeTerm b) _   _  (ScopeTerm b') _    = pcompare b b'
+        pcompareScopes _ (ScopeTerm b) _   a'            b'  lvl' = pcompare b (Pi a' b' lvl')
+        pcompareScopes a            b  lvl _  (ScopeTerm b') _    = pcompare (Pi a b lvl) b'
+        pcompareScopes a (Scope _   b) lvl a' (Scope _   b') lvl' = pcompareScopes (fmap Free a) b lvl (fmap Free a') b' lvl'
     pcompare (Universe u) (Universe u') = Just $ compare (level u) (level u')
     pcompare e1 e2 = if e1 == e2 then Just EQ else Nothing
+
+instance Eq a => POrd (Type a) where
+    pcompare (Type t _) (Type t' _) = pcompare t t'
 
 contraCovariant :: Maybe Ordering -> Maybe Ordering -> Maybe Ordering
 contraCovariant (Just LT) (Just r) | r == EQ || r == GT = Just GT
@@ -139,7 +145,7 @@ instance Traversable Term where
     traverse f (App e1 e2)       = App          <$> traverse f e1 <*> traverse f e2
     traverse f (Lam s)           = Lam          <$> traverse f s
     traverse f (At e1 e2 e3 e4)  = At           <$> traverse f e1 <*> traverse f e2 <*> traverse f e3 <*> traverse f e4
-    traverse f (Pi e1 e2)        = Pi           <$> traverse f e1 <*> traverse f e2
+    traverse f (Pi (Type e1 lvl1) e2 lvl2) = (\e1' e2' -> Pi (Type e1' lvl1) e2' lvl2) <$> traverse f e1 <*> traverse f e2
     traverse f (Path h me es)    = Path h       <$> traverse (traverse f) me <*> traverse (traverse f) es
     traverse f (PCon e)          = PCon         <$> traverse (traverse f) e
     traverse f (Con c n cs as)   = Con c n cs   <$> traverse (traverse f) as
@@ -154,53 +160,53 @@ instance Traversable Term where
     traverse _ (ICon c)          = pure (ICon c)
 
 instance Monad Term where
-    return                = Var
-    Var a           >>= k = k a
-    App e1 e2       >>= k = App (e1 >>= k) (e2 >>= k)
-    Lam e           >>= k = Lam (e >>>= k)
-    Pi e1 e2        >>= k = Pi (e1 >>= k) (e2 >>>= k)
-    Con c n cs as   >>= k = Con c n cs (map (>>= k) as)
-    FunCall n cs    >>= k = FunCall n cs
-    FunSyn n e      >>= k = FunSyn n (e >>= k)
-    Universe l      >>= _ = Universe l
-    DataType d e as >>= k = DataType d e $ map (>>= k) as
-    Interval        >>= _ = Interval
-    ICon c          >>= _ = ICon c
-    Path h me1 es   >>= k = Path h (fmap (>>= k) me1) $ map (>>= k) es
-    PCon e          >>= k = PCon $ fmap (>>= k) e
-    At e1 e2 e3 e4  >>= k = At (e1 >>= k) (e2 >>= k) (e3 >>= k) (e4 >>= k)
-    Coe es          >>= k = Coe $ map (>>= k) es
-    Iso es          >>= k = Iso $ map (>>= k) es
-    Squeeze es      >>= k = Squeeze $ map (>>= k) es
+    return                          = Var
+    Var a                     >>= k = k a
+    App e1 e2                 >>= k = App (e1 >>= k) (e2 >>= k)
+    Lam e                     >>= k = Lam (e >>>= k)
+    Pi (Type e1 lvl1) e2 lvl2 >>= k = Pi (Type (e1 >>= k) lvl1) (e2 >>>= k) lvl2
+    Con c n cs as             >>= k = Con c n cs (map (>>= k) as)
+    FunCall n cs              >>= k = FunCall n cs
+    FunSyn n e                >>= k = FunSyn n (e >>= k)
+    Universe l                >>= _ = Universe l
+    DataType d e as           >>= k = DataType d e $ map (>>= k) as
+    Interval                  >>= _ = Interval
+    ICon c                    >>= _ = ICon c
+    Path h me1 es             >>= k = Path h (fmap (>>= k) me1) $ map (>>= k) es
+    PCon e                    >>= k = PCon $ fmap (>>= k) e
+    At e1 e2 e3 e4            >>= k = At (e1 >>= k) (e2 >>= k) (e3 >>= k) (e4 >>= k)
+    Coe es                    >>= k = Coe $ map (>>= k) es
+    Iso es                    >>= k = Iso $ map (>>= k) es
+    Squeeze es                >>= k = Squeeze $ map (>>= k) es
 
-collectDataTypes :: Term a         -> [String]
-collectDataTypes (Var _)            = []
-collectDataTypes (App e1 e2)        = collectDataTypes e1 ++ collectDataTypes e2
-collectDataTypes (Lam (Scope1 _ e)) = collectDataTypes e
-collectDataTypes (Pi e s)           = collectDataTypes e ++ go s
+collectDataTypes :: Term a          -> [String]
+collectDataTypes (Var _)             = []
+collectDataTypes (App e1 e2)         = collectDataTypes e1 ++ collectDataTypes e2
+collectDataTypes (Lam (Scope1 _ e))  = collectDataTypes e
+collectDataTypes (Pi (Type e _) s _) = collectDataTypes e ++ go s
   where
     go :: Scope s Term a -> [String]
     go (ScopeTerm t) = collectDataTypes t
     go (Scope _   s) = go s
-collectDataTypes (Con _ _ _ as)     = as >>= collectDataTypes
-collectDataTypes (FunCall _ _)      = []
-collectDataTypes (FunSyn _ _)       = []
-collectDataTypes (DataType d _ as)  = d : (as >>= collectDataTypes)
-collectDataTypes (Universe _)       = []
-collectDataTypes Interval           = []
-collectDataTypes (ICon _)           = []
-collectDataTypes (Path _ me1 es)    = maybe [] collectDataTypes me1 ++ (es >>= collectDataTypes)
-collectDataTypes (PCon me)          = maybe [] collectDataTypes me
-collectDataTypes (At _ _ e3 e4)     = collectDataTypes e3 ++ collectDataTypes e4
-collectDataTypes (Coe es)           = es >>= collectDataTypes
-collectDataTypes (Iso es)           = es >>= collectDataTypes
-collectDataTypes (Squeeze es)       = es >>= collectDataTypes
+collectDataTypes (Con _ _ _ as)      = as >>= collectDataTypes
+collectDataTypes (FunCall _ _)       = []
+collectDataTypes (FunSyn _ _)        = []
+collectDataTypes (DataType d _ as)   = d : (as >>= collectDataTypes)
+collectDataTypes (Universe _)        = []
+collectDataTypes Interval            = []
+collectDataTypes (ICon _)            = []
+collectDataTypes (Path _ me1 es)     = maybe [] collectDataTypes me1 ++ (es >>= collectDataTypes)
+collectDataTypes (PCon me)           = maybe [] collectDataTypes me
+collectDataTypes (At _ _ e3 e4)      = collectDataTypes e3 ++ collectDataTypes e4
+collectDataTypes (Coe es)            = es >>= collectDataTypes
+collectDataTypes (Iso es)            = es >>= collectDataTypes
+collectDataTypes (Squeeze es)        = es >>= collectDataTypes
 
 apps :: Term a -> [Term a] -> Term a
 apps e [] = e
 apps e1 (e2:es) = apps (App e1 e2) es
 
-dropOnePi :: Term a -> Scope String Term a -> Term (Scoped a)
-dropOnePi a (ScopeTerm b) = fmap Free b
-dropOnePi a (Scope _ (ScopeTerm b)) = b
-dropOnePi a (Scope _ b) = Pi (fmap Free a) b
+dropOnePi :: Type a -> Scope String Term a -> Level -> Term (Scoped a)
+dropOnePi _ (ScopeTerm b) _ = fmap Free b
+dropOnePi _ (Scope _ (ScopeTerm b)) _ = b
+dropOnePi a (Scope _ b) lvl = Pi (fmap Free a) b lvl

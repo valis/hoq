@@ -19,7 +19,7 @@ ppTermCtx _ (Var d) = d
 ppTermCtx _ (Universe NoLevel) = text "Type"
 ppTermCtx _ (Universe l) = text $ "Type" ++ show l
 ppTermCtx ctx t@(App e1 e2) = ppTermPrec (prec t) ctx e1 <+> ppTermPrec (prec t + 1) ctx e2
-ppTermCtx ctx t@(Pi a b) =
+ppTermCtx ctx t@(Pi (Type a _) b _) =
     let (vs, b') = ppScopePrec (prec t) ctx b
     in (if null vs then ppTermPrec (prec t + 1) ctx a else parens $ hsep vs <+> colon <+> ppTermCtx ctx a) <+> b'
 ppTermCtx ctx t@Lam{} = go ctx [] t
@@ -50,7 +50,7 @@ ppScopePrec :: Int -> [(String,Int)] -> Scope String Term Doc -> ([Doc], Doc)
 ppScopePrec p ctx (ScopeTerm t) = ([], arrow <+> ppTermPrec p ctx t)
 ppScopePrec p ctx t = go ctx t
   where
-    go ctx (ScopeTerm t@(Pi _ ScopeTerm{})) = ([], ppTermPrec p ctx t)
+    go ctx (ScopeTerm t@(Pi _ ScopeTerm{} _)) = ([], ppTermPrec p ctx t)
     go ctx (ScopeTerm t) = ([], arrow <+> ppTermPrec p ctx t)
     go ctx (Scope v s) =
         let (ctx',v') = renameName v ctx

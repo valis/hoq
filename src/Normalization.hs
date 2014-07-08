@@ -1,5 +1,5 @@
 module Normalization
-    ( NF(..), nf
+    ( NF(..), nf, nfType
     ) where
 
 import Control.Monad
@@ -15,7 +15,7 @@ nf mode e = go e []
     go (App a b)          ts = go a (b:ts)
     go e@Var{}            ts = apps e (nfs mode ts)
     go e@Universe{}       _  = e
-    go (Pi a b)           _  | mode == NF = Pi (nf NF a) (nfScope b)
+    go (Pi a b lvl)       _  | mode == NF = Pi (nfType NF a) (nfScope b) lvl
       where
         nfScope :: Eq a => Scope s Term a -> Scope s Term a
         nfScope (ScopeTerm t) = ScopeTerm (nf NF t)
@@ -75,6 +75,9 @@ nf mode e = go e []
         _ : ICon ILeft  : _ -> ICon ILeft
         i : ICon IRight : _ -> if mode == WHNF then i else nf mode i
         es'                 -> Squeeze $ nfs mode (es ++ ts)
+
+nfType :: Eq a => NF -> Type a -> Type a
+nfType mode (Type t lvl) = Type (nf mode t) lvl
 
 isStationary :: Eq a => Term a -> Bool
 isStationary t = case sequenceA (nf NF $ App (fmap Free t) $ Var Bound) of
