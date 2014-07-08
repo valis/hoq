@@ -1,11 +1,10 @@
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts, ExistentialQuantification #-}
 
 module TypeChecking.Expressions
     ( typeCheck, typeCheckCtx
     , notInScope, inferErrorMsg, inferParamsErrorMsg
     , prettyOpen, exprToVars
     , checkUniverses
-    -- , reverseTerm
     ) where
 
 import Control.Monad
@@ -48,6 +47,8 @@ checkIsType :: Pretty b Term => Ctx b g b a -> Expr -> Term a -> [EMsg Term]
 checkIsType _ _ (T.Universe _) = []
 checkIsType ctx e t = [emsgLC (getPos e) "" $ pretty "Expected type: Type" $$
                                               pretty "Actual type:" <+> prettyOpen ctx t]
+
+data SomeEq f = forall a. Eq a => SomeEq (f a)
 
 typeCheck :: Monad m => Expr -> Maybe (Type String) -> TCM m (Term String, Type String)
 typeCheck = typeCheckCtx Nil

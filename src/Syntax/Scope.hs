@@ -1,4 +1,4 @@
-{-# LANGUAGE RankNTypes, ExistentialQuantification #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Syntax.Scope where
 
@@ -10,7 +10,6 @@ import Data.Foldable
 import Data.Traversable
 
 newtype Closed f = Closed (forall a. f a)
-data SomeEq f = forall a. Eq a => SomeEq (f a)
 
 data Scoped a = Free a | Bound deriving Eq
 

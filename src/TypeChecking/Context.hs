@@ -30,6 +30,10 @@ liftBase :: Ctx s f b a -> b -> a
 liftBase Nil = id
 liftBase (Snoc ctx _ _) = Free . liftBase ctx
 
+liftCtx :: Functor f => Ctx s f b a -> Ctx s f (Scoped b) (Scoped a)
+liftCtx Nil = Nil
+liftCtx (Snoc ctx s t) = Snoc (liftCtx ctx) s (fmap Free t)
+
 abstractTermInCtx :: Ctx s g b a -> f a -> Scope s f b
 abstractTermInCtx ctx term = go ctx (ScopeTerm term)
   where
