@@ -5,6 +5,7 @@ module Syntax.Scope where
 import Prelude.Extras
 import Control.Monad
 import Control.Applicative
+import Data.Maybe
 import Data.Monoid
 import Data.Foldable
 import Data.Traversable
@@ -87,3 +88,10 @@ instantiate :: Monad f => [f a] -> Scope s f a -> f a
 instantiate t (ScopeTerm s) = s
 instantiate [] _ = error "instantiate"
 instantiate (t:ts) (Scope _ s) = instantiate ts (instantiateScope t s)
+
+closed :: Traversable f => f a -> Closed f
+closed t = Closed $ fromJust $ traverse (const Nothing) t
+
+mapScope :: (s -> t) -> Scope s f a -> Scope t f a
+mapScope _ (ScopeTerm t) = ScopeTerm t
+mapScope f (Scope s t)   = Scope (f s) (mapScope f t)

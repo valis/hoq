@@ -1,4 +1,4 @@
-{-# LANGUAGE RecursiveDo, GADTs #-}
+{-# LANGUAGE RecursiveDo #-}
 
 module TypeChecking.Definitions.DataTypes
     ( typeCheckDataType

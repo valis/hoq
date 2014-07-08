@@ -9,9 +9,9 @@ import Data.Maybe
 
 import Syntax.Expr as E
 import Syntax.Term as T
-import Syntax.Context
 import Syntax.ErrorDoc
 import TypeChecking.Monad
+import TypeChecking.Context
 import TypeChecking.Expressions
 import TypeChecking.Definitions.Patterns
 import TypeChecking.Definitions.Coverage
@@ -19,14 +19,14 @@ import Normalization
 
 typeCheckFunction :: MonadFix m => Arg -> Expr -> [((Int, Int), [ParPat], Maybe Expr)] -> TCM m ()
 typeCheckFunction arg ety cases = mdo
-    (ty, u) <- typeCheck ety Nothing
-    case u of
-        T.Universe _ -> return ()
-        _            -> throwError [emsgLC (getPos ety) "" $ pretty "Expected a type" $$
-                                                             pretty "Actual type:" <+> prettyOpen Nil ty]
-    addFunctionCheck arg (FunCall (unArg arg) names) ty
+    (ty, Type u _) <- typeCheck ety Nothing
+    lvl <- case u of
+            T.Universe lvl -> return lvl
+            _              -> throwError [emsgLC (getPos ety) "" $ pretty "Expected a type" $$
+                                                                   pretty "Actual type:" <+> prettyOpen Nil ty]
+    addFunctionCheck arg (FunCall (unArg arg) names) (Type ty lvl)
     namesAndPats <- forW cases $ \(lc,pats,mexpr) ->  do
-        (bf, TermsInCtx ctx _ ty', rtpats, cpats) <- typeCheckPatterns Nil (nf WHNF ty) pats
+        (bf, TermsInCtx ctx _ ty', rtpats, cpats) <- typeCheckPatterns Nil (Type (nf WHNF ty) lvl) pats
         case (bf,mexpr) of
             (True,  Nothing) -> return Nothing
             (False, Nothing) -> do
@@ -38,9 +38,8 @@ typeCheckFunction arg ety cases = mdo
                 warn [emsgLC (getPos expr) msg enull]
                 return Nothing
             (False, Just expr) -> do
-                (term, _) <- typeCheckCtx ctx expr $ Just (nf WHNF ty')
-                return $ Just (ClosedName rtpats $ fromJust $ closed $ toScope $
-                    reverseTerm (length $ contextNames ctx) (abstractTermInCtx ctx term), (lc, cpats))
+                (term, _) <- typeCheckCtx ctx expr (Just ty')
+                return $ Just ((rtpats, closed $ mapScope (const ()) $ abstractTermInCtx ctx term), (lc, cpats))
     let names = map fst namesAndPats
     case checkCoverage (map snd namesAndPats) of
         Nothing -> warn [emsgLC (argGetPos arg) "Incomplete pattern matching" enull]
