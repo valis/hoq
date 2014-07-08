@@ -88,6 +88,8 @@ typeCheckCtx ctx expr ty = go ctx expr [] $ fmap (\(Type term lvl) -> Type (nf W
                 case mt of
                     [FunctionE te ty] -> return (fmap (liftBase ctx) te , fmap (liftBase ctx) ty)
                     [DataTypeE ty e]  -> return (DataType var e []      , fmap (liftBase ctx) ty)
+                    [ConstructorE _ (ScopeTerm con) (ScopeTerm ty, lvl)] ->
+                        return (fmap (liftBase ctx) con, Type (fmap (liftBase ctx) ty) lvl)
                     [ConstructorE _ con (ty, lvl)] -> case mty of
                         Just (Type (DataType _ _ params) _) ->
                             let liftTerm = instantiate params . fmap (liftBase ctx)
@@ -245,7 +247,7 @@ typeCheckApps lc ctx exprs (Type ty lvl) = go exprs (nf WHNF ty)
     go [] ty = return ([], Type ty lvl)
     go (expr:exprs) (T.Pi a b) = do
         (term, _)   <- typeCheckCtx ctx expr $ Just (Type a lvl)
-        (terms, ty) <- go exprs $ instantiate1 term (dropOnePi a b)
+        (terms, ty) <- go exprs $ nf WHNF $ instantiate1 term (dropOnePi a b)
         return (term:terms, ty)
     go _ ty = throwError [emsgLC lc "" $ pretty "Expected pi type" $$
                                          pretty "Actual type:" <+> prettyOpen ctx ty]

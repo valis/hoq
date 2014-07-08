@@ -87,7 +87,6 @@ nfs _  terms = terms
 
 instantiatePat :: Eq a => [Pattern] -> Scope () Term a -> [Term a] -> Maybe (Term a, [Term a])
 instantiatePat [] (ScopeTerm term) terms = Just (term, terms)
-instantiatePat (PatternAny : pats) scope (_:terms) = instantiatePat pats scope terms
 instantiatePat (PatternVar : pats) (Scope _ scope) (term:terms) = instantiatePat pats (instantiateScope term scope) terms
 instantiatePat (PatternI con : pats) scope (term:terms) = case nf WHNF term of
     ICon i | i == con -> instantiatePat pats scope terms

@@ -58,7 +58,7 @@ data Term a
 data ICon = ILeft | IRight deriving Eq
 data Type a = Type (Term a) Level
 data Explicit = Explicit | Implicit
-data Pattern = Pattern Int [Pattern] | PatternVar | PatternI ICon | PatternAny
+data Pattern = Pattern Int [Pattern] | PatternVar | PatternI ICon
 
 instance Eq a => Eq (Term a) where
     e1 == e2 = go e1 [] e2 []
@@ -99,8 +99,10 @@ class POrd a where
     pcompare :: a -> a -> Maybe Ordering
 
 instance Eq a => POrd (Term a) where
-    pcompare (Pi a (ScopeTerm b)) (Pi a' (Scope _   b')) = contraCovariant (pcompare a a') $ pcompare (fmap Free b) (Pi (fmap Free a') b')
-    pcompare (Pi a (Scope _   b)) (Pi a' (ScopeTerm b')) = contraCovariant (pcompare a a') $ pcompare (Pi (fmap Free a) b) (fmap Free b')
+    pcompare (Pi a (ScopeTerm b)) (Pi a' b'@Scope{}) =
+        contraCovariant (pcompare a a') $ pcompare (fmap Free b) (dropOnePi a' b')
+    pcompare (Pi a b@Scope{}) (Pi a' (ScopeTerm b')) =
+        contraCovariant (pcompare a a') $ pcompare (dropOnePi a b) (fmap Free b')
     pcompare (Pi a            b)  (Pi a'            b')  = contraCovariant (pcompare a a') $ pcompareScopes a b a' b'
       where
         pcompareScopes :: Eq a => Term a -> Scope String Term a -> Term a -> Scope String Term a -> Maybe Ordering

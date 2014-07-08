@@ -47,12 +47,15 @@ ppList :: [(String,Int)] -> Term Doc -> [Term Doc] -> Doc
 ppList ctx t ts = hsep $ map (ppTermPrec (prec t + 1) ctx) ts
 
 ppScopePrec :: Int -> [(String,Int)] -> Scope String Term Doc -> ([Doc], Doc)
-ppScopePrec p ctx (ScopeTerm t@(Pi _ Scope{})) = ([], arrow <+> ppTermPrec p ctx t)
-ppScopePrec p ctx (ScopeTerm t) = ([], ppTermPrec p ctx t)
-ppScopePrec p ctx (Scope v s) =
-    let (ctx',v') = renameName v ctx
-        (vs,d) = ppScopePrec p ctx' $ instantiateScope (Var $ text v') s
-    in  (text v' : vs, d)
+ppScopePrec p ctx (ScopeTerm t) = ([], arrow <+> ppTermPrec p ctx t)
+ppScopePrec p ctx t = go ctx t
+  where
+    go ctx (ScopeTerm t@(Pi _ ScopeTerm{})) = ([], ppTermPrec p ctx t)
+    go ctx (ScopeTerm t) = ([], arrow <+> ppTermPrec p ctx t)
+    go ctx (Scope v s) =
+        let (ctx',v') = renameName v ctx
+            (vs,d) = go ctx' $ instantiateScope (Var $ text v') s
+        in  (text v' : vs, d)
 
 ppTermPrec :: Int -> [(String,Int)] -> Term Doc -> Doc
 ppTermPrec p ctx t = if p > prec t then parens (ppTermCtx ctx t) else ppTermCtx ctx t
