@@ -7,7 +7,6 @@ import Control.Monad.Fix
 import Control.Monad.Trans
 import Control.Exception
 
-import Syntax.Term
 import Syntax.BNFC.ErrM
 import Syntax.BNFC.ParGrammar
 import Syntax.BNFC.LayoutGrammar
@@ -17,7 +16,7 @@ import Syntax.Expr
 import TypeChecking.Definitions
 import TypeChecking.Monad
 
-loadFile :: (MonadIO m, MonadFix m) => String -> ScopeT Term m ()
+loadFile :: (MonadIO m, MonadFix m) => String -> ScopeM m ()
 loadFile filename = do
     (errs, _) <- runWarnT $ do
         mcnt <- liftIO $ fmap Right (readFile filename)

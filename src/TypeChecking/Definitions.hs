@@ -14,9 +14,6 @@ import TypeChecking.Definitions.Functions
 import TypeChecking.Monad
 
 type Tele = [([Arg], Expr)]
-data PDef = PDefSyn Arg Expr
-          | PDefCases Arg Expr [((Int, Int), [ParPat], Maybe Expr)]
-          | PDefData Arg Tele [(Arg,Tele)] [(E.Pattern, Expr)]
 
 typeCheckDefs :: MonadFix m => [Def] -> TCM m ()
 typeCheckDefs [] = return ()
@@ -26,7 +23,7 @@ typeCheckDefs (DefType p@(PIdent (lc,name)) ty : defs) =
             warn [emsgLC lc ("Missing a realization of function " ++ show name) enull]
             typeCheckDefs defs
         (defs1,defs2) -> do
-            typeCheckFunction (Arg p) ty (map defToPDef defs1)
+            typeCheckFunction p ty (map defToPDef defs1)
             typeCheckDefs defs2
   where
     defToPDef :: Def -> ((Int, Int), [ParPat], Maybe Expr)
@@ -35,7 +32,7 @@ typeCheckDefs (DefType p@(PIdent (lc,name)) ty : defs) =
     defToPDef _                                                        = error "defToPDef"
 typeCheckDefs (DefFun (FunCase (E.Pattern p@(PIdent (_,name)) []) expr) : defs) = do
     (term, ty) <- typeCheck expr Nothing
-    addFunctionCheck (Arg p) (FunSyn name term) ty
+    addFunctionCheck p (FunSyn name term) ty
     typeCheckDefs defs
 typeCheckDefs (DefFun (FunCase (E.Pattern (PIdent (lc,name)) _) _) : defs) = do
     warn [inferErrorMsg lc "the argument"]
@@ -55,8 +52,8 @@ typeCheckDefs (DefDataWith p teles cons conds : defs) = do
             case tele of
                 VarTele _ e1 e2 -> liftM (\vs -> (vs, e2)) (exprToVars e1)
                 TypeTele e2     -> return ([], e2)
-        return (Arg p, teles')
-    typeCheckDataType (Arg p) dataTeles conTeles $ map (\(FunCase pat expr) -> (pat, expr)) conds
+        return (p, teles')
+    typeCheckDataType p dataTeles conTeles $ map (\(FunCase pat expr) -> (pat, expr)) conds
     typeCheckDefs defs
 
 theSameAs :: String -> Def -> Bool

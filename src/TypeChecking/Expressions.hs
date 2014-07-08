@@ -4,13 +4,13 @@ module TypeChecking.Expressions
     ( typeCheck, typeCheckCtx
     , notInScope, inferErrorMsg, inferParamsErrorMsg
     , prettyOpen, exprToVars
-    , checkUniverses
+    , checkUniverses, checkIsType
+    , SomeEq(..), extendCtx
     ) where
 
 import Control.Monad
 import Data.List
 import Data.Maybe
-import Data.Traversable
 
 import Syntax.Expr as E
 import Syntax.Term as T
@@ -40,15 +40,24 @@ exprToVars = liftM reverse . go
 
 checkUniverses :: (Pretty b Term, Monad m) => Ctx b g b a1 -> Ctx b g b a2
     -> Expr -> Expr -> Term a1 -> Term a2 -> EDocM m Level
-checkUniverses _ _ _ _ (T.Universe u1) (T.Universe u2) = return (max u1 u2)
-checkUniverses ctx1 ctx2 e1 e2 t1 t2 = throwError $ checkIsType ctx1 e1 t1 ++ checkIsType ctx2 e2 t2
+checkUniverses ctx1 ctx2 e1 e2 (T.Universe lvl1) (T.Universe lvl2) = return (max lvl1 lvl2)
+checkUniverses ctx1 _ e1 _ t1 (T.Universe _) = throwError [typeErrorMsg ctx1 e1 t1]
+checkUniverses _ ctx2 _ e2 (T.Universe _) t2 = throwError [typeErrorMsg ctx2 e2 t2]
+checkUniverses ctx1 ctx2 e1 e2 t1 t2 = throwError [typeErrorMsg ctx1 e1 t1, typeErrorMsg ctx2 e2 t2]
 
-checkIsType :: Pretty b Term => Ctx b g b a -> Expr -> Term a -> [EMsg Term]
-checkIsType _ _ (T.Universe _) = []
-checkIsType ctx e t = [emsgLC (getPos e) "" $ pretty "Expected type: Type" $$
-                                              pretty "Actual type:" <+> prettyOpen ctx t]
+checkIsType :: (Pretty b Term, Monad m) => Ctx b g b a -> Expr -> Term a -> EDocM m Level
+checkIsType _ _ (T.Universe lvl) = return lvl
+checkIsType ctx e t = throwError [typeErrorMsg ctx e t]
+
+typeErrorMsg :: Pretty b Term => Ctx b g b a -> Expr -> Term a -> EMsg Term
+typeErrorMsg ctx e t = emsgLC (getPos e) "" $ pretty "Expected type: Type" $$
+                                              pretty "Actual type:" <+> prettyOpen ctx t
 
 data SomeEq f = forall a. Eq a => SomeEq (f a)
+
+extendCtx :: Eq a => [s] -> Ctx s Type b a -> Type a -> SomeEq (Ctx s Type b)
+extendCtx [] ctx _ = SomeEq ctx
+extendCtx (x:xs) ctx t = extendCtx xs (Snoc ctx x t) (fmap Free t)
 
 typeCheck :: Monad m => Expr -> Maybe (Type String) -> TCM m (Term String, Type String)
 typeCheck = typeCheckCtx Nil
@@ -173,16 +182,14 @@ typeCheckCtx ctx expr ty = go ctx expr [] $ fmap (\(Type term lvl) -> Type (nf W
     go ctx (E.Pi [] e) [] Nothing = go ctx e [] Nothing
     go ctx expr@(E.Pi (PiTele _ e1 e2 : tvs) e) [] Nothing = do
         args <- exprToVars e1
-        (r1, Type t1 lvl1) <- go ctx e2 [] Nothing
-        case abstractCtx (map unArg args) Nil (Type r1 lvl1) of
+        (r1, Type t1 _) <- typeCheckCtx ctx e2 Nothing
+        lvl1 <- checkIsType ctx e2 (nf WHNF t1)
+        case extendCtx (map unArg args) Nil (Type r1 lvl1) of
             SomeEq ctx' -> do
                 (r2, Type t2 _) <- go (ctx +++ ctx') (E.Pi tvs e) [] Nothing
-                lvl <- checkUniverses ctx (ctx +++ ctx') e2 (E.Pi tvs e) (nf WHNF t1) (nf WHNF t2)
+                lvl2 <- checkIsType (ctx +++ ctx') (E.Pi tvs e) (nf WHNF t2)
+                let lvl = max lvl1 lvl2
                 return (T.Pi r1 $ abstractTermInCtx ctx' r2, Type (T.Universe lvl) $ succ lvl)
-      where
-        abstractCtx :: Eq a => [s] -> Ctx s Type b a -> Type a -> SomeEq (Ctx s Type b)
-        abstractCtx [] ctx _ = SomeEq ctx
-        abstractCtx (x:xs) ctx t = abstractCtx xs (Snoc ctx x t) (fmap Free t)
     go ctx (E.Arr e1 e2) [] Nothing = do
         (r1, Type t1 _) <- go ctx e1 [] Nothing
         (r2, Type t2 _) <- go ctx e2 [] Nothing

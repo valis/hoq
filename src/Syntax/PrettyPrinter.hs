@@ -24,7 +24,7 @@ ppTermCtx ctx t@(Pi a b) =
     in (if null vs then ppTermPrec (prec t + 1) ctx a else parens $ hsep vs <+> colon <+> ppTermCtx ctx a) <+> b'
 ppTermCtx ctx t@Lam{} = go ctx [] t
   where
-    go ctx vars (Lam s@(Scope1 n _)) =
+    go ctx vars (Lam (Scope1 n s)) =
         let (ctx', n') = renameName n ctx
         in go ctx' (text n' : vars) $ instantiate1 (Var $ text n') s
     go ctx vars t' = text "\\" <> hsep (reverse vars) <+> arrow <+> ppTermPrec (prec t) ctx t'
@@ -51,7 +51,7 @@ ppScopePrec p ctx (ScopeTerm t@(Pi _ Scope{})) = ([], arrow <+> ppTermPrec p ctx
 ppScopePrec p ctx (ScopeTerm t) = ([], ppTermPrec p ctx t)
 ppScopePrec p ctx (Scope v s) =
     let (ctx',v') = renameName v ctx
-        (vs,d) = ppScopePrec p ctx' $ instantiate (Var $ text v') s
+        (vs,d) = ppScopePrec p ctx' $ instantiateScope (Var $ text v') s
     in  (text v' : vs, d)
 
 ppTermPrec :: Int -> [(String,Int)] -> Term Doc -> Doc
@@ -87,7 +87,7 @@ prec (Squeeze [])               = 10
 prec App{}                      = 9
 prec Con{}                      = 9
 prec DataType{}                 = 9
-prec (Path Explicit (Just _) _) = 9
+prec (Path Explicit _ _)        = 9
 prec PCon{}                     = 9
 prec Coe{}                      = 9
 prec Iso{}                      = 9

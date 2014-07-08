@@ -7,78 +7,80 @@ module TypeChecking.Definitions.DataTypes
 import Control.Monad
 import Control.Monad.Fix
 import Data.List
-import Data.Maybe
 
 import Syntax.Expr as E
 import Syntax.Term as T
-import Syntax.Context
 import Syntax.ErrorDoc
 import TypeChecking.Monad
+import TypeChecking.Context
 import TypeChecking.Expressions
 import TypeChecking.Definitions.Patterns
 import Normalization
 
 type Tele = [([Arg], Expr)]
 
-typeCheckDataType :: MonadFix m => Arg -> Tele -> [(Arg,Tele)] -> [(E.Pattern, Expr)] -> TCM m ()
-typeCheckDataType arg params cons conds = mdo
+typeCheckDataType :: MonadFix m => PIdent -> Tele -> [(PIdent,Tele)] -> [(E.Pattern, Expr)] -> TCM m ()
+typeCheckDataType p@(PIdent (lc,dt)) params cons conds = mdo
     let lcons = length cons
-        dt  = unArg arg
-    (CtxFrom ctx, dataType, _) <- checkTele Nil params (T.Universe NoLevel)
-    addDataTypeCheck arg dataType lcons
-    cons' <- forW (zip cons [0..]) $ \((con,tele),i) -> do
-        (_, conType, conLevel) <- checkTele ctx tele $ DataType dt lcons []
-        checkPositivity arg (nf WHNF conType)
-        let conTerm = T.Con i (unArg con) [] $ map snd $ filter (\(c,_) -> c == unArg con) conds'
-        return $ Just (con, conTerm, conType, conLevel)
-    forM_ cons' $ \(con, te, ty, _) -> addConstructorCheck con dt lcons $ case TermsInCtx ctx [te] ty of
-        TermsInCtx Nil  [con'] conType' -> Left  (con', conType')
-        TermsInCtx ctx' [con'] conType' -> Right (abstractTermInCtx ctx' con', abstractTermInCtx ctx' conType')
-        _                               -> error "typeCheckPDef"
-    conds' <- forW conds $ \(E.Pattern (E.PIdent (lc,con)) pats,expr) -> case find (\(c,_,_,_) -> unArg c == con) cons' of
-        Nothing -> do
-            warn [notInScope lc "data constructor" con]
-            return Nothing
-        Just (_,_,ty,_) -> do
-            (bf, TermsInCtx ctx' _ ty', rtpats, _) <- typeCheckPatterns ctx (nf WHNF ty) pats
-            when bf $ warn [emsgLC lc "Absurd patterns are not allowed in conditions" enull]
-            (term, _) <- typeCheckCtx (ctx +++ ctx') expr $ Just (nf WHNF ty')
-            let term' = toScope $ reverseTerm (length $ contextNames ctx') $ abstractTermInCtx ctx' term
-            return $ Just (con, ClosedName rtpats $ fromJust $ closed term')
+    (SomeEq ctx, dataType@(Type dtTerm _)) <- checkTele Nil params $ Closed (T.Universe NoLevel)
+    addDataTypeCheck p dataType lcons
+    cons' <- forW (zip cons [0..]) $ \((con@(PIdent (_,conName)),tele),i) -> do
+        (_, Type conType conLevel) <- checkTele ctx tele $ Closed $ DataType dt lcons []
+        checkPositivity p (nf WHNF conType)
+        let conTerm = T.Con i conName (map snd $ filter (\(c,_) -> c == conName) conds') []
+        return $ Just (con, conTerm, Type conType conLevel)
+    forM_ cons' $ \(con, te, Type ty lvl) ->
+        addConstructorCheck con dt lcons (abstractTermInCtx ctx te) (abstractTermInCtx ctx ty) lvl
+    conds' <- forW conds $ \(E.Pattern (E.PIdent (lc,con)) pats,expr) ->
+        case find (\(PIdent (_,c),_,_) -> c == con) cons' of
+            Nothing -> do
+                warn [notInScope lc "data constructor" con]
+                return Nothing
+            Just (_, _, Type ty lvl) -> do
+                (bf, TermsInCtx ctx' _ ty', rtpats, _) <- typeCheckPatterns ctx (Type (nf WHNF ty) lvl) pats
+                when bf $ warn [emsgLC lc "Absurd patterns are not allowed in conditions" enull]
+                (term, _) <- typeCheckCtx (ctx +++ ctx') expr (Just ty')
+                return $ Just (con, (rtpats, closed $ mapScope (const ()) $ abstractTermInCtx ctx' term))
     lift $ deleteDataType dt
-    let lvls = map (\(_,_,_,lvl) -> lvl) cons'
-    lift $ addDataType dt (replaceLevel dataType $ if null lvls then NoLevel else maximum lvls) lcons
+    let lvls = map (\(_, _, Type _ lvl) -> lvl) cons'
+        lvl = if null lvls then NoLevel else maximum lvls
+    lift $ addDataType dt (Type (replaceLevel dtTerm lvl) lvl) lcons
 
-checkTele :: (Monad m, Eq a, Show a) => Ctx Int [String] Term String a -> Tele -> Term a ->
-    TCM m (CtxFrom Int [String] Term String, Term a, Level)
-checkTele ctx [] term = return (CtxFrom ctx, term, NoLevel)
-checkTele ctx (([],expr):tele) term = do
-    (r1,t1) <- typeCheckCtx ctx expr Nothing
-    (rctx,r2,t2) <- checkTele ctx tele term
-    T.Universe t <- checkUniverses ctx ctx expr expr t1 (T.Universe t2)
-    return (rctx, T.Arr r1 r2, t)
+checkTele :: (Monad m, Eq a) => Ctx String Type String a -> Tele -> Closed Term
+    -> TCM m (SomeEq (Ctx String Type String), Type a)
+checkTele ctx [] (Closed term) = return (SomeEq ctx, Type term NoLevel)
 checkTele ctx ((args,expr):tele) term = do
-    (r1,t1) <- typeCheckCtx ctx expr Nothing
-    let vars = map unArg args
-        ctx' = Snoc ctx (reverse vars) r1
-    (rctx,r2,t2) <- checkTele ctx' tele (fmap F term)
-    T.Universe t <- checkUniverses ctx ctx' expr expr t1 (T.Universe t2)
-    return (rctx, T.Pi (null tele) r1 $ Name vars $ toScope r2, t)
+    (r1, Type t1 _) <- typeCheckCtx ctx expr Nothing
+    lvl1 <- checkIsType ctx expr (nf WHNF t1)
+    case extendCtx (map unArg args) Nil (Type r1 lvl1) of
+        SomeEq ctx' -> do
+            (rctx, Type r2 lvl2) <- checkTele (ctx +++ ctx') tele term
+            return (rctx, Type (T.Pi r1 $ abstractTermInCtx ctx' r2) $ max lvl1 lvl2)
 
 replaceLevel :: Term a -> Level -> Term a
-replaceLevel (T.Pi fl r1 (Name vars (Scope r2))) lvl = T.Pi fl r1 $ Name vars $ Scope (replaceLevel r2 lvl)
+replaceLevel (T.Pi r1 r2) lvl = T.Pi r1 (replaceLevelScope r2)
+  where
+    replaceLevelScope :: Scope String Term a -> Scope String Term a
+    replaceLevelScope (ScopeTerm t) = ScopeTerm (replaceLevel t lvl)
+    replaceLevelScope (Scope v t) = Scope v (replaceLevelScope t)
 replaceLevel _ lvl = T.Universe lvl
 
-checkPositivity :: (Eq a, Show a) => Monad m => Arg -> Term a -> EDocM m ()
-checkPositivity dt (T.Arr a b)                   = checkNoNegative dt (nf WHNF a) >> checkPositivity dt (nf WHNF b)
-checkPositivity dt (T.Pi _ a (Name _ (Scope b))) = checkNoNegative dt (nf WHNF a) >> checkPositivity dt (nf WHNF b)
-checkPositivity _ _                              = return ()
+checkPositivity :: (Eq a, Monad m) => PIdent -> Term a -> EDocM m ()
+checkPositivity dt (T.Pi a b) = checkNoNegative dt (nf WHNF a) >> checkPositivityScope b
+  where
+    checkPositivityScope :: (Eq a, Monad m) => Scope String Term a -> EDocM m ()
+    checkPositivityScope (ScopeTerm t) = checkPositivity dt (nf WHNF t)
+    checkPositivityScope (Scope v t) = checkPositivityScope t
+checkPositivity _ _ = return ()
 
-checkNoNegative :: (Eq a, Show a) => Monad m => Arg -> Term a -> EDocM m ()
-checkNoNegative dt (T.Arr a b)                   = checkNoDataType dt a >> checkNoNegative dt (nf WHNF b)
-checkNoNegative dt (T.Pi _ a (Name _ (Scope b))) = checkNoDataType dt a >> checkNoNegative dt (nf WHNF b)
-checkNoNegative _ _                              = return ()
+checkNoNegative :: (Eq a, Monad m) => PIdent -> Term a -> EDocM m ()
+checkNoNegative dt (T.Pi a b) = checkNoDataType dt a >> checkNoNegativeScope b
+  where
+    checkNoNegativeScope :: (Eq a, Monad m) => Scope String Term a -> EDocM m ()
+    checkNoNegativeScope (ScopeTerm t) = checkNoNegative dt (nf WHNF t)
+    checkNoNegativeScope (Scope v t) = checkNoNegativeScope t
+checkNoNegative _ _ = return ()
 
-checkNoDataType :: Monad m => Arg -> Term a -> EDocM m ()
-checkNoDataType dt t = when (unArg dt `elem` collectDataTypes t) $
-    throwError [emsgLC (argGetPos dt) "Data type is not strictly positive" enull]
+checkNoDataType :: Monad m => PIdent -> Term a -> EDocM m ()
+checkNoDataType (PIdent (lc,dt)) t = when (dt `elem` collectDataTypes t) $
+    throwError [emsgLC lc "Data type is not strictly positive" enull]

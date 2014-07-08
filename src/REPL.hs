@@ -23,7 +23,7 @@ parseExpr s = case pExpr (myLexer s) of
     Bad err -> throwError [emsg err enull]
     Ok expr -> liftM fst (typeCheck expr Nothing)
 
-ep :: NF -> String -> ScopeT Term IO ()
+ep :: NF -> String -> ScopeM IO ()
 ep mode str = do
     mres <- runWarnT (parseExpr str)
     liftIO $ case mres of
@@ -31,14 +31,14 @@ ep mode str = do
         ([], Just term) -> putStrLn $ render $ ppTerm (nf mode term)
         (errs, _)       -> mapM_ (hPutStrLn stderr . erender) errs
 
-processCmd :: String -> String -> ScopeT Term IO ()
+processCmd :: String -> String -> ScopeM IO ()
 processCmd "quit" _   = liftIO exitSuccess
 processCmd "nf"   str = ep NF str
 processCmd "hnf"  str = ep HNF str
 processCmd "whnf" str = ep WHNF str
 processCmd cmd _ = liftIO $ hPutStrLn stderr $ "Unknown command " ++ cmd
 
-repl :: ScopeT Term IO ()
+repl :: ScopeM IO ()
 repl = go ""
   where
     go last = do

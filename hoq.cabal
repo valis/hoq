@@ -44,7 +44,7 @@ executable hoq
                        TypeChecking.Monad.Warn,
                        TypeChecking.Monad,
                        TypeChecking.Context
-  build-depends:       base >=4.6 && <4.7
+  build-depends:       base >=4.6 && <4.7,
                        BNFC >= 2.5, array >= 0.4, pretty >=1.1 && < 1.2,
                        prelude-extras >=0.4 && <0.5, readline >=1.0 && <1.1,
                        mtl >=2.1 && < 2.2

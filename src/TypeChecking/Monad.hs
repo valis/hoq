@@ -1,5 +1,5 @@
 module TypeChecking.Monad
-    ( EDocM, TCM, runTCM
+    ( EDocM, ScopeM, TCM, runTCM
     , addFunctionCheck, addDataTypeCheck, addConstructorCheck
     , module TypeChecking.Monad.Warn
     , module TypeChecking.Monad.Scope
@@ -16,37 +16,35 @@ import Syntax.Expr
 import Syntax.ErrorDoc
 
 type EDocM = WarnT [EMsg Term]
-type TCM m = EDocM (ScopeT (Term String) (Type String) (Scope String Term String) (Scope String Term String, Level) m)
+type ScopeM = ScopeT (Term String) (Type String) (Scope String Term String) (Scope String Term String, Level)
+type TCM m = EDocM (ScopeM m)
 
 runTCM :: Monad m => TCM m a -> m (Maybe a)
 runTCM = liftM snd . runScopeT . runWarnT
 
-multipleDeclaration :: Arg -> String -> EMsg f
-multipleDeclaration arg var = emsgLC (argGetPos arg) ("Multiple declarations of " ++ show var) enull
+multipleDeclaration :: (Int,Int) -> String -> EMsg f
+multipleDeclaration lc var = emsgLC lc ("Multiple declarations of " ++ show var) enull
 
-addFunctionCheck :: Monad m => Arg -> Term String -> Type String -> TCM m ()
-addFunctionCheck arg te ty = do
-    let var = unArg arg
+addFunctionCheck :: Monad m => PIdent -> Term String -> Type String -> TCM m ()
+addFunctionCheck (PIdent (lc,var)) te ty = do
     mr <- lift (getEntry var Nothing)
     case mr of
         [] -> lift (addFunction var te ty)
-        _  -> warn [multipleDeclaration arg var]
+        _  -> warn [multipleDeclaration lc var]
 
-addDataTypeCheck :: Monad m => Arg -> Type String -> Int -> TCM m ()
-addDataTypeCheck arg ty b = do
-    let var = unArg arg
+addDataTypeCheck :: Monad m => PIdent -> Type String -> Int -> TCM m ()
+addDataTypeCheck (PIdent (lc,var)) ty b = do
     mr <- lift (getEntry var Nothing)
     case mr of
-        FunctionE _ _ : _ -> warn [multipleDeclaration arg var]
-        DataTypeE _ _ : _ -> warn [multipleDeclaration arg var]
+        FunctionE _ _ : _ -> warn [multipleDeclaration lc var]
+        DataTypeE _ _ : _ -> warn [multipleDeclaration lc var]
         _                 -> lift (addDataType var ty b)
 
-addConstructorCheck :: Monad m => Arg -> String -> Int
+addConstructorCheck :: Monad m => PIdent -> String -> Int
     -> Scope String Term String -> Scope String Term String -> Level -> TCM m ()
-addConstructorCheck arg dt n te ty lvl = do
-    let var = unArg arg
+addConstructorCheck (PIdent (lc,var)) dt n te ty lvl = do
     mr <- lift $ getEntry var (Just dt)
     case mr of
-        FunctionE    _ _   : _ -> warn [multipleDeclaration arg var]
-        ConstructorE _ _ _ : _ -> warn [multipleDeclaration arg var]
+        FunctionE    _ _   : _ -> warn [multipleDeclaration lc var]
+        ConstructorE _ _ _ : _ -> warn [multipleDeclaration lc var]
         _                      -> lift $ addConstructor var dt n te (ty,lvl)

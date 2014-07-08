@@ -8,7 +8,6 @@ module TypeChecking.Definitions.Patterns
 import Syntax.Expr as E
 import Syntax.Term as T
 import Syntax.ErrorDoc
-import Syntax.Scope
 import TypeChecking.Context
 import TypeChecking.Monad
 import TypeChecking.Definitions.Coverage as C
