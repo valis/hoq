@@ -37,7 +37,7 @@ typeCheckDataType p@(PIdent (lc,dt)) params cons conds = mdo
                 warn [notInScope lc "data constructor" con]
                 return Nothing
             Just (_, _, ty) -> do
-                (bf, TermsInCtx ctx' _ ty', rtpats, _) <- typeCheckPatterns ctx (nfType WHNF ty) pats
+                (bf, TermsInCtx ctx' _ ty', rtpats) <- typeCheckPatterns ctx (nfType WHNF ty) pats
                 when bf $ warn [emsgLC lc "Absurd patterns are not allowed in conditions" enull]
                 (term, _) <- typeCheckCtx (ctx +++ ctx') expr (Just ty')
                 return $ Just (con, (rtpats, closed $ mapScope (const ()) $ abstractTermInCtx ctx' term))
@@ -84,3 +84,26 @@ checkNoNegative _ _ = return ()
 checkNoDataType :: Monad m => PIdent -> Term a -> EDocM m ()
 checkNoDataType (PIdent (lc,dt)) t = when (dt `elem` collectDataTypes t) $
     throwError [emsgLC lc "Data type is not strictly positive" enull]
+
+collectDataTypes :: Term a          -> [String]
+collectDataTypes (T.Var _)             = []
+collectDataTypes (T.App e1 e2)         = collectDataTypes e1 ++ collectDataTypes e2
+collectDataTypes (T.Lam (Scope1 _ e))  = collectDataTypes e
+collectDataTypes (T.Pi (Type e _) s _) = collectDataTypes e ++ go s
+  where
+    go :: Scope s Term a -> [String]
+    go (ScopeTerm t) = collectDataTypes t
+    go (Scope _   s) = go s
+collectDataTypes (T.Con _ _ _ as)      = as >>= collectDataTypes
+collectDataTypes (FunCall _ _)         = []
+collectDataTypes (FunSyn _ _)          = []
+collectDataTypes (DataType d _ as)     = d : (as >>= collectDataTypes)
+collectDataTypes (T.Universe _)        = []
+collectDataTypes T.Interval            = []
+collectDataTypes (ICon _)              = []
+collectDataTypes (T.Path _ me1 es)     = maybe [] collectDataTypes me1 ++ (es >>= collectDataTypes)
+collectDataTypes (PCon me)             = maybe [] collectDataTypes me
+collectDataTypes (T.At _ _ e3 e4)      = collectDataTypes e3 ++ collectDataTypes e4
+collectDataTypes (T.Coe es)            = es >>= collectDataTypes
+collectDataTypes (T.Iso es)            = es >>= collectDataTypes
+collectDataTypes (T.Squeeze es)        = es >>= collectDataTypes

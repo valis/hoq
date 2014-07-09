@@ -94,7 +94,7 @@ instantiatePat (PatternVar : pats) (Scope _ scope) (term:terms) = instantiatePat
 instantiatePat (PatternI con : pats) scope (term:terms) = case nf WHNF term of
     ICon i | i == con -> instantiatePat pats scope terms
     _ -> Nothing
-instantiatePat (Pattern con pats1 : pats) scope (term:terms) = case nf WHNF term of
+instantiatePat (Pattern (PatternCon con _ _) pats1 : pats) scope (term:terms) = case nf WHNF term of
     Con i n _ terms1 | i == con -> instantiatePat (pats1 ++ pats) scope (terms1 ++ terms)
     _ -> Nothing
 instantiatePat _ _ _ = Nothing

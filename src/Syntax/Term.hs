@@ -1,11 +1,10 @@
 module Syntax.Term
-    ( Term(..), Type(..), ICon(..)
+    ( Term(..), Type(..)
     , Level(..), level
-    , Pattern(..), Explicit(..)
-    , module Syntax.Scope
+    , Explicit(..)
+    , module Syntax.Scope, module Syntax.Pattern
     , POrd(..), lessOrEqual
-    , collectDataTypes, apps
-    , dropOnePi
+    , apps, dropOnePi
     ) where
 
 import Prelude.Extras
@@ -16,6 +15,7 @@ import Control.Applicative
 import Control.Monad
 
 import Syntax.Scope
+import Syntax.Pattern
 
 data Level = Level Int | NoLevel
 
@@ -55,10 +55,8 @@ data Term a
     | Coe [Term a]
     | Iso [Term a]
     | Squeeze [Term a]
-data ICon = ILeft | IRight deriving Eq
 data Type a = Type (Term a) Level
 data Explicit = Explicit | Implicit
-data Pattern = Pattern Int [Pattern] | PatternVar | PatternI ICon
 
 instance Eq a => Eq (Term a) where
     e1 == e2 = go e1 [] e2 []
@@ -178,29 +176,6 @@ instance Monad Term where
     Coe es                    >>= k = Coe $ map (>>= k) es
     Iso es                    >>= k = Iso $ map (>>= k) es
     Squeeze es                >>= k = Squeeze $ map (>>= k) es
-
-collectDataTypes :: Term a          -> [String]
-collectDataTypes (Var _)             = []
-collectDataTypes (App e1 e2)         = collectDataTypes e1 ++ collectDataTypes e2
-collectDataTypes (Lam (Scope1 _ e))  = collectDataTypes e
-collectDataTypes (Pi (Type e _) s _) = collectDataTypes e ++ go s
-  where
-    go :: Scope s Term a -> [String]
-    go (ScopeTerm t) = collectDataTypes t
-    go (Scope _   s) = go s
-collectDataTypes (Con _ _ _ as)      = as >>= collectDataTypes
-collectDataTypes (FunCall _ _)       = []
-collectDataTypes (FunSyn _ _)        = []
-collectDataTypes (DataType d _ as)   = d : (as >>= collectDataTypes)
-collectDataTypes (Universe _)        = []
-collectDataTypes Interval            = []
-collectDataTypes (ICon _)            = []
-collectDataTypes (Path _ me1 es)     = maybe [] collectDataTypes me1 ++ (es >>= collectDataTypes)
-collectDataTypes (PCon me)           = maybe [] collectDataTypes me
-collectDataTypes (At _ _ e3 e4)      = collectDataTypes e3 ++ collectDataTypes e4
-collectDataTypes (Coe es)            = es >>= collectDataTypes
-collectDataTypes (Iso es)            = es >>= collectDataTypes
-collectDataTypes (Squeeze es)        = es >>= collectDataTypes
 
 apps :: Term a -> [Term a] -> Term a
 apps e [] = e

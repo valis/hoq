@@ -10,7 +10,6 @@ import Syntax.Term as T
 import Syntax.ErrorDoc
 import TypeChecking.Context
 import TypeChecking.Monad
-import TypeChecking.Definitions.Coverage as C
 import TypeChecking.Expressions
 import Normalization
 
@@ -18,22 +17,20 @@ data TermInCtx b  = forall a. Eq a => TermInCtx  (Ctx String Type b a) (Term a)
 data TermsInCtx b = forall a. Eq a => TermsInCtx (Ctx String Type b a) [Term a] (Type a)
 
 typeCheckPattern :: (Monad m, Eq a) => Ctx String Type String a
-    -> Type a -> ParPat -> TCM m (Bool, Maybe (TermInCtx a), T.Pattern, C.Pattern)
-typeCheckPattern ctx (Type T.Interval _) (ParLeft _) =
-    return (False, Just $ TermInCtx Nil $ ICon ILeft , T.PatternI ILeft , PatLeft)
-typeCheckPattern ctx (Type T.Interval _) (ParRight _) =
-    return (False, Just $ TermInCtx Nil $ ICon IRight, T.PatternI IRight, PatRight)
-typeCheckPattern ctx (Type (DataType _ 0 _) _) (ParEmpty _) = return (True, Nothing, T.PatternVar, PatVar)
+    -> Type a -> ParPat -> TCM m (Bool, Maybe (TermInCtx a), T.Pattern)
+typeCheckPattern ctx (Type T.Interval _) (ParLeft _)  = return (False, Just $ TermInCtx Nil $ ICon ILeft , PatternI ILeft)
+typeCheckPattern ctx (Type T.Interval _) (ParRight _) = return (False, Just $ TermInCtx Nil $ ICon IRight, PatternI IRight)
+typeCheckPattern ctx (Type (DataType _ 0 _) _) (ParEmpty _) = return (True, Nothing, PatternVar)
 typeCheckPattern ctx (Type ty _) (ParEmpty (PPar (lc,_))) =
     throwError [emsgLC lc "" $ pretty "Expected non-empty type:" <+> prettyOpen ctx ty]
-typeCheckPattern ctx _ (ParVar (NoArg _)) = return (False, Nothing, T.PatternVar, PatVar)
+typeCheckPattern ctx _ (ParVar (NoArg _)) = return (False, Nothing, PatternVar)
 typeCheckPattern ctx ty@(Type (DataType dt _ params) _) (ParVar (Arg (PIdent (lc,var)))) = do
     cons <- lift $ getConstructor var (Just dt)
     case cons of
-        [] -> return (False, Just $ TermInCtx (Snoc Nil var ty) $ T.Var Bound, T.PatternVar, PatVar)
+        [] -> return (False, Just $ TermInCtx (Snoc Nil var ty) $ T.Var Bound, PatternVar)
         (n,con,(conType,_)):_ -> if isDataType conType
-            then let con'@(T.Con i _ _ _) = instantiate params $ fmap (liftBase ctx) con
-                 in return (False, Just $ TermInCtx Nil con', T.Pattern i [], C.Pattern i n [])
+            then let con'@(T.Con i _ conds _) = instantiate params $ fmap (liftBase ctx) con
+                 in return (False, Just $ TermInCtx Nil con', T.Pattern (PatternCon i n $ map fst conds) [])
             else throwError [emsgLC lc ("Not enough arguments to " ++ show var) enull]
   where
     isDataType :: Scope a Term b     -> Bool
@@ -41,7 +38,7 @@ typeCheckPattern ctx ty@(Type (DataType dt _ params) _) (ParVar (Arg (PIdent (lc
     isDataType (ScopeTerm _)          = False
     isDataType (Scope _ t)            = isDataType t
 typeCheckPattern ctx ty (ParVar (Arg (PIdent (lc,var)))) =
-    return (False, Just $ TermInCtx (Snoc Nil var ty) $ T.Var Bound, T.PatternVar, PatVar)
+    return (False, Just $ TermInCtx (Snoc Nil var ty) $ T.Var Bound, PatternVar)
 typeCheckPattern ctx (Type (DataType dt _ params) _) (ParPat _ (E.Pattern (PIdent (lc,conName)) pats)) = do
     cons <- lift $ getConstructor conName (Just dt)
     case cons of
@@ -49,21 +46,21 @@ typeCheckPattern ctx (Type (DataType dt _ params) _) (ParPat _ (E.Pattern (PIden
         (n,con,(conType,lvl)):_ -> do
             let T.Con i _ conds _ = instantiate params $ fmap (liftBase ctx) con
                 conType' = Type (nf WHNF $ instantiate params $ fmap (liftBase ctx) conType) lvl
-            (bf, TermsInCtx ctx' terms (Type ty _), rtpats, cpats) <- typeCheckPatterns ctx conType' pats
+            (bf, TermsInCtx ctx' terms (Type ty _), rtpats) <- typeCheckPatterns ctx conType' pats
             let res = TermInCtx ctx' (T.Con i conName conds terms)
             case nf WHNF ty of
-                DataType{} -> return (bf, Just res, T.Pattern i rtpats, C.Pattern i n cpats)
+                DataType{} -> return (bf, Just res, T.Pattern (PatternCon i n $ map fst conds) rtpats)
                 _          -> throwError [emsgLC lc "Not enough arguments" enull]
 typeCheckPattern ctx (Type ty _) pat =
     throwError [emsgLC (parPatGetPos pat) "" $ pretty "Unexpected pattern" $$
                                                pretty "Expected type:" <+> prettyOpen ctx ty]
 
 typeCheckPatterns :: (Monad m, Eq a) => Ctx String Type String a -> Type a -> [ParPat]
-    -> TCM m (Bool, TermsInCtx a, [T.Pattern], [C.Pattern])
-typeCheckPatterns _ ty [] = return (False, TermsInCtx Nil [] ty, [], [])
+    -> TCM m (Bool, TermsInCtx a, [T.Pattern])
+typeCheckPatterns _ ty [] = return (False, TermsInCtx Nil [] ty, [])
 typeCheckPatterns ctx (Type (T.Pi a b lvl) _) (pat:pats) = do
     let a' = nfType WHNF a
-    (bf1, mte, rtpat, cpat) <- typeCheckPattern ctx a' pat
+    (bf1, mte, rtpat) <- typeCheckPattern ctx a' pat
     TermInCtx ctx' te <- case mte of
                             Nothing ->
                                 let var = case b of
@@ -72,6 +69,6 @@ typeCheckPatterns ctx (Type (T.Pi a b lvl) _) (pat:pats) = do
                                 in return $ TermInCtx (Snoc Nil var a') (T.Var Bound)
                             Just te -> return te
     let b' = instantiate1 te $ fmap (fmap $ liftBase ctx') (dropOnePi a b lvl)
-    (bf2, TermsInCtx ctx'' tes ty, rtpats, cpats) <- typeCheckPatterns (ctx +++ ctx') (Type (nf WHNF b') lvl) pats
-    return (bf1 || bf2, TermsInCtx (ctx' +++ ctx'') (fmap (liftBase ctx'') te : tes) ty, rtpat:rtpats, cpat:cpats)
+    (bf2, TermsInCtx ctx'' tes ty, rtpats) <- typeCheckPatterns (ctx +++ ctx') (Type (nf WHNF b') lvl) pats
+    return (bf1 || bf2, TermsInCtx (ctx' +++ ctx'') (fmap (liftBase ctx'') te : tes) ty, rtpat:rtpats)
 typeCheckPatterns _ _ (pat:_) = throwError [emsgLC (parPatGetPos pat) "Too many arguments" enull]

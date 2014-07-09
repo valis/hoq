@@ -54,6 +54,7 @@ pred-succ (positive x) = idp Z (positive x)
 pred-succ (negative (suc x)) = idp Z (negative (suc x))
 
 succ-pred : (x : Z) -> succ (pred x) = x
+succ-pred (positive zero) = idp Z (positive zero)
 succ-pred (positive (suc x)) = idp Z (positive (suc x))
 succ-pred (negative x) = idp Z (negative x)
 
@@ -79,15 +80,19 @@ inv-idp : (p : base = base) -> comp' (inv' p) p = idp Circle base
 inv-idp = J Circle base (\x q -> comp Circle x base x (inv Circle base x q) q = idp Circle x)
     (idp (base = base) (idp Circle base)) base
 
-wind-succ-loop : (x : Z) -> comp' (wind (pred x)) (path loop) = wind x
-wind-succ-loop (positive (suc x)) = idp (base = base) (wind (positive (suc x)))
-wind-succ-loop (negative x) =
+wind-succ-loop-neg : (x : Nat) -> comp' (wind (pred (negative x))) (path loop) = wind (negative x)
+wind-succ-loop-neg x =
     comp (base = base) (comp' (comp' (wind (negative x)) (inv' (path loop))) (path loop))
                        (comp' (wind (negative x)) (comp' (inv' (path loop)) (path loop)))
                        (wind (negative x))
     (assoc (wind (negative x)) (inv' (path loop)) (path loop))
     (map (base = base) (base = base) (comp' (wind (negative x)))
         (comp' (inv' (path loop)) (path loop)) (idp Circle base) (inv-idp (path loop)))
+
+wind-succ-loop : (x : Z) -> comp' (wind (pred x)) (path loop) = wind x
+wind-succ-loop (positive zero) = wind-succ-loop-neg zero
+wind-succ-loop (positive (suc x)) = idp (base = base) (wind (positive (suc x)))
+wind-succ-loop (negative x) = wind-succ-loop-neg x
 
 decode : (x : Circle) -> code x -> base = x
 decode base     = wind

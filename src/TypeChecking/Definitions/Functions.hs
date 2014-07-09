@@ -25,7 +25,7 @@ typeCheckFunction p@(PIdent (lc,name)) ety cases = mdo
                                                                    pretty "Actual type:" <+> prettyOpen Nil ty]
     addFunctionCheck p (FunCall name cases') (Type ty lvl)
     casesAndPats <- forW cases $ \(lc,pats,mexpr) ->  do
-        (bf, TermsInCtx ctx _ ty', rtpats, cpats) <- typeCheckPatterns Nil (Type (nf WHNF ty) lvl) pats
+        (bf, TermsInCtx ctx _ ty', rtpats) <- typeCheckPatterns Nil (Type (nf WHNF ty) lvl) pats
         case (bf,mexpr) of
             (True,  Nothing) -> return Nothing
             (False, Nothing) -> do
@@ -38,7 +38,7 @@ typeCheckFunction p@(PIdent (lc,name)) ety cases = mdo
                 return Nothing
             (False, Just expr) -> do
                 (term, _) <- typeCheckCtx ctx expr (Just ty')
-                return $ Just ((rtpats, closed $ mapScope (const ()) $ abstractTermInCtx ctx term), (lc, cpats))
+                return $ Just ((rtpats, closed $ mapScope (const ()) $ abstractTermInCtx ctx term), (lc, rtpats))
     let cases' = map fst casesAndPats
     case checkCoverage (map snd casesAndPats) of
         Nothing -> warn [emsgLC lc "Incomplete pattern matching" enull]
