@@ -1,5 +1,6 @@
 module Syntax.PrettyPrinter
     ( ppTerm
+    , scopeToTerm
     ) where
 
 import Text.PrettyPrint
@@ -9,12 +10,12 @@ import Syntax.Term
 import qualified Syntax.ErrorDoc as E
 
 instance E.Pretty1 Term where
-    pretty1 t = ppTermCtx (map (\s -> (s,0)) (toList $ fmap render t)) t
+    pretty1 t = ppTermCtx (toList $ fmap render t) t
 
 ppTerm :: Term String -> Doc
-ppTerm t = ppTermCtx (map (\s -> (s,0)) (toList t)) (fmap text t)
+ppTerm t = ppTermCtx (toList t) (fmap text t)
 
-ppTermCtx :: [(String,Int)] -> Term Doc -> Doc
+ppTermCtx :: [String] -> Term Doc -> Doc
 ppTermCtx _ (Var d) = d
 ppTermCtx _ (Universe NoLevel) = text "Type"
 ppTermCtx _ (Universe l) = text $ "Type" ++ show l
@@ -43,35 +44,30 @@ ppTermCtx ctx t@(Coe es) = text "coe" <+> ppList ctx t es
 ppTermCtx ctx t@(Iso es) = text "iso" <+> ppList ctx t es
 ppTermCtx ctx t@(Squeeze es) = text "squeeze" <+> ppList ctx t es
 
-ppList :: [(String,Int)] -> Term Doc -> [Term Doc] -> Doc
+ppList :: [String] -> Term Doc -> [Term Doc] -> Doc
 ppList ctx t ts = hsep $ map (ppTermPrec (prec t + 1) ctx) ts
 
-ppScopePrec :: Int -> [(String,Int)] -> Scope String Term Doc -> ([Doc], Doc)
-ppScopePrec p ctx (ScopeTerm t) = ([], arrow <+> ppTermPrec p ctx t)
-ppScopePrec p ctx t = go ctx t
-  where
-    go ctx (ScopeTerm t@(Pi _ ScopeTerm{} _)) = ([], ppTermPrec p ctx t)
-    go ctx (ScopeTerm t) = ([], arrow <+> ppTermPrec p ctx t)
-    go ctx (Scope v s) =
-        let (ctx',v') = renameName v ctx
-            (vs,d) = go ctx' $ instantiateScope (Var $ text v') s
-        in  (text v' : vs, d)
+ppScopePrec :: Int -> [String] -> Scope String Term Doc -> ([Doc], Doc)
+ppScopePrec p ctx t =
+    let (vars, b, ctx', t') = scopeToTerm ctx text t
+    in (map text vars, (if b then arrow else empty) <+> ppTermPrec p ctx' t')
 
-ppTermPrec :: Int -> [(String,Int)] -> Term Doc -> Doc
+scopeToTerm :: [String] -> (String -> a) -> Scope String Term a -> ([String], Bool, [String], Term a)
+scopeToTerm ctx f (ScopeTerm t@(Pi _ ScopeTerm{} _)) = ([], False, ctx, t)
+scopeToTerm ctx f (ScopeTerm t) = ([], True, ctx, t)
+scopeToTerm ctx f (Scope v s) =
+    let (ctx', v') = renameName v ctx
+        (vs, b, ctx'', d) = scopeToTerm ctx' f $ instantiateScope (Var $ f v') s
+    in  (v' : vs, b, ctx'', d)
+
+ppTermPrec :: Int -> [String] -> Term Doc -> Doc
 ppTermPrec p ctx t = if p > prec t then parens (ppTermCtx ctx t) else ppTermCtx ctx t
 
 arrow :: Doc
 arrow = text "->"
 
-renameName :: String -> [(String,Int)] -> ([(String,Int)], String)
-renameName n0 = go
-  where
-    go [] = ([(n0,0)], n0)
-    go ((n,c):ns)
-        | n == n0 = ((n,c+1):ns, n0 ++ show c)
-        | otherwise =
-            let (ns', c') = go ns
-            in ((n,c):ns', c')
+renameName :: String -> [String] -> ([String], String)
+renameName var ctx = if var `Prelude.elem` ctx then renameName (var ++ "'") ctx else (var:ctx,var)
 
 prec :: Term a                 -> Int
 prec Var{}                      = 10

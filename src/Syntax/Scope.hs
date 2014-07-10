@@ -61,6 +61,11 @@ instantiate1 s t = t >>= \v -> case v of
 
 data Scope s f a = ScopeTerm (f a) | Scope s (Scope s f (Scoped a))
 
+instance (Eq1 f, Eq a) => Eq (Scope s f a) where
+    ScopeTerm t1 == ScopeTerm t2 = t1 ==# t2
+    Scope _ t1 == Scope _ t2 = t1 == t2
+    _ == _ = False
+
 instance Functor f => Functor (Scope s f) where
     fmap f (ScopeTerm t) = ScopeTerm (fmap f t)
     fmap f (Scope s   t) = Scope s $ fmap (fmap f) t

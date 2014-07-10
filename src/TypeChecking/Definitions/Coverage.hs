@@ -8,15 +8,6 @@ import Syntax.Pattern
 
 data PatternType = Interval | DataType Int [(Int,[Pattern])] | Unknown
 
-cmpCon :: PatternCon -> PatternCon -> Bool
-cmpCon (PatternCon i _ _) (PatternCon i' _ _) = i == i'
-
-cmpPattern :: Pattern -> Pattern -> Bool
-cmpPattern (PatternI c) (PatternI c') = c == c'
-cmpPattern PatternVar PatternVar = True
-cmpPattern (Pattern c _) (Pattern c' _) = cmpCon c c'
-cmpPattern _ _ = False
-
 data OK = OK | Incomplete deriving Eq
 data Result = Result OK [Int]
 
@@ -40,12 +31,12 @@ checkNull i t ([] : cs) = (t, [], Just i)
 checkNull i t ((pat:pats) : cs) =
     let (t1, cs', b) = checkNull (i + 1) t cs
         t2 = case pat of
-                PatternI _                   -> Interval
-                PatternVar                   -> t1
-                Pattern (PatternCon _ n _) _ ->
+                PatternI _                     -> Interval
+                PatternVar _                   -> t1
+                Pattern (PatternCon _ n _ _) _ ->
                     let heads = pat : concatMap (\c -> if null c then [] else [head c]) cs
                     in DataType n $ heads >>= \p -> case p of
-                        Pattern (PatternCon i _ conds) _ -> map (\cond -> (i,cond)) conds
+                        Pattern (PatternCon i _ _ conds) _ -> map (\cond -> (i,cond)) conds
                         _ -> []
     in (t2, (pat, pats) : cs', b)
 
@@ -60,7 +51,7 @@ checkIntervalClauses clauses =
     let get con = map (\(i,(_,ps)) -> (i,ps)) $ filterWithIndex (\(c,_) -> c `cmpPattern` con) clauses
         lefts   = get (PatternI ILeft)
         rights  = get (PatternI IRight)
-        vars    = get PatternVar
+        vars    = get (PatternVar "")
         Result _  is0 = checkClauses (map snd lefts)
         Result _  is1 = checkClauses (map snd rights)
         Result ok is2 = checkClauses (map snd vars)
@@ -69,14 +60,14 @@ checkIntervalClauses clauses =
 checkDataTypeClauses :: Int -> [(Int,[Pattern])] -> [(Pattern, [Pattern])] -> Result
 checkDataTypeClauses n conds clauses = getResults $ flip map [0 .. n-1] $ \j ->
     let getLength [] = 0
-        getLength (Pattern (PatternCon i _ _) args : _) | i == j = length args
+        getLength (Pattern (PatternCon i _ _ _) args : _) | i == j = length args
         getLength (_ : pats) = getLength pats
         len = getLength (map fst clauses)
         
         getPatterns (Pattern _ pats) = pats
-        getPatterns _                = replicate len PatternVar
+        getPatterns _                = replicate len (PatternVar "_")
     in map (\(i,(p,ps)) -> (i, getPatterns p ++ ps))
-           (filterWithIndex (\(c,_) -> c `cmpPattern` Pattern (PatternCon j n []) [] || c `cmpPattern` PatternVar) clauses)
+           (filterWithIndex (\(c,_) -> c `cmpPattern` Pattern (PatternCon j n "" []) [] || c `cmpPattern` PatternVar "") clauses)
        ++ (conds >>= \(c,ps) -> if j == c then [(-1, ps)] else [])
   where
     getResults :: [[(Int,[Pattern])]] -> Result

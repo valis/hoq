@@ -1,0 +1,33 @@
+data Nat = zero | suc Nat
+
+test1 : I -> Nat
+test1 left = zero
+test1 _ = zero
+
+test2 : I -> Nat
+test2 left = zero
+test2 _ = suc zero
+
+test3 : I -> Nat -> Nat
+test3 right x = x
+test3 _ (suc x) = suc x
+test3 _ zero = zero
+
+test4 : I -> Nat -> Nat
+test4 right x = x
+test4 _ (suc x) = suc x
+test4 _ zero = suc zero
+
+data Foo = Foo I | Bar Nat
+
+test5 : Foo -> Nat
+test5 (Foo left) = zero
+test5 (Bar x) = x
+test5 (Foo _) = suc zero
+
+data Z = positive Nat | negative Nat with
+    negative zero = positive zero
+
+test6 : Z -> Z
+test6 (positive x) = positive (suc x)
+test6 (negative x) = negative (suc x)

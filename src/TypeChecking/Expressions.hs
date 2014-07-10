@@ -86,8 +86,8 @@ typeCheckCtx ctx expr ty = go ctx expr [] $ fmap (nfType WHNF) ty
                     Just (Type (DataType d _ _) _) -> Just d
                     _                              -> Nothing
                 case mt of
-                    [FunctionE te ty] -> return (fmap (liftBase ctx) te , fmap (liftBase ctx) ty)
-                    [DataTypeE ty e]  -> return (DataType var e []      , fmap (liftBase ctx) ty)
+                    [FunctionE te ty]  -> return (fmap (liftBase ctx) te , fmap (liftBase ctx) ty)
+                    DataTypeE ty e : _ -> return (DataType var e []      , fmap (liftBase ctx) ty)
                     [ConstructorE _ (ScopeTerm con) (ScopeTerm ty, lvl)] ->
                         return (fmap (liftBase ctx) con, Type (fmap (liftBase ctx) ty) lvl)
                     [ConstructorE _ con (ty, lvl)] -> case mty of

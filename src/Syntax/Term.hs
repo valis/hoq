@@ -42,8 +42,8 @@ data Term a
     | App (Term a) (Term a)
     | Lam (Scope1 String Term a)
     | Pi (Type a) (Scope String Term a) Level
-    | Con Int String [([Pattern], Closed (Scope () Term))] [Term a]
-    | FunCall String [([Pattern], Closed (Scope () Term))]
+    | Con Int String [([Pattern], Closed (Scope String Term))] [Term a]
+    | FunCall String [([Pattern], Closed (Scope String Term))]
     | FunSyn  String (Term a)
     | Universe Level
     | DataType String Int [Term a]

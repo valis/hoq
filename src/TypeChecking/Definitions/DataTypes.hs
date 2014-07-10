@@ -15,6 +15,7 @@ import TypeChecking.Monad
 import TypeChecking.Context
 import TypeChecking.Expressions
 import TypeChecking.Definitions.Patterns
+import TypeChecking.Definitions.Conditions
 import Normalization
 
 type Tele = [([Arg], Expr)]
@@ -40,11 +41,13 @@ typeCheckDataType p@(PIdent (lc,dt)) params cons conds = mdo
                 (bf, TermsInCtx ctx' _ ty', rtpats) <- typeCheckPatterns ctx (nfType WHNF ty) pats
                 when bf $ warn [emsgLC lc "Absurd patterns are not allowed in conditions" enull]
                 (term, _) <- typeCheckCtx (ctx +++ ctx') expr (Just ty')
-                return $ Just (con, (rtpats, closed $ mapScope (const ()) $ abstractTermInCtx ctx' term))
+                return $ Just (con, (rtpats, closed $ abstractTermInCtx ctx' term))
     lift $ deleteDataType dt
     let lvls = map (\(_, _, Type _ lvl) -> lvl) cons'
         lvl = if null lvls then NoLevel else maximum lvls
     lift $ addDataType dt (Type (replaceLevel dtTerm lvl) lvl) lcons
+    forM_ cons' $ \(_, T.Con i conName conConds [], _) ->
+        warn $ checkConditions lc (Closed $ T.Con i conName conConds []) conConds
 
 checkTele :: (Monad m, Eq a) => Ctx String Type String a -> Tele -> Closed Term
     -> TCM m (SomeEq (Ctx String Type String), Type a)

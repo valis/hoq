@@ -1,5 +1,6 @@
 module Normalization
-    ( NF(..), nf, nfType
+    ( NF(..), nf
+    , nfType, nfScope
     ) where
 
 import Control.Monad
@@ -16,10 +17,6 @@ nf mode e = go e []
     go e@Var{}            ts = apps e (nfs mode ts)
     go e@Universe{}       _  = e
     go (Pi a b lvl)       _  | mode == NF = Pi (nfType NF a) (nfScope b) lvl
-      where
-        nfScope :: Eq a => Scope s Term a -> Scope s Term a
-        nfScope (ScopeTerm t) = ScopeTerm (nf NF t)
-        nfScope (Scope v   s) = Scope v (nfScope s)
     go e@Pi{}             _  = e
     go e@Interval         _  = e
     go e@(ICon _)         _  = e
@@ -79,6 +76,10 @@ nf mode e = go e []
 nfType :: Eq a => NF -> Type a -> Type a
 nfType mode (Type t lvl) = Type (nf mode t) lvl
 
+nfScope :: Eq a => Scope s Term a -> Scope s Term a
+nfScope (ScopeTerm t) = ScopeTerm (nf NF t)
+nfScope (Scope v   s) = Scope v (nfScope s)
+
 isStationary :: Eq a => Term a -> Bool
 isStationary t = case sequenceA (nf NF $ App (fmap Free t) $ Var Bound) of
     Free _ -> True
@@ -88,16 +89,16 @@ nfs :: Eq a => NF -> [Term a] -> [Term a]
 nfs NF terms = map (nf NF) terms
 nfs _  terms = terms
 
-instantiatePat :: Eq a => [Pattern] -> Scope () Term a -> [Term a] -> Maybe (Term a, [Term a])
+instantiatePat :: Eq a => [Pattern] -> Scope b Term a -> [Term a] -> Maybe (Term a, [Term a])
 instantiatePat [] (ScopeTerm term) terms = Just (term, terms)
-instantiatePat (PatternVar : pats) (Scope _ scope) (term:terms) = instantiatePat pats (instantiateScope term scope) terms
+instantiatePat (PatternVar  _ : pats) (Scope _ scope) (term:terms) = instantiatePat pats (instantiateScope term scope) terms
 instantiatePat (PatternI con : pats) scope (term:terms) = case nf WHNF term of
     ICon i | i == con -> instantiatePat pats scope terms
     _ -> Nothing
-instantiatePat (Pattern (PatternCon con _ _) pats1 : pats) scope (term:terms) = case nf WHNF term of
+instantiatePat (Pattern (PatternCon con _ _ _) pats1 : pats) scope (term:terms) = case nf WHNF term of
     Con i n _ terms1 | i == con -> instantiatePat (pats1 ++ pats) scope (terms1 ++ terms)
     _ -> Nothing
 instantiatePat _ _ _ = Nothing
 
-instantiateCases :: Eq a => [([Pattern], Closed (Scope () Term))] -> [Term a] -> Maybe (Term a, [Term a])
+instantiateCases :: Eq a => [([Pattern], Closed (Scope b Term))] -> [Term a] -> Maybe (Term a, [Term a])
 instantiateCases cases terms = msum $ map (\(pats, Closed scope) -> instantiatePat pats scope terms) cases
