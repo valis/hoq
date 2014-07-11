@@ -102,9 +102,9 @@ class POrd a where
 
 instance Eq a => POrd (Term a) where
     pcompare (Pi a (ScopeTerm b) _) (Pi a' b'@Scope{} lvl') =
-        contraCovariant (pcompare a a') $ pcompare (fmap Free b) (dropOnePi a' b' lvl')
+        contraCovariant (pcompare a a') $ pcompare (fmap Free b) (unScope1 $ dropOnePi a' b' lvl')
     pcompare (Pi a b@Scope{} lvl) (Pi a' (ScopeTerm b') _) =
-        contraCovariant (pcompare a a') $ pcompare (dropOnePi a b lvl) (fmap Free b')
+        contraCovariant (pcompare a a') $ pcompare (unScope1 $ dropOnePi a b lvl) (fmap Free b')
     pcompare (Pi a b lvl) (Pi a' b' lvl') = contraCovariant (pcompare a a') $ pcompareScopes a b lvl a' b' lvl'
       where
         pcompareScopes :: Eq a => Type a -> Scope String Term a -> Level -> Type a -> Scope String Term a -> Level -> Maybe Ordering
@@ -194,7 +194,7 @@ collect term = go term []
     go (Squeeze es) ts = Squeeze (es ++ ts)
     go _ _ = term
 
-dropOnePi :: Type a -> Scope String Term a -> Level -> Term (Scoped a)
-dropOnePi _ (ScopeTerm b) _ = fmap Free b
-dropOnePi _ (Scope _ (ScopeTerm b)) _ = b
-dropOnePi a (Scope _ b) lvl = Pi (fmap Free a) b lvl
+dropOnePi :: Type a -> Scope String Term a -> Level -> Scope1 String Term a
+dropOnePi _ (ScopeTerm b) _ = Scope1 "_" (fmap Free b)
+dropOnePi _ (Scope s (ScopeTerm b)) _ = Scope1 s b
+dropOnePi a (Scope s b) lvl = Scope1 s $ Pi (fmap Free a) b lvl

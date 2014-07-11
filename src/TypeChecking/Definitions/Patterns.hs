@@ -68,7 +68,7 @@ typeCheckPatterns ctx (Type (T.Pi a b lvl) _) (pat:pats) = do
                                             _         -> "_"
                                 in return $ TermInCtx (Snoc Nil var a') (T.Var Bound)
                             Just te -> return te
-    let b' = instantiate1 te $ fmap (fmap $ liftBase ctx') (dropOnePi a b lvl)
+    let b' = instantiate1 te $ fmap (fmap $ liftBase ctx') $ unScope1 (dropOnePi a b lvl)
     (bf2, TermsInCtx ctx'' tes ty, rtpats) <- typeCheckPatterns (ctx +++ ctx') (Type (nf WHNF b') lvl) pats
     return (bf1 || bf2, TermsInCtx (ctx' +++ ctx'') (fmap (liftBase ctx'') te : tes) ty, rtpat:rtpats)
 typeCheckPatterns _ _ (pat:_) = throwError [emsgLC (parPatGetPos pat) "Too many arguments" enull]

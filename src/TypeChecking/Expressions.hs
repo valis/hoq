@@ -69,13 +69,13 @@ typeCheckCtx ctx expr ty = go ctx expr [] $ fmap (nfType WHNF) ty
     go ctx (Paren _ e) exprs ty = go ctx e exprs ty
     go ctx (E.App e1 e2) exprs ty = go ctx e1 (e2:exprs) ty
     go ctx (E.Lam _ [] e) exprs ty = go ctx e exprs ty
-    go ctx (E.Lam p (arg : args) e) [] (Just (Type ty lvl)) = case ty of
-        T.Pi a@(Type _ lvl1) b lvl2 -> do
-            let var = unArg arg
-            (te, _) <- go (Snoc ctx var a) (E.Lam p args e) [] $ Just $ Type (nf WHNF $ dropOnePi a b lvl2) lvl2
-            return (T.Lam $ Scope1 var te, Type ty $ min lvl $ max lvl1 lvl2)
-        _ -> throwError [emsgLC (argGetPos arg) "" $ pretty "Expected type:" <+> prettyOpen ctx ty $$
-                                                     pretty "But lambda expression has pi type"]
+    go ctx (E.Lam p (arg : args) e) [] (Just (Type ty@(T.Pi a@(Type _ lvl1) b lvl2) lvl)) = do
+        let var = unArg arg
+        (te, _) <- go (Snoc ctx var a) (E.Lam p args e) [] $ Just $ Type (nf WHNF $ unScope1 $ dropOnePi a b lvl2) lvl2
+        return (T.Lam $ Scope1 var te, Type ty $ min lvl $ max lvl1 lvl2)
+    go ctx (E.Lam p (arg : args) e) [] (Just (Type ty _)) =
+        throwError [emsgLC (argGetPos arg) "" $ pretty "Expected type:" <+> prettyOpen ctx ty $$
+                                                pretty "But lambda expression has pi type"]
     go _ e@E.Lam{} _ _ = throwError [inferErrorMsg (getPos e) "the argument"]
     go ctx (E.Var (NoArg (Pus (lc,_)))) exprs mty = throwError [emsgLC lc "Expected an identifier" enull]
     go ctx (E.Var (Arg (PIdent (lc,var)))) exprs mty = do
@@ -157,11 +157,12 @@ typeCheckCtx ctx expr ty = go ctx expr [] $ fmap (nfType WHNF) ty
                                                        pretty "Actual type:" <+> prettyOpen ctx t1']
     go ctx e@E.Coe{} es Nothing | length es < 4 = throwError [emsgLC (getPos e) "Not implemented yet" enull] -- TODO
     go ctx e@E.Coe{} (e1:e2:e3:e4:es) Nothing = do
-        (r1, _) <- go ctx e1 [] $ Just $ Type (T.Pi (Type T.Interval NoLevel) (ScopeTerm $ T.Universe NoLevel) $ Level 1) (Level 1) -- TODO
+        (r1, Scope1 v t1, _) <- typeCheckLambda ctx e1 (Type T.Interval NoLevel)
+        lvl <- checkIsType (Snoc ctx v $ error "") e1 t1
         (r2, _) <- go ctx e2 [] $ Just $ Type T.Interval NoLevel
-        (r3, _) <- go ctx e3 [] $ Just $ Type (nf WHNF $ T.App r1 r2) NoLevel -- TODO
+        (r3, _) <- go ctx e3 [] $ Just $ Type (nf WHNF $ T.App r1 r2) lvl
         (r4, _) <- go ctx e4 [] $ Just $ Type T.Interval NoLevel
-        (tes, ty) <- typeCheckApps (getPos e) ctx es $ Type (T.App r1 r4) NoLevel -- TODO
+        (tes, ty) <- typeCheckApps (getPos e) ctx es $ Type (T.App r1 r4) lvl
         return (T.Coe $ [r1,r2,r3,r4] ++ tes, ty)
     go ctx e@E.Iso{} es Nothing | length es < 7 = throwError [emsgLC (getPos e) "Not implemented yet" enull] -- TODO
     go ctx E.Iso{} [e1,e2,e3,e4,e5,e6,e7] Nothing = do
@@ -217,18 +218,21 @@ typeCheckCtx ctx expr ty = go ctx expr [] $ fmap (nfType WHNF) ty
     go ctx e@E.Path{} [] Nothing = throwError [inferErrorMsg (getPos e) "Path"]
     go ctx e@E.Path{} [] (Just ty) = throwError [emsgLC (getPos e) "Not implemented yet" enull] -- TODO
     go ctx E.Path{} (e1:es) Nothing | length es < 3 = do
-        let lvl = NoLevel -- TODO
-        (r1, _) <- go ctx e1 [] $ Just $ Type (T.Pi (Type T.Interval NoLevel) (ScopeTerm $ T.Universe lvl) $ succ lvl) (succ lvl)
+        (r1, Scope1 v t1, _) <- typeCheckLambda ctx e1 (Type T.Interval NoLevel)
+        lvl <- checkIsType (Snoc ctx v $ error "") e1 t1
+        let r1' c = Type (T.App r1 $ ICon c) lvl
+            mkType t = Type t (succ lvl)
         case es of
-            [] -> return (T.Path Explicit (Just r1) [], Type (T.Pi (Type (T.App r1 $ ICon ILeft) lvl)
-                (ScopeTerm $ T.Pi (Type (T.App r1 $ ICon IRight) lvl) (ScopeTerm $ T.Universe lvl) $ succ lvl) $ succ lvl) $ succ lvl)
+            [] -> return (T.Path Explicit (Just r1) [], mkType $
+                T.Pi (r1' ILeft) (ScopeTerm $ T.Pi (r1' IRight) (ScopeTerm $ T.Universe lvl) $ succ lvl) $ succ lvl)
             [e2] -> do
-                (r2,_) <- go ctx e2 [] $ Just $ Type (nf WHNF $ T.App r1 $ ICon ILeft) lvl
-                return (T.Path Explicit (Just r1) [r2], Type (T.Pi (Type (T.App r1 $ ICon IRight) lvl) (ScopeTerm $ T.Universe lvl) $ succ lvl) $ succ lvl)
+                (r2,_) <- go ctx e2 [] $ Just $ nfType WHNF (r1' ILeft)
+                return (T.Path Explicit (Just r1) [r2], mkType $
+                    T.Pi (r1' IRight) (ScopeTerm $ T.Universe lvl) $ succ lvl)
             [e2,e3] -> do
-                (r2,_) <- go ctx e2 [] $ Just $ Type (nf WHNF $ T.App r1 $ ICon ILeft) lvl
-                (r3,_) <- go ctx e3 [] $ Just $ Type (nf WHNF $ T.App r1 $ ICon IRight) lvl
-                return (T.Path Explicit (Just r1) [r2,r3], Type (T.Universe lvl) $ succ lvl)
+                (r2,_) <- go ctx e2 [] $ Just $ nfType WHNF (r1' ILeft)
+                (r3,_) <- go ctx e3 [] $ Just $ nfType WHNF (r1' IRight)
+                return (T.Path Explicit (Just r1) [r2,r3], mkType $ T.Universe lvl)
             _ -> error "typeCheckCtx.Path"
     go ctx (E.PathImp e1 e2) [] Nothing = do
         (r1, Type t1 lvl) <- go ctx e1 [] Nothing
@@ -239,6 +243,28 @@ typeCheckCtx ctx expr ty = go ctx expr [] $ fmap (nfType WHNF) ty
         (r, Type t _) <- go ctx e es Nothing
         actExpType ctx t ty (getPos e)
         return (r, Type ty lvl)
+
+typeCheckLambda :: (Monad m, Eq a) => Ctx String Type String a -> Expr -> Type a
+    -> TCM m (Term a, Scope1 String Term a, Level)
+typeCheckLambda ctx (Paren _ e) ty = typeCheckLambda ctx e ty
+typeCheckLambda ctx (E.Lam _ [] e) ty = typeCheckLambda ctx e ty
+typeCheckLambda ctx (E.Lam p (arg:args) e) ty = do
+    let var = unArg arg
+    (te, Type ty' lvl) <- typeCheckCtx (Snoc ctx var ty) (E.Lam p args e) Nothing
+    return (T.Lam $ Scope1 var te, Scope1 var ty', lvl)
+typeCheckLambda ctx e ty = do
+    (te, Type ty' _) <- typeCheckCtx ctx e Nothing
+    case nf WHNF ty' of
+        T.Pi a b lvlb ->
+            let Type na lvla = nfType NF a
+                Type nty lvlty = nfType NF ty
+            in if (nty `lessOrEqual` na)
+                then return (te, dropOnePi a b lvlb, lvlb)
+                else throwError [emsgLC (getPos e) "" $
+                        pretty "Expected type:" <+> prettyOpen ctx (T.Pi (Type nty lvla) b lvlb) $$
+                        pretty "Actual type:"   <+> prettyOpen ctx (T.Pi (Type na lvlty) b lvlb)]
+        _ -> throwError [emsgLC (getPos e) "" $ pretty "Expected pi type" $$
+                                                pretty "Actual type:" <+> prettyOpen ctx ty']
 
 actExpType :: (Monad m, Eq a) => Ctx String Type String a -> Term a -> Term a -> (Int,Int) -> EDocM m ()
 actExpType ctx act exp lc =
@@ -254,7 +280,7 @@ typeCheckApps lc ctx exprs ty = go exprs (nfType WHNF ty)
     go [] ty = return ([], ty)
     go (expr:exprs) (Type (T.Pi a b lvl') _) = do
         (term, _)   <- typeCheckCtx ctx expr (Just a)
-        (terms, ty) <- go exprs $ Type (nf WHNF $ instantiate1 term $ dropOnePi a b lvl') lvl'
+        (terms, ty) <- go exprs $ Type (nf WHNF $ instantiate1 term $ unScope1 $ dropOnePi a b lvl') lvl'
         return (term:terms, ty)
     go _ (Type ty _) = throwError [emsgLC lc "" $ pretty "Expected pi type" $$
                                                   pretty "Actual type:" <+> prettyOpen ctx ty]

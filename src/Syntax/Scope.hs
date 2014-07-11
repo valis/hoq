@@ -37,6 +37,9 @@ class MonadF t where
 
 data Scope1 s f a = Scope1 s (f (Scoped a))
 
+unScope1 :: Scope1 s f a -> f (Scoped a)
+unScope1 (Scope1 _ t) = t
+
 instance (Eq1 f, Eq a) => Eq (Scope1 s f a) where
     Scope1 _ t1 == Scope1 _ t2 = t1 ==# t2
 
