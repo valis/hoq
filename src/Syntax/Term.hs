@@ -1,10 +1,10 @@
 module Syntax.Term
     ( Term(..), Type(..)
     , Level(..), level
-    , Explicit(..)
+    , Explicit(..), PatternC
     , module Syntax.Scope, module Syntax.Pattern
     , POrd(..), lessOrEqual
-    , apps, dropOnePi
+    , apps, collect, dropOnePi
     ) where
 
 import Prelude.Extras
@@ -42,9 +42,9 @@ data Term a
     | App (Term a) (Term a)
     | Lam (Scope1 String Term a)
     | Pi (Type a) (Scope String Term a) Level
-    | Con Int String [([Pattern (Closed (Scope String Term))], Closed (Scope String Term))] [Term a]
-    | FunCall String [([Pattern (Closed (Scope String Term))], Closed (Scope String Term))]
-    | FunSyn  String (Term a)
+    | Con Int (Int,Int) String [([PatternC], Closed (Scope String Term))] [Term a]
+    | FunCall (Int,Int) String [([PatternC], Closed (Scope String Term))]
+    | FunSyn String (Term a)
     | Universe Level
     | DataType String Int [Term a]
     | Interval
@@ -57,6 +57,7 @@ data Term a
     | Squeeze [Term a]
 data Type a = Type (Term a) Level
 data Explicit = Explicit | Implicit
+type PatternC = Pattern (Closed (Scope String Term))
 
 instance Eq a => Eq (Term a) where
     e1 == e2 = go e1 [] e2 []
@@ -71,8 +72,8 @@ instance Eq a => Eq (Term a) where
             in l2 == es && go s [] (fmap Free t) (map (fmap Free) l1 ++ [Var Bound])
         go t es t'@Lam{} es' = go t' es' t es
         go e1@Pi{} es e2@Pi{} es' = pcompare e1 e2 == Just EQ && es == es'
-        go (Con c _ _ as) es (Con c' _ _ as') es' = c == c' && as ++ es == as' ++ es'
-        go (FunCall n _) es (FunCall n' _) es' = n == n' && es == es'
+        go (Con c _ _ _ as) es (Con c' _ _ _ as') es' = c == c' && as ++ es == as' ++ es'
+        go (FunCall _ n _) es (FunCall _ n' _) es' = n == n' && es == es'
         go (FunSyn n _) es (FunSyn n' _) es' = n == n' && es == es'
         go (Universe u) es (Universe u') es' = u == u' && es == es'
         go (DataType d _ as) es (DataType d' _ as') es' = d == d' && as ++ es == as' ++ es'
@@ -139,23 +140,23 @@ instance Applicative Term where
     (<*>) = ap
 
 instance Traversable Term where
-    traverse f (Var a)           = Var          <$> f a
-    traverse f (App e1 e2)       = App          <$> traverse f e1 <*> traverse f e2
-    traverse f (Lam s)           = Lam          <$> traverse f s
-    traverse f (At e1 e2 e3 e4)  = At           <$> traverse f e1 <*> traverse f e2 <*> traverse f e3 <*> traverse f e4
+    traverse f (Var a)            = Var            <$> f a
+    traverse f (App e1 e2)        = App            <$> traverse f e1 <*> traverse f e2
+    traverse f (Lam s)            = Lam            <$> traverse f s
+    traverse f (At e1 e2 e3 e4)   = At             <$> traverse f e1 <*> traverse f e2 <*> traverse f e3 <*> traverse f e4
     traverse f (Pi (Type e1 lvl1) e2 lvl2) = (\e1' e2' -> Pi (Type e1' lvl1) e2' lvl2) <$> traverse f e1 <*> traverse f e2
-    traverse f (Path h me es)    = Path h       <$> traverse (traverse f) me <*> traverse (traverse f) es
-    traverse f (PCon e)          = PCon         <$> traverse (traverse f) e
-    traverse f (Con c n cs as)   = Con c n cs   <$> traverse (traverse f) as
-    traverse f (Coe as)          = Coe          <$> traverse (traverse f) as
-    traverse f (Iso as)          = Iso          <$> traverse (traverse f) as
-    traverse f (Squeeze as)      = Squeeze      <$> traverse (traverse f) as
-    traverse f (FunSyn n e)      = FunSyn n     <$> traverse f e
-    traverse f (DataType d e as) = DataType d e <$> traverse (traverse f) as
-    traverse _ (FunCall n cs)    = pure (FunCall n cs)
-    traverse _ (Universe l)      = pure (Universe l)
-    traverse _ Interval          = pure Interval
-    traverse _ (ICon c)          = pure (ICon c)
+    traverse f (Path h me es)     = Path h         <$> traverse (traverse f) me <*> traverse (traverse f) es
+    traverse f (PCon e)           = PCon           <$> traverse (traverse f) e
+    traverse f (Con c lc n cs as) = Con c lc n cs  <$> traverse (traverse f) as
+    traverse f (Coe as)           = Coe            <$> traverse (traverse f) as
+    traverse f (Iso as)           = Iso            <$> traverse (traverse f) as
+    traverse f (Squeeze as)       = Squeeze        <$> traverse (traverse f) as
+    traverse f (FunSyn n e)       = FunSyn n       <$> traverse f e
+    traverse f (DataType d e as)  = DataType d e   <$> traverse (traverse f) as
+    traverse _ (FunCall lc n cs)  = pure (FunCall lc n cs)
+    traverse _ (Universe l)       = pure (Universe l)
+    traverse _ Interval           = pure Interval
+    traverse _ (ICon c)           = pure (ICon c)
 
 instance Monad Term where
     return                          = Var
@@ -163,8 +164,8 @@ instance Monad Term where
     App e1 e2                 >>= k = App (e1 >>= k) (e2 >>= k)
     Lam e                     >>= k = Lam (e >>>= k)
     Pi (Type e1 lvl1) e2 lvl2 >>= k = Pi (Type (e1 >>= k) lvl1) (e2 >>>= k) lvl2
-    Con c n cs as             >>= k = Con c n cs (map (>>= k) as)
-    FunCall n cs              >>= k = FunCall n cs
+    Con c lc n cs as          >>= k = Con c lc n cs (map (>>= k) as)
+    FunCall lc n cs           >>= k = FunCall lc n cs
     FunSyn n e                >>= k = FunSyn n (e >>= k)
     Universe l                >>= _ = Universe l
     DataType d e as           >>= k = DataType d e $ map (>>= k) as
@@ -180,6 +181,18 @@ instance Monad Term where
 apps :: Term a -> [Term a] -> Term a
 apps e [] = e
 apps e1 (e2:es) = apps (App e1 e2) es
+
+collect :: Term a -> Term a
+collect term = go term []
+  where
+    go (App e1 e2) ts = go e1 (e2:ts)
+    go (Con a b c d es) ts = Con a b c d (es ++ ts)
+    go (DataType a b es) ts = DataType a b (es ++ ts)
+    go (Path a b es) ts = Path a b (es ++ ts)
+    go (Coe es) ts = Coe (es ++ ts)
+    go (Iso es) ts = Iso (es ++ ts)
+    go (Squeeze es) ts = Squeeze (es ++ ts)
+    go _ _ = term
 
 dropOnePi :: Type a -> Scope String Term a -> Level -> Term (Scoped a)
 dropOnePi _ (ScopeTerm b) _ = fmap Free b

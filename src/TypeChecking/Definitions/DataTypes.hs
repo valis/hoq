@@ -16,6 +16,7 @@ import TypeChecking.Context
 import TypeChecking.Expressions
 import TypeChecking.Definitions.Patterns
 import TypeChecking.Definitions.Conditions
+import TypeChecking.Definitions.Termination
 import Normalization
 
 type Tele = [([Arg], Expr)]
@@ -25,10 +26,10 @@ typeCheckDataType p@(PIdent (lc,dt)) params cons conds = mdo
     let lcons = length cons
     (SomeEq ctx, dataType@(Type dtTerm _)) <- checkTele Nil params $ Closed (T.Universe NoLevel)
     addDataTypeCheck p dataType lcons
-    cons' <- forW (zip cons [0..]) $ \((con@(PIdent (_,conName)),tele),i) -> do
+    cons' <- forW (zip cons [0..]) $ \((con@(PIdent (lc,conName)),tele),i) -> do
         (_, Type conType conLevel) <- checkTele ctx tele $ Closed $ DataType dt lcons []
         checkPositivity p (nf WHNF conType)
-        let conTerm = T.Con i conName (map snd $ filter (\(c,_) -> c == conName) conds') []
+        let conTerm = T.Con i lc conName (map snd $ filter (\(c,_) -> c == conName) conds') []
         return $ Just (con, conTerm, Type conType conLevel)
     forM_ cons' $ \(con, te, Type ty lvl) ->
         addConstructorCheck con dt lcons (abstractTermInCtx ctx te) (abstractTermInCtx ctx ty) lvl
@@ -41,13 +42,15 @@ typeCheckDataType p@(PIdent (lc,dt)) params cons conds = mdo
                 (bf, TermsInCtx ctx' _ ty', rtpats) <- typeCheckPatterns ctx (nfType WHNF ty) pats
                 when bf $ warn [emsgLC lc "Absurd patterns are not allowed in conditions" enull]
                 (term, _) <- typeCheckCtx (ctx +++ ctx') expr (Just ty')
-                return $ Just (con, (rtpats, closed $ abstractTermInCtx ctx' term))
+                let scope = closed (abstractTermInCtx ctx' term)
+                throwErrors (checkTermination con rtpats scope)
+                return $ Just (con, (rtpats, scope))
     lift $ deleteDataType dt
     let lvls = map (\(_, _, Type _ lvl) -> lvl) cons'
         lvl = if null lvls then NoLevel else maximum lvls
     lift $ addDataType dt (Type (replaceLevel dtTerm lvl) lvl) lcons
-    forM_ cons' $ \(_, T.Con i conName conConds [], _) ->
-        warn $ checkConditions lc (Closed $ T.Con i conName conConds []) conConds
+    forM_ cons' $ \(_, T.Con i lc' conName conConds [], _) -> do
+        warn $ checkConditions lc (Closed $ T.Con i lc' conName conConds []) conConds
 
 checkTele :: (Monad m, Eq a) => Ctx String Type String a -> Tele -> Closed Term
     -> TCM m (SomeEq (Ctx String Type String), Type a)
@@ -88,8 +91,8 @@ checkNoDataType :: Monad m => PIdent -> Term a -> EDocM m ()
 checkNoDataType (PIdent (lc,dt)) t = when (dt `elem` collectDataTypes t) $
     throwError [emsgLC lc "Data type is not strictly positive" enull]
 
-collectDataTypes :: Term a          -> [String]
-collectDataTypes (T.Var _)             = []
+collectDataTypes :: Term a            -> [String]
+collectDataTypes T.Var{}               = []
 collectDataTypes (T.App e1 e2)         = collectDataTypes e1 ++ collectDataTypes e2
 collectDataTypes (T.Lam (Scope1 _ e))  = collectDataTypes e
 collectDataTypes (T.Pi (Type e _) s _) = collectDataTypes e ++ go s
@@ -97,13 +100,13 @@ collectDataTypes (T.Pi (Type e _) s _) = collectDataTypes e ++ go s
     go :: Scope s Term a -> [String]
     go (ScopeTerm t) = collectDataTypes t
     go (Scope _   s) = go s
-collectDataTypes (T.Con _ _ _ as)      = as >>= collectDataTypes
-collectDataTypes (FunCall _ _)         = []
-collectDataTypes (FunSyn _ _)          = []
+collectDataTypes (T.Con _ _ _ _ as)    = as >>= collectDataTypes
+collectDataTypes FunCall{}             = []
+collectDataTypes FunSyn{}              = []
 collectDataTypes (DataType d _ as)     = d : (as >>= collectDataTypes)
-collectDataTypes (T.Universe _)        = []
+collectDataTypes T.Universe{}          = []
 collectDataTypes T.Interval            = []
-collectDataTypes (ICon _)              = []
+collectDataTypes ICon{}                = []
 collectDataTypes (T.Path _ me1 es)     = maybe [] collectDataTypes me1 ++ (es >>= collectDataTypes)
 collectDataTypes (PCon me)             = maybe [] collectDataTypes me
 collectDataTypes (T.At _ _ e3 e4)      = collectDataTypes e3 ++ collectDataTypes e4

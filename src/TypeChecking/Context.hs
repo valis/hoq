@@ -14,6 +14,10 @@ data Ctx s f b a where
 ctx +++ Nil = ctx
 ctx +++ Snoc ctx' s t = Snoc (ctx +++ ctx') s t
 
+lengthCtx :: Ctx s f b a -> Int
+lengthCtx Nil = 0
+lengthCtx (Snoc ctx _ _) = lengthCtx ctx + 1
+
 lookupCtx :: (Monad g, Functor f, Eq s) => s -> Ctx s f b a -> Maybe (g a, f a)
 lookupCtx _ Nil = Nothing
 lookupCtx s (Snoc ctx s' t) = if s == s'

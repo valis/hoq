@@ -29,9 +29,9 @@ ppTermCtx ctx t@Lam{} = go ctx [] t
         let (ctx', n') = renameName n ctx
         in go ctx' (text n' : vars) $ instantiate1 (Var $ text n') s
     go ctx vars t' = text "\\" <> hsep (reverse vars) <+> arrow <+> ppTermPrec (prec t) ctx t'
-ppTermCtx ctx t@(Con _ n _ as) = text n <+> ppList ctx t as
+ppTermCtx ctx t@(Con _ _ n _ as) = text n <+> ppList ctx t as
 ppTermCtx _ (FunSyn n _) = text n
-ppTermCtx _ (FunCall n _) = text n
+ppTermCtx _ (FunCall _ n _) = text n
 ppTermCtx ctx t@(DataType d _ as) = text d <+> ppList ctx t as
 ppTermCtx _ Interval = text "I"
 ppTermCtx _ (ICon ILeft) = text "left"
@@ -50,7 +50,7 @@ ppList ctx t ts = hsep $ map (ppTermPrec (prec t + 1) ctx) ts
 ppScopePrec :: Int -> [String] -> Scope String Term Doc -> ([Doc], Doc)
 ppScopePrec p ctx t =
     let (vars, b, ctx', t') = scopeToTerm ctx text t
-    in (map text vars, (if b then arrow else empty) <+> ppTermPrec p ctx' t')
+    in (map text vars, (if null vars || b then arrow else empty) <+> ppTermPrec p ctx' t')
 
 scopeToTerm :: [String] -> (String -> a) -> Scope String Term a -> ([String], Bool, [String], Term a)
 scopeToTerm ctx f (ScopeTerm t@(Pi _ ScopeTerm{} _)) = ([], False, ctx, t)
@@ -74,7 +74,7 @@ prec Var{}                      = 10
 prec Universe{}                 = 10
 prec FunSyn{}                   = 10
 prec FunCall{}                  = 10
-prec (Con _ _ _ [])             = 10
+prec (Con _ _ _ _ [])           = 10
 prec (DataType _ _ [])          = 10
 prec (Path Explicit Nothing []) = 10
 prec (PCon Nothing)             = 10

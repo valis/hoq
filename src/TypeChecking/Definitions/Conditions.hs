@@ -14,9 +14,7 @@ import Syntax.PrettyPrinter
 import TypeChecking.Context
 import Normalization
 
-type Pat = Pattern (Closed (Scope String Term))
-
-checkConditions :: (Int,Int) -> Closed Term -> [([Pat], Closed (Scope String Term))] -> [EMsg Term]
+checkConditions :: (Int,Int) -> Closed Term -> [([PatternC], Closed (Scope String Term))] -> [EMsg Term]
 checkConditions lc func cs =
     maybeToList $ msum $ map (\(p, scope) -> fmap (uncurry msg) $ checkPatterns func (map fst cs) p scope) cs
   where
@@ -31,7 +29,7 @@ data TermInCtx  f b = forall a. TermInCtx  (Ctx String f b a) (f a)
 data TermsInCtx f b = forall a. TermsInCtx (Ctx String f b a) [f a]
 data TermsInCtx2 f b = forall a. TermsInCtx2 (Ctx String f b a) [f a] [f a]
 
-checkPatterns :: Closed Term -> [[Pat]] -> [Pat] -> Closed (Scope String Term)
+checkPatterns :: Closed Term -> [[PatternC]] -> [PatternC] -> Closed (Scope String Term)
     -> Maybe (Scope String Term String, Scope String Term String)
 checkPatterns (Closed func) cs pats (Closed scope) =
     listToMaybe $ findSuspiciousPairs cs pats >>= \(TermsInCtx2 ctx terms terms') ->
@@ -41,14 +39,14 @@ checkPatterns (Closed func) cs pats (Closed scope) =
   where
     nfApps :: Eq a => Term a -> Term a
     nfApps (App a b) = App (nfApps a) (nf WHNF b)
-    nfApps (Con i name conds terms) = Con i name conds $ map (nf WHNF) terms
+    nfApps (Con i lc name conds terms) = Con i lc name conds $ map (nf WHNF) terms
     nfApps t = t
     
     nfAppsScope :: Eq a => Scope String Term a -> Scope String Term a
     nfAppsScope (ScopeTerm t) = ScopeTerm (nfApps t)
     nfAppsScope (Scope v t) = Scope v (nfAppsScope t)
 
-findSuspiciousPairs :: [[Pat]] -> [Pat] -> [TermsInCtx2 Term b]
+findSuspiciousPairs :: [[PatternC]] -> [PatternC] -> [TermsInCtx2 Term b]
 findSuspiciousPairs _ [] = []
 findSuspiciousPairs cs (pat@(PatternI con) : pats) = map ext $ findSuspiciousPairs (mapTail pat cs) pats
   where ext (TermsInCtx2 ctx terms1 terms2) = (TermsInCtx2 ctx (ICon con : terms1) terms2)
@@ -72,30 +70,30 @@ findSuspiciousPairs cs (pat@(Pattern con@(PatternCon i _ name conds) args) : pat
             Pattern con' args' : _ | con == con' -> [args']
             _ -> []
     
-    ext0 :: [Pat] -> TermsInCtx Term b -> TermsInCtx2 Term b
+    ext0 :: [PatternC] -> TermsInCtx Term b -> TermsInCtx2 Term b
     ext0 args (TermsInCtx ctx terms) = case patternsToTerms pats of
         TermsInCtx ctx' terms' -> TermsInCtx2 (ctx +++ ctx')
-            (fmap (liftBase ctx') (Con i name conds $ substPatterns args terms) : terms')
+            (fmap (liftBase ctx') (Con i (0,0) name conds $ substPatterns args terms) : terms')
             (map (fmap $ liftBase ctx') terms ++ ctxToVars ctx')
     
     ext1 :: TermsInCtx2 Term b -> TermsInCtx2 Term b
     ext1 (TermsInCtx2 ctx terms1 terms2) = case patternsToTerms pats of
-        TermsInCtx ctx' terms' -> TermsInCtx2 (ctx +++ ctx') (fmap (liftBase ctx') (Con i name conds terms1) : terms')
+        TermsInCtx ctx' terms' -> TermsInCtx2 (ctx +++ ctx') (fmap (liftBase ctx') (Con i (0,0) name conds terms1) : terms')
                                                              (map (fmap $ liftBase ctx') terms2 ++ ctxToVars ctx')
     
     ext2 :: Ctx String Term a b -> [Term b] -> TermsInCtx2 Term b -> TermsInCtx2 Term a
     ext2 ctx terms (TermsInCtx2 ctx' terms1 terms2) =
-        TermsInCtx2 (ctx +++ ctx') (fmap (liftBase ctx') (Con i name conds terms) : terms1)
+        TermsInCtx2 (ctx +++ ctx') (fmap (liftBase ctx') (Con i (0,0) name conds terms) : terms1)
                                    (map (fmap $ liftBase ctx') (ctxToVars ctx) ++ terms2)
 
-unifyPatterns :: Pat -> Pat -> Maybe [Pat]
+unifyPatterns :: PatternC -> PatternC -> Maybe [PatternC]
 unifyPatterns (PatternI con) (PatternI con') | con == con' = Just []
 unifyPatterns (PatternVar _) p = Just [p]
 unifyPatterns p (PatternVar _) = Just (varList p)
 unifyPatterns (Pattern con pats) (Pattern con' pats') | con == con' = unifyPatternLists pats pats'
 unifyPatterns _ _ = Nothing
 
-unifyPatternLists :: [Pat] -> [Pat] -> Maybe [Pat]
+unifyPatternLists :: [PatternC] -> [PatternC] -> Maybe [PatternC]
 unifyPatternLists pats pats' = fmap concat $ sequence (zipWith unifyPatterns pats pats')
 
 varList :: Pattern c -> [Pattern c]
@@ -103,10 +101,10 @@ varList (PatternI _) = []
 varList pat@(PatternVar _) = [pat]
 varList (Pattern _ pats) = pats >>= varList
 
-substPatterns :: [Pat] -> [Term a] -> [Term a]
+substPatterns :: [PatternC] -> [Term a] -> [Term a]
 substPatterns pats terms = evalState (mapM substPattern pats) terms
   where
-    substPattern :: Pat -> State [Term a] (Term a)
+    substPattern :: PatternC -> State [Term a] (Term a)
     substPattern (PatternI con) = return (ICon con)
     substPattern (PatternVar _) = do
         term:terms <- get
@@ -114,15 +112,15 @@ substPatterns pats terms = evalState (mapM substPattern pats) terms
         return term
     substPattern (Pattern (PatternCon i _ name conds) pats) = do
         terms <- mapM substPattern pats
-        return (Con i name conds terms)
+        return (Con i (0,0) name conds terms)
 
-patternToTerm :: Pat -> TermInCtx Term a
+patternToTerm :: PatternC -> TermInCtx Term a
 patternToTerm (PatternI con) = TermInCtx Nil (ICon con)
 patternToTerm (PatternVar var) = TermInCtx (Snoc Nil var $ error "") (Var Bound)
 patternToTerm (Pattern (PatternCon i _ name conds) pats) = case patternsToTerms pats of
-    TermsInCtx ctx' terms -> TermInCtx ctx' $ Con i name conds terms
+    TermsInCtx ctx' terms -> TermInCtx ctx' $ Con i (0,0) name conds terms
 
-patternsToTerms :: [Pat] -> TermsInCtx Term a
+patternsToTerms :: [PatternC] -> TermsInCtx Term a
 patternsToTerms [] = TermsInCtx Nil []
 patternsToTerms (pat:pats) = case patternToTerm pat of
     TermInCtx ctx' term -> case patternsToTerms pats of
@@ -138,5 +136,5 @@ ctxToVars = reverse . go
 mapHead :: [[a]] -> [a]
 mapHead cs = cs >>= \as -> if null as then [] else [head as]
 
-mapTail :: Pat -> [[Pat]] -> [[Pat]]
+mapTail :: Eq a => a -> [[a]] -> [[a]]
 mapTail a cs = cs >>= \as -> if null as || not (head as == a) then [] else [tail as]

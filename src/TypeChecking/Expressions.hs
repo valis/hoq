@@ -85,15 +85,18 @@ typeCheckCtx ctx expr ty = go ctx expr [] $ fmap (nfType WHNF) ty
                 mt <- lift $ getEntry var $ case mty of
                     Just (Type (DataType d _ _) _) -> Just d
                     _                              -> Nothing
+                let replaceConPos (T.Con i _ name conds args) = T.Con i lc name conds args
+                    replaceConPos t = t
                 case mt of
-                    [FunctionE te ty]  -> return (fmap (liftBase ctx) te , fmap (liftBase ctx) ty)
-                    DataTypeE ty e : _ -> return (DataType var e []      , fmap (liftBase ctx) ty)
+                    [FunctionE (FunCall _ name clauses) ty] -> return (FunCall lc name clauses, fmap (liftBase ctx) ty)
+                    [FunctionE te ty]                       -> return (fmap (liftBase ctx) te , fmap (liftBase ctx) ty)
+                    DataTypeE ty e : _                      -> return (DataType var e []      , fmap (liftBase ctx) ty)
                     [ConstructorE _ (ScopeTerm con) (ScopeTerm ty, lvl)] ->
-                        return (fmap (liftBase ctx) con, Type (fmap (liftBase ctx) ty) lvl)
+                        return (fmap (liftBase ctx) (replaceConPos con), Type (fmap (liftBase ctx) ty) lvl)
                     [ConstructorE _ con (ty, lvl)] -> case mty of
                         Just (Type (DataType _ _ params) _) ->
                             let liftTerm = instantiate params . fmap (liftBase ctx)
-                            in  return (liftTerm con, Type (liftTerm ty) lvl)
+                            in  return (replaceConPos (liftTerm con), Type (liftTerm ty) lvl)
                         Just (Type ty _) -> throwError [emsgLC lc "" $ pretty "Expected type:" <+> prettyOpen ctx ty $$
                                                                        pretty ("But given data constructor " ++ show var)]
                         Nothing -> throwError [inferParamsErrorMsg lc var]

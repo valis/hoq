@@ -21,24 +21,24 @@ nf mode e = go e []
     go e@Interval         _  = e
     go e@(ICon _)         _  = e
     go (PCon Nothing)     [] = PCon Nothing
-    go (PCon Nothing)  (e:_) = PCon $ Just  $ if mode == NF then nf NF e else e
-    go (PCon (Just e))    _  = PCon $ Just  $ if mode == NF then nf NF e else e
-    go (Con c n [] es)    [] = Con c n []   $ nfs mode es
-    go (Con c n [] es)    ts = Con c n []   $ nfs mode (es ++ ts)
-    go (DataType d e es)  [] = DataType d e $ nfs mode es
-    go (DataType d e es)  ts = DataType d e $ nfs mode (es ++ ts)
+    go (PCon Nothing)  (e:_) = PCon $ Just   $ if mode == NF then nf NF e else e
+    go (PCon (Just e))    _  = PCon $ Just   $ if mode == NF then nf NF e else e
+    go (Con c lc n [] es) [] = Con c lc n [] $ nfs mode es
+    go (Con c lc n [] es) ts = Con c lc n [] $ nfs mode (es ++ ts)
+    go (DataType d e es)  [] = DataType d e  $ nfs mode es
+    go (DataType d e es)  ts = DataType d e  $ nfs mode (es ++ ts)
     go (Path h ma es)     [] = Path h (if mode == NF then fmap (nf NF) ma else ma) $ nfs mode es
     go (Path h ma es)     ts = Path h (if mode == NF then fmap (nf NF) ma else ma) $ nfs mode (es ++ ts)
     go (Lam (Scope1 v t)) [] = Lam $ Scope1 v $ if mode == WHNF then t else nf mode t
     go (Lam (Scope1 _ s)) (t:ts) = go (instantiate1 t s) ts
     go (FunSyn _ term)    ts = go term ts
-    go (Con c n conds es) ts =
+    go (Con c lc n conds es) ts =
         let es' = if null ts then es else es ++ ts in
         case instantiateCases conds es' of
             Just (r,ts') -> go r ts'
-            Nothing      -> Con c n conds (if mode == NF then map (nf NF) es' else es')
-    go fc@(FunCall _ []) ts = apps fc (nfs mode ts)
-    go fc@(FunCall _ cases) ts = case instantiateCases cases ts of
+            Nothing      -> Con c lc n conds (if mode == NF then map (nf NF) es' else es')
+    go fc@(FunCall _ _ []) ts = apps fc (nfs mode ts)
+    go fc@(FunCall _ _ clauses) ts = case instantiateCases clauses ts of
         Just (r,ts') -> go r ts'
         Nothing      -> apps fc (nfs mode ts)
     go (At a b e1 e2) ts = case (nf WHNF e1, nf WHNF e2) of
@@ -96,9 +96,9 @@ instantiatePat (PatternI con : pats) scope (term:terms) = case nf WHNF term of
     ICon i | i == con -> instantiatePat pats scope terms
     _ -> Nothing
 instantiatePat (Pattern (PatternCon con _ _ _) pats1 : pats) scope (term:terms) = case nf WHNF term of
-    Con i n _ terms1 | i == con -> instantiatePat (pats1 ++ pats) scope (terms1 ++ terms)
+    Con i _ n _ terms1 | i == con -> instantiatePat (pats1 ++ pats) scope (terms1 ++ terms)
     _ -> Nothing
 instantiatePat _ _ _ = Nothing
 
 instantiateCases :: Eq a => [([Pattern c], Closed (Scope b Term))] -> [Term a] -> Maybe (Term a, [Term a])
-instantiateCases cases terms = msum $ map (\(pats, Closed scope) -> instantiatePat pats scope terms) cases
+instantiateCases clauses terms = msum $ map (\(pats, Closed scope) -> instantiatePat pats scope terms) clauses

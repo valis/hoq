@@ -1,0 +1,51 @@
+data Nat = zero | suc Nat
+
+test1 : Nat -> (Nat -> (Nat -> Nat) -> Nat) -> Nat
+test1 zero f = f zero (\y -> y)
+test1 (suc x) f = f x (\y -> test1 y f)
+
+test2 : (Nat -> (Nat -> Nat) -> Nat) -> Nat -> Nat
+test2 f zero = f zero (\y -> y)
+test2 f (suc x) = f x (test2 f)
+
+test3 : Nat -> Nat
+test3 zero = zero
+test3 (suc x) = test3 (suc x)
+
+test4 : Nat -> Nat
+test4 zero = zero
+test4 (suc x) = test4 (suc (suc x))
+
+test5 : Nat -> Nat -> Nat
+test5 zero y = y
+test5 (suc x) y = test5 x (suc y)
+
+test6 : Nat -> Nat -> Nat
+test6 zero y = y
+test6 (suc x) y = test6 (suc x) y
+
+test7 : Nat -> Nat -> Nat
+test7 zero y = y
+test7 (suc x) zero = test7 x zero
+test7 (suc x) (suc y) = test7 (suc x) y
+
+test8 : Nat -> Nat -> Nat
+test8 (suc x) (suc y) = test8 y x
+test8 _ _ = zero
+
+data Foo = Foo | Bar Foo | Baz Foo
+
+test9 : Foo -> Foo
+test9 Foo = Foo
+test9 (Bar x) = test9 x
+test9 (Baz Foo) = test9 Foo
+test9 (Baz (Bar x)) = test9 (Bar x)
+test9 (Baz (Baz x)) = test9 x
+
+test10 : Foo -> Foo
+test10 (Baz (Bar x)) = test10 (Baz x)
+test10 _ = Foo
+
+test11 : Foo -> Foo
+test11 (Bar (Baz (Bar Foo))) = test11 (Bar Foo)
+test11 _ = test11 Foo

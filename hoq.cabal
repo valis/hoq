@@ -39,6 +39,7 @@ executable hoq
                        TypeChecking.Definitions.DataTypes,
                        TypeChecking.Definitions.Functions,
                        TypeChecking.Definitions.Conditions,
+                       TypeChecking.Definitions.Termination,
                        TypeChecking.Definitions,
                        TypeChecking.Expressions,
                        TypeChecking.Monad.Scope,

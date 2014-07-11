@@ -3,7 +3,7 @@
 module TypeChecking.Monad.Warn
     ( WarnT, warn, runWarnT
     , throwError, catchError
-    , forW
+    , forW, throwErrors
     ) where
 
 import Control.Monad
@@ -51,3 +51,7 @@ warn w = WarnT $ return (w, Just ())
 
 forW :: (Monoid w, Monad m) => [a] -> (a -> WarnT w m (Maybe b)) -> WarnT w m [b]
 forW as k = liftM catMaybes $ forM as $ \a -> k a `catchError` \w -> warn w >> return Nothing
+
+throwErrors :: Monad m => [w] -> WarnT [w] m ()
+throwErrors [] = return ()
+throwErrors ws = throwError ws

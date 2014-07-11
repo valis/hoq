@@ -52,7 +52,7 @@ getEntry v dt = ScopeT $ do
     cons  <- unScopeT (getConstructor v dt)
     scope <- get
     return $ map (uncurry FunctionE) (maybeToList $ lookup v $ functions scope)
-          ++ map (uncurry DataTypeE) (maybeToList $ lookup v $ dataTypes scope)
+          ++ (if isNothing dt then map (uncurry DataTypeE) (maybeToList $ lookup v $ dataTypes scope) else [])
           ++ map (\(i,c,d) -> ConstructorE i c d) cons
 
 runScopeT :: Monad m => ScopeT a b c d m a' -> m a'
