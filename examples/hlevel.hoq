@@ -72,6 +72,6 @@ isContr-isProp A (pair a1 f1) (pair a2 f2) = Sigma-eq A (\a -> (a' : A) -> a = a
     (path (\i a' -> prop-set A (contr-prop A (pair a1 f1)) a2 a'
         (transport A (\a -> (a' : A) -> a = a') a1 a2 (f1 a2) f1 a') (f2 a') @ i))
 
-of-hlevel-isProp : (A : Type) (n : Nat) -> isProp (of-hlevel n A)
-of-hlevel-isProp A zero = isContr-isProp A
-of-hlevel-isProp A (suc n) f g = path (\i a a' -> of-hlevel-isProp (a = a') n (f a a') (g a a') @ i)
+of-hlevel-isProp : (n : Nat) (A : Type) -> isProp (of-hlevel n A)
+of-hlevel-isProp zero A = isContr-isProp A
+of-hlevel-isProp (suc n) A f g = path (\i a a' -> of-hlevel-isProp n (a = a') (f a a') (g a a') @ i)
