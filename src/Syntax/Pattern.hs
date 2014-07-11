@@ -1,16 +1,14 @@
 module Syntax.Pattern where
 
 data ICon = ILeft | IRight deriving Eq
-data PatternCon = PatternCon Int Int String [[Pattern]]
-data Pattern = Pattern PatternCon [Pattern] | PatternVar String | PatternI ICon
+data PatternCon c = PatternCon Int Int String [([Pattern c], c)]
+data Pattern c = Pattern (PatternCon c) [Pattern c] | PatternVar String | PatternI ICon
 
-infix 4 `cmpPatternCon`, `cmpPattern`
+instance Eq (PatternCon c) where
+    PatternCon i _ _ _ == PatternCon i' _ _ _ = i == i'
 
-cmpPatternCon :: PatternCon -> PatternCon -> Bool
-cmpPatternCon (PatternCon i _ _ _) (PatternCon i' _ _ _) = i == i'
-
-cmpPattern :: Pattern -> Pattern -> Bool
-cmpPattern (PatternI c) (PatternI c') = c == c'
-cmpPattern (PatternVar _) (PatternVar _) = True
-cmpPattern (Pattern c _) (Pattern c' _) = cmpPatternCon c c'
-cmpPattern _ _ = False
+instance Eq (Pattern c) where
+    PatternI c   == PatternI c'  = c == c'
+    PatternVar _ == PatternVar _ = True
+    Pattern c _  == Pattern c' _ = c == c'
+    _            == _            = False

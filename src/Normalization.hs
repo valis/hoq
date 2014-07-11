@@ -89,7 +89,7 @@ nfs :: Eq a => NF -> [Term a] -> [Term a]
 nfs NF terms = map (nf NF) terms
 nfs _  terms = terms
 
-instantiatePat :: Eq a => [Pattern] -> Scope b Term a -> [Term a] -> Maybe (Term a, [Term a])
+instantiatePat :: Eq a => [Pattern c] -> Scope b Term a -> [Term a] -> Maybe (Term a, [Term a])
 instantiatePat [] (ScopeTerm term) terms = Just (term, terms)
 instantiatePat (PatternVar  _ : pats) (Scope _ scope) (term:terms) = instantiatePat pats (instantiateScope term scope) terms
 instantiatePat (PatternI con : pats) scope (term:terms) = case nf WHNF term of
@@ -100,5 +100,5 @@ instantiatePat (Pattern (PatternCon con _ _ _) pats1 : pats) scope (term:terms) 
     _ -> Nothing
 instantiatePat _ _ _ = Nothing
 
-instantiateCases :: Eq a => [([Pattern], Closed (Scope b Term))] -> [Term a] -> Maybe (Term a, [Term a])
+instantiateCases :: Eq a => [([Pattern c], Closed (Scope b Term))] -> [Term a] -> Maybe (Term a, [Term a])
 instantiateCases cases terms = msum $ map (\(pats, Closed scope) -> instantiatePat pats scope terms) cases

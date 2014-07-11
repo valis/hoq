@@ -2,25 +2,25 @@ data Bool = false | true
 
 -- Incomplete
 itest1 : I -> Bool -> Bool
-itest1 left true = false
+itest1 left true = true
 itest1 right _ = true
 itest1 left _ = true
-itest1 _ false = false
+itest1 _ false = true
 
 -- OK
 itest2 : I -> Bool -> Bool
-itest2 left true = false
+itest2 left true = true
 itest2 right _ = true
 itest2 left _ = true
-itest2 _ false = false
-itest2 _ true = false
+itest2 _ false = true
+itest2 _ true = true
 
 -- Unreachable 22
 itest3 : I -> Bool -> Bool
-itest3 left true = false
+itest3 left true = true
 itest3 right _ = true
 itest3 right _ = true
-itest3 _ _ = false
+itest3 _ _ = true
 
 -- OK
 not : Bool -> Bool

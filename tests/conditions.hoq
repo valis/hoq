@@ -31,3 +31,13 @@ data Z = positive Nat | negative Nat with
 test6 : Z -> Z
 test6 (positive x) = positive (suc x)
 test6 (negative x) = negative (suc x)
+
+data Foo' = Foo' Nat | Bar' Nat with
+    Foo' (suc x) = Bar' x
+
+test7 : Foo' -> Nat
+test7 (Foo' zero) = zero
+test7 (Foo' (suc zero)) = suc zero
+test7 (Foo' (suc (suc x))) = suc (suc x)
+test7 (Bar' zero) = suc zero
+test7 (Bar' (suc x)) = suc x

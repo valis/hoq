@@ -6,18 +6,18 @@ import Data.List
 
 import Syntax.Pattern
 
-data PatternType = Interval | DataType Int [(Int,[Pattern])] | Unknown
+data PatternType c = Interval | DataType Int [(Int, [Pattern c])] | Unknown
 
 data OK = OK | Incomplete deriving Eq
 data Result = Result OK [Int]
 
-checkCoverage :: [((Int,Int),[Pattern])] -> Maybe [(Int,Int)]
+checkCoverage :: [((Int,Int),[Pattern c])] -> Maybe [(Int,Int)]
 checkCoverage []      = Just []
 checkCoverage clauses = case checkClauses (map snd clauses) of
     Result Incomplete _ -> Nothing
     Result OK used -> Just $ map (\i -> fst $ clauses !! i) $ [0 .. length clauses - 1] \\ used
 
-checkClauses :: [[Pattern]] -> Result
+checkClauses :: [[Pattern c]] -> Result
 checkClauses [] = Result Incomplete []
 checkClauses clauses =
     let (t, clauses', b) = checkNull 0 Unknown clauses in
@@ -25,7 +25,7 @@ checkClauses clauses =
         (Just i, Result Incomplete u) -> Result OK (i:u)
         (_, r) -> r
 
-checkNull :: Int -> PatternType -> [[Pattern]] -> (PatternType, [(Pattern, [Pattern])], Maybe Int)
+checkNull :: Int -> PatternType c -> [[Pattern c]] -> (PatternType c, [(Pattern c, [Pattern c])], Maybe Int)
 checkNull _ t [] = (t, [], Nothing)
 checkNull i t ([] : cs) = (t, [], Just i)
 checkNull i t ((pat:pats) : cs) =
@@ -36,19 +36,19 @@ checkNull i t ((pat:pats) : cs) =
                 Pattern (PatternCon _ n _ _) _ ->
                     let heads = pat : concatMap (\c -> if null c then [] else [head c]) cs
                     in DataType n $ heads >>= \p -> case p of
-                        Pattern (PatternCon i _ _ conds) _ -> map (\cond -> (i,cond)) conds
+                        Pattern (PatternCon i _ _ conds) _ -> map (\(cond,_) -> (i,cond)) conds
                         _ -> []
     in (t2, (pat, pats) : cs', b)
 
-checkNonEmptyClauses :: PatternType -> [(Pattern, [Pattern])] -> Result
+checkNonEmptyClauses :: PatternType c -> [(Pattern c, [Pattern c])] -> Result
 checkNonEmptyClauses _ [] = Result Incomplete []
 checkNonEmptyClauses Interval           clauses = checkIntervalClauses clauses
 checkNonEmptyClauses (DataType n conds) clauses = checkDataTypeClauses n conds clauses
 checkNonEmptyClauses Unknown            clauses = checkClauses (map snd clauses)
 
-checkIntervalClauses :: [(Pattern, [Pattern])] -> Result
+checkIntervalClauses :: [(Pattern c, [Pattern c])] -> Result
 checkIntervalClauses clauses =
-    let get con = map (\(i,(_,ps)) -> (i,ps)) $ filterWithIndex (\(c,_) -> c `cmpPattern` con) clauses
+    let get con = map (\(i,(_,ps)) -> (i,ps)) $ filterWithIndex (\(c,_) -> c == con) clauses
         lefts   = get (PatternI ILeft)
         rights  = get (PatternI IRight)
         vars    = get (PatternVar "")
@@ -57,7 +57,7 @@ checkIntervalClauses clauses =
         Result ok is2 = checkClauses (map snd vars)
     in  Result ok $ getIndices lefts is0 ++ getIndices rights is1 ++ getIndices vars is2
 
-checkDataTypeClauses :: Int -> [(Int,[Pattern])] -> [(Pattern, [Pattern])] -> Result
+checkDataTypeClauses :: Int -> [(Int, [Pattern c])] -> [(Pattern c, [Pattern c])] -> Result
 checkDataTypeClauses n conds clauses = getResults $ flip map [0 .. n-1] $ \j ->
     let getLength [] = 0
         getLength (Pattern (PatternCon i _ _ _) args : _) | i == j = length args
@@ -67,10 +67,10 @@ checkDataTypeClauses n conds clauses = getResults $ flip map [0 .. n-1] $ \j ->
         getPatterns (Pattern _ pats) = pats
         getPatterns _                = replicate len (PatternVar "_")
     in map (\(i,(p,ps)) -> (i, getPatterns p ++ ps))
-           (filterWithIndex (\(c,_) -> c `cmpPattern` Pattern (PatternCon j n "" []) [] || c `cmpPattern` PatternVar "") clauses)
+           (filterWithIndex (\(c,_) -> c == Pattern (PatternCon j n "" []) [] || c == PatternVar "") clauses)
        ++ (conds >>= \(c,ps) -> if j == c then [(-1, ps)] else [])
   where
-    getResults :: [[(Int,[Pattern])]] -> Result
+    getResults :: [[(Int, [Pattern c])]] -> Result
     getResults [] = Result OK []
     getResults (con:cons) =
         let Result ok1 is1 = checkClauses (map snd con)
