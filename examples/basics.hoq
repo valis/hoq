@@ -79,7 +79,7 @@ not-not true  = idp Bool true
 not-not false = idp Bool false
 
 biso : Bool = Bool
-biso = path (\i -> iso Bool Bool not not not-not not-not i)
+biso = path (iso Bool Bool not not not-not not-not)
 
 -- coe satisfies the following rules:
 -- coe (iso A B f g p q) left a right = f a

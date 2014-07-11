@@ -53,7 +53,7 @@ contr-prop A (pair c f) a a' = comp A a c a' (inv A c a (f a)) (f a')
 
 prop-h1 : (A : Type) -> isProp A -> of-hlevel (suc zero) A
 prop-h1 A f a a' = pair (comp A a a a' (inv A a a (f a a)) (f a a'))
-                        (\p -> J A a (\x q -> comp A a a x (inv A a a (f a a)) (f a x) = q) (inv-comp A a a (f a a)) a' p)
+                        (J A a (\x q -> comp A a a x (inv A a a (f a a)) (f a x) = q) (inv-comp A a a (f a a)) a')
 
 prop-set : (A : Type) -> isProp A -> isSet A
 prop-set A p a a' = contr-prop (a = a') (prop-h1 A p a a')

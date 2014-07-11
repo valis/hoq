@@ -28,6 +28,9 @@ inferErrorMsg lc s = emsgLC lc ("Cannot infer type of " ++ s) enull
 inferParamsErrorMsg :: Show a => (Int,Int) -> a -> EMsg f
 inferParamsErrorMsg lc d = emsgLC lc ("Cannot infer parameters of data constructor " ++ show d) enull
 
+expectedArgErrorMsg :: Show a => (Int,Int) -> a -> EMsg f
+expectedArgErrorMsg lc d = emsgLC lc ("Expected an argument to " ++ show d) enull
+
 prettyOpen :: (Pretty b f, Monad f) => Ctx b g b a -> f a -> EDoc f
 prettyOpen ctx term = epretty $ liftM pretty (close ctx term)
 
@@ -52,6 +55,9 @@ checkIsType ctx e t = throwError [typeErrorMsg ctx e t]
 typeErrorMsg :: Pretty b Term => Ctx b g b a -> Expr -> Term a -> EMsg Term
 typeErrorMsg ctx e t = emsgLC (getPos e) "" $ pretty "Expected type: Type" $$
                                               pretty "Actual type:" <+> prettyOpen ctx t
+
+intType :: Type a
+intType = Type T.Interval NoLevel
 
 data SomeEq f = forall a. Eq a => SomeEq (f a)
 
@@ -120,24 +126,19 @@ typeCheckCtx ctx expr ty = go ctx expr [] $ fmap (nfType WHNF) ty
                                            pretty ("Actual data type: " ++ adt)]
             (Just (Type ety _), _) -> actExpType ctx ty' ety lc
         return (apps te tes, Type ty' $ maybe lvl' (\(Type _ lvl'') -> min lvl' lvl'') mty)
-    go _ (ELeft _)  [] Nothing = return (ICon ILeft, Type T.Interval NoLevel)
+    go _ (ELeft _)  [] Nothing = return (ICon ILeft, intType)
     go _ e@ELeft{}  _  Nothing = throwError [emsgLC (getPos e) "\"left\" is applied to arguments" enull]
-    go _ (ERight _) [] Nothing = return (ICon IRight, Type T.Interval NoLevel)
+    go _ (ERight _) [] Nothing = return (ICon IRight, intType)
     go _ e@ERight{} _  Nothing = throwError [emsgLC (getPos e) "\"right\" is applied to arguments" enull]
     go ctx e@PathCon{} es _ | length es > 1 = throwError [emsgLC (getPos e) "A path is applied to arguments" enull]
     go ctx e@PathCon{} [] Nothing = throwError [inferErrorMsg (getPos e) "path"]
-    go ctx PathCon{} [e] Nothing = throwError [emsgLC (getPos e) "Not implemented yet" enull] -- TODO
-{-
-        (r,t) <- go ctx e [] Nothing
-        case t of
-            T.Arr T.Interval t'  -> ...
-            T.Pi _ T.Interval t' -> ...
-            _                    -> ...
--}
-    go ctx e@PathCon{} [] (Just ty) = throwError [emsgLC (getPos e) "Not implemented yet" enull] -- TODO
+    go ctx PathCon{} [e] Nothing = do
+        (r, Scope1 v t, lvl) <- typeCheckLambda ctx e intType
+        return (r, Type (T.Pi intType (Scope v (ScopeTerm t)) lvl) lvl)
+    go ctx e@PathCon{} [] _ = throwError [expectedArgErrorMsg (getPos e) "path"]
     go ctx e'@PathCon{} [e] (Just (Type ty@(T.Path h mt1 _) lvl)) = do
-        (r,t) <- go ctx e [] $ fmap (\t1 -> Type (T.Pi (Type T.Interval NoLevel)
-            (Scope "i" $ ScopeTerm $ T.App (fmap Free t1) $ T.Var Bound) lvl) lvl) mt1
+        (r,t) <- go ctx e [] $ fmap (\t1 -> Type
+            (T.Pi intType (Scope "i" $ ScopeTerm $ T.App (fmap Free t1) $ T.Var Bound) lvl) lvl) mt1
         let left  = T.App r (ICon ILeft)
             right = T.App r (ICon IRight)
         actExpType ctx (T.Path Implicit Nothing [left,right]) ty (getPos e')
@@ -147,7 +148,7 @@ typeCheckCtx ctx expr ty = go ctx expr [] $ fmap (nfType WHNF) ty
                                             pretty "Actual type: Path"]
     go ctx (E.At e1 e2) es Nothing = do
         (r1, Type t1 lvl) <- go ctx e1 [] Nothing
-        (r2, _) <- go ctx e2 [] $ Just (Type T.Interval NoLevel)
+        (r2, _) <- go ctx e2 [] (Just intType)
         case nf WHNF t1 of
             T.Path _ (Just a) [b,c] -> do
                 (tes, ty) <- typeCheckApps (getPos e1) ctx es $ Type (T.App a r2) lvl
@@ -155,17 +156,29 @@ typeCheckCtx ctx expr ty = go ctx expr [] $ fmap (nfType WHNF) ty
             T.Path _ Nothing _ -> throwError [emsgLC (getPos e1) "Cannot infer type" enull]
             t1' -> throwError [emsgLC (getPos e1) "" $ pretty "Expected type: Path" $$
                                                        pretty "Actual type:" <+> prettyOpen ctx t1']
-    go ctx e@E.Coe{} es Nothing | length es < 4 = throwError [emsgLC (getPos e) "Not implemented yet" enull] -- TODO
-    go ctx e@E.Coe{} (e1:e2:e3:e4:es) Nothing = do
-        (r1, Scope1 v t1, _) <- typeCheckLambda ctx e1 (Type T.Interval NoLevel)
+    go ctx e@E.Coe{} [] Nothing = throwError [expectedArgErrorMsg (getPos e) "coe"]
+    go ctx e@E.Coe{} (e1:es) Nothing = do
+        (r1, Scope1 v t1, _) <- typeCheckLambda ctx e1 intType
         lvl <- checkIsType (Snoc ctx v $ error "") e1 t1
-        (r2, _) <- go ctx e2 [] $ Just $ Type T.Interval NoLevel
-        (r3, _) <- go ctx e3 [] $ Just $ Type (nf WHNF $ T.App r1 r2) lvl
-        (r4, _) <- go ctx e4 [] $ Just $ Type T.Interval NoLevel
-        (tes, ty) <- typeCheckApps (getPos e) ctx es $ Type (T.App r1 r4) lvl
-        return (T.Coe $ [r1,r2,r3,r4] ++ tes, ty)
-    go ctx e@E.Iso{} es Nothing | length es < 7 = throwError [emsgLC (getPos e) "Not implemented yet" enull] -- TODO
-    go ctx E.Iso{} [e1,e2,e3,e4,e5,e6,e7] Nothing = do
+        let res = T.Pi intType (Scope "r" $ ScopeTerm $ T.App (fmap Free r1) $ T.Var Bound) lvl
+        case es of
+            [] -> return (T.Coe [r1], Type (T.Pi intType (Scope "l" $ ScopeTerm $
+                T.Pi (Type (T.App (fmap Free r1) $ T.Var Bound) lvl) (ScopeTerm $ fmap Free res) lvl) lvl) lvl)
+            e2:es1 -> do
+                (r2, _) <- go ctx e2 [] $ Just intType
+                case es1 of
+                    [] -> return (T.Coe [r1,r2], Type (T.Pi (Type (T.App r1 r2) lvl) (ScopeTerm res) lvl) lvl)
+                    e3:es2 -> do
+                        (r3, _) <- go ctx e3 [] $ Just $ Type (nf WHNF $ T.App r1 r2) lvl
+                        case es2 of
+                            [] -> return (T.Coe [r1,r2,r3], Type res lvl)
+                            e4:es3 -> do
+                                (r4, _) <- go ctx e4 [] $ Just intType
+                                (tes, ty) <- typeCheckApps (getPos e) ctx es3 $ Type (T.App r1 r4) lvl
+                                return (T.Coe $ [r1,r2,r3,r4] ++ tes, ty)
+    go ctx e@E.Iso{} es Nothing | length es < 6 =
+        throwError [emsgLC (getPos e) "Expected at least 6 arguments to \"iso\"" enull]
+    go ctx E.Iso{} (e1:e2:e3:e4:e5:e6:es) Nothing | length es <= 1 = do
         (r1, Type t1 _) <- go ctx e1 [] Nothing
         (r2, Type t2 _) <- go ctx e2 [] Nothing
         let t1' = nf WHNF t1
@@ -176,17 +189,25 @@ typeCheckCtx ctx expr ty = go ctx expr [] $ fmap (nfType WHNF) ty
         (r3, _)  <- go ctx e3 [] $ Just $ Type (T.Pi (Type r1 lvl1) (ScopeTerm r2) lvl2) lvl
         (r4, _)  <- go ctx e4 [] $ Just $ Type (T.Pi (Type r2 lvl2) (ScopeTerm r1) lvl1) lvl
         let h e s1 s3 s4 tlvl = go ctx e [] $ Just $ Type (T.Pi (Type s1 tlvl) (Scope "x" $
-                ScopeTerm $ T.Path Implicit (Just $ T.Pi (Type T.Interval NoLevel) (ScopeTerm $ fmap Free s1) tlvl)
+                ScopeTerm $ T.Path Implicit (Just $ T.Pi intType (ScopeTerm $ fmap Free s1) tlvl)
                 [T.App (fmap Free s4) $ T.App (fmap Free s3) $ T.Var Bound, T.Var Bound]) tlvl) tlvl
         (r5, _) <- h e5 r1 r3 r4 lvl1
         (r6, _) <- h e6 r2 r4 r3 lvl2
-        (r7, _) <- go ctx e7 [] $ Just $ Type T.Interval NoLevel
-        return (T.Iso [r1,r2,r3,r4,r5,r6,r7], Type (T.Universe lvl) $ succ lvl)
-    go ctx e@E.Squeeze{} es Nothing | length es < 2 = throwError [emsgLC (getPos e) "Not implemented yet" enull] -- TODO
+        case es of
+            [] -> return (T.Iso [r1,r2,r3,r4,r5,r6],
+                Type (T.Pi intType (ScopeTerm $ T.Universe lvl) $ succ lvl) $ succ lvl)
+            e7:_ -> do
+                (r7, _) <- go ctx e7 [] $ Just intType
+                return (T.Iso [r1,r2,r3,r4,r5,r6,r7], Type (T.Universe lvl) $ succ lvl)
+    go ctx e@E.Squeeze{} [] Nothing = return (T.Squeeze [],
+        Type (T.Pi intType (ScopeTerm $ T.Pi intType (ScopeTerm T.Interval) NoLevel) NoLevel) NoLevel)
+    go ctx e@E.Squeeze{} [e1] Nothing = do
+        (r1, _) <- go ctx e1 [] $ Just intType
+        return (T.Squeeze [r1], Type (T.Pi intType (ScopeTerm T.Interval) NoLevel) NoLevel)
     go ctx E.Squeeze{} [e1,e2] Nothing = do
-        (r1, _) <- go ctx e1 [] $ Just (Type T.Interval NoLevel)
-        (r2, _) <- go ctx e2 [] $ Just (Type T.Interval NoLevel)
-        return (T.Squeeze [r1,r2], Type T.Interval NoLevel)
+        (r1, _) <- go ctx e1 [] $ Just intType
+        (r2, _) <- go ctx e2 [] $ Just intType
+        return (T.Squeeze [r1,r2], intType)
     go ctx (E.Pi [] e) [] Nothing = go ctx e [] Nothing
     go ctx expr@(E.Pi (PiTele _ e1 e2 : tvs) e) [] Nothing = do
         args <- exprToVars e1
@@ -215,10 +236,9 @@ typeCheckCtx ctx expr ty = go ctx expr [] $ fmap (nfType WHNF) ty
         parseLevel ('T':'y':'p':'e':s) = Level (read s)
         parseLevel s = error $ "parseLevel: " ++ s
     go _ E.Interval{} [] Nothing = return (T.Interval, Type (T.Universe NoLevel) $ Level 1)
-    go ctx e@E.Path{} [] Nothing = throwError [inferErrorMsg (getPos e) "Path"]
-    go ctx e@E.Path{} [] (Just ty) = throwError [emsgLC (getPos e) "Not implemented yet" enull] -- TODO
+    go ctx e@E.Path{} [] _ = throwError [expectedArgErrorMsg (getPos e) "Path"]
     go ctx E.Path{} (e1:es) Nothing | length es < 3 = do
-        (r1, Scope1 v t1, _) <- typeCheckLambda ctx e1 (Type T.Interval NoLevel)
+        (r1, Scope1 v t1, _) <- typeCheckLambda ctx e1 intType
         lvl <- checkIsType (Snoc ctx v $ error "") e1 t1
         let r1' c = Type (T.App r1 $ ICon c) lvl
             mkType t = Type t (succ lvl)

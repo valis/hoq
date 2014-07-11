@@ -149,5 +149,4 @@ decode-encode = Circle-elim' (\x -> (z : code x) -> encode x (decode x z) = z) d
     (decode-encode-base z) @ i))
 
 Circle-loop-space-is-Z : (base = base) = Z
-Circle-loop-space-is-Z =
-    path (\i -> iso (base = base) Z (encode base) (decode base) (encode-decode base) (decode-encode base) i)
+Circle-loop-space-is-Z = path (iso (base = base) Z (encode base) (decode base) (encode-decode base) (decode-encode base))
