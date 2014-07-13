@@ -11,7 +11,7 @@ Import.       Import  ::= PImport [Name];
 Name.         Name    ::= PIdent;
 DefType.      Def     ::= PIdent ":" Expr;
 DefFun.       Def     ::= FunCase;
-DefFunEmpty.  Def     ::= Pattern;
+DefFunEmpty.  Def     ::= PatName;
 DefData.      Def     ::= "data" PIdent [DataTele] "=" [Con];
 DefDataWith.  Def     ::= "data" PIdent [DataTele] "=" [Con] "with" "{" [FunCase] "}";
 DefDataEmpty. Def     ::= "data" PIdent [DataTele];
@@ -19,16 +19,16 @@ separator     Def     ";";
 terminator    Import  ";";
 separator nonempty Name ".";
 
-FunCase.   FunCase  ::= Pattern "=" Expr;
+FunCase.   FunCase  ::= PatName "=" Expr;
 separator  FunCase  ";";
 
-Pattern.   Pattern  ::= PIdent [ParPat];
-ParVar.    ParPat   ::= Arg;
-ParLeft.   ParPat   ::= PLeft;
-ParRight.  ParPat   ::= PRight;
-ParEmpty.  ParPat   ::= PPar ")";
-ParPat.    ParPat   ::= PPar Pattern ")";
-terminator ParPat   "";
+PatName.   PatName ::= PIdent [Pattern];
+PatVar.    Pattern ::= Arg;
+PatLeft.   Pattern ::= PLeft;
+PatRight.  Pattern ::= PRight;
+PatEmpty.  Pattern ::= PPar ")";
+Pattern.   Pattern ::= PPar PatName ")";
+terminator Pattern "";
 
 Con.       Con      ::= PIdent [ConTele];
 separator  nonempty Con "|";

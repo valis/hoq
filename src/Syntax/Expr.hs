@@ -31,12 +31,12 @@ argGetPos :: Arg -> (Int,Int)
 argGetPos (Arg (PIdent (p,_))) = p
 argGetPos (NoArg (Pus  (p,_))) = p
 
-parPatGetPos :: ParPat -> (Int,Int)
-parPatGetPos (ParVar arg) = argGetPos arg
-parPatGetPos (ParEmpty (PPar (p,_))) = p
-parPatGetPos (ParPat (PPar (p,_)) _) = p
-parPatGetPos (ParLeft (PLeft (p,_))) = p
-parPatGetPos (ParRight (PRight (p,_))) = p
+parPatGetPos :: Pattern -> (Int,Int)
+parPatGetPos (PatVar arg) = argGetPos arg
+parPatGetPos (PatEmpty (PPar (p,_))) = p
+parPatGetPos (Pattern (PPar (p,_)) _) = p
+parPatGetPos (PatLeft (PLeft (p,_))) = p
+parPatGetPos (PatRight (PRight (p,_))) = p
 
 unArg :: Arg -> String
 unArg NoArg{} = "_"

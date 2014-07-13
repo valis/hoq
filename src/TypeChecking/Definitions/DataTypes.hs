@@ -21,7 +21,7 @@ import Normalization
 
 type Tele = [([Arg], Expr)]
 
-typeCheckDataType :: MonadFix m => PIdent -> Tele -> [(PIdent,Tele)] -> [(E.Pattern, Expr)] -> TCM m ()
+typeCheckDataType :: MonadFix m => PIdent -> Tele -> [(PIdent,Tele)] -> [(PatName, Expr)] -> TCM m ()
 typeCheckDataType p@(PIdent (lc,dt)) params cons conds = mdo
     let lcons = length cons
     (SomeEq ctx, dataType@(Type dtTerm _)) <- checkTele Nil params $ Closed (T.Universe NoLevel)
@@ -33,7 +33,7 @@ typeCheckDataType p@(PIdent (lc,dt)) params cons conds = mdo
         return $ Just (con, conTerm, Type conType conLevel)
     forM_ cons' $ \(con, te, Type ty lvl) ->
         addConstructorCheck con dt lcons (abstractTermInCtx ctx te) (abstractTermInCtx ctx ty) lvl
-    conds' <- forW conds $ \(E.Pattern (E.PIdent (lc,con)) pats,expr) ->
+    conds' <- forW conds $ \(PatName (E.PIdent (lc,con)) pats,expr) ->
         case find (\(PIdent (_,c),_,_) -> c == con) cons' of
             Nothing -> do
                 warn [notInScope lc "data constructor" con]

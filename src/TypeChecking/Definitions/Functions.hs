@@ -20,7 +20,7 @@ import TypeChecking.Definitions.Conditions
 import TypeChecking.Definitions.Termination
 import Normalization
 
-typeCheckFunction :: MonadFix m => PIdent -> Expr -> [((Int, Int), [ParPat], Maybe Expr)] -> TCM m ()
+typeCheckFunction :: MonadFix m => PIdent -> Expr -> [((Int, Int), [E.Pattern], Maybe Expr)] -> TCM m ()
 typeCheckFunction p@(PIdent (lc,name)) ety clauses = mdo
     (ty, Type u _) <- typeCheck ety Nothing
     lvl <- case u of
