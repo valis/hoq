@@ -3,6 +3,8 @@ module File.Load
     ) where
 
 import System.IO
+import System.FilePath
+import Control.Monad
 import Control.Monad.Fix
 import Control.Monad.Trans
 import Control.Exception
@@ -26,10 +28,13 @@ loadFile filename = do
             Left err  -> warn [emsg err enull]
     liftIO $ mapM_ (hPutStrLn stderr . erenderWithFilename filename) errs
 
-parseDefs :: MonadFix m => String -> TCM m ()
+parseDefs :: (MonadIO m, MonadFix m) => String -> TCM m ()
 parseDefs s = case parser s of
-    Ok (Defs defs) -> typeCheckDefs defs
-    Bad err          -> warn [emsg err enull]
+    Ok (Module imports defs) -> do
+        forM_ imports $ \(Import _ moduleName) ->
+            lift $ loadFile $ foldr1 combine (map (\(Name (PIdent (_,name))) -> name) moduleName) <.> "hoq"
+        typeCheckDefs defs
+    Bad err -> warn [emsg err enull]
   where
-    parser :: String -> Err Defs
-    parser = pDefs . resolveLayout True . myLexer
+    parser :: String -> Err Module
+    parser = pModule . resolveLayout True . myLexer

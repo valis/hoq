@@ -1,3 +1,5 @@
+import Paths
+
 data Nat = zero | suc Nat
 
 data Z = positive Nat | negative Nat with
@@ -19,24 +21,6 @@ pred (negative x)       = negative (suc x)
 data Circle = base | loop I with
     loop left  = base
     loop right = base
-
-idp : (A : Type) (a : A) -> a = a
-idp A a = path (\_ -> a)
-
-transport : (A : Type) (B : A -> Type) (a a' : A) -> a = a' -> B a -> B a'
-transport A B _ _ p x = coe (\i -> B (p @ i)) left x right
-
-psqueeze : (A : Type) (a a' : A) (p : a = a') (i : I) -> a = p @ i
-psqueeze A a a' p i = path (\j -> p @ squeeze i j)
-
-J : (A : Type) (a : A) (B : (a' : A) -> a = a' -> Type) -> B a (idp A a) -> (a' : A) (p : a = a') -> B a' p
-J A a B b a' p = coe (\i -> B (p @ i) (psqueeze A a a' p i)) left b right
-
-inv : (A : Type) (a a' : A) -> a = a' -> a' = a
-inv A a a' p = transport A (\x -> x = a) a a' p (idp A a)
-
-comp : (A : Type) (a a' a'' : A) -> a = a' -> a' = a'' -> a = a''
-comp A a a' a'' p q = transport A (\x -> a = x) a' a'' q p
 
 comp' : base = base -> base = base -> base = base
 comp' = comp Circle base base base
@@ -76,10 +60,6 @@ assoc p q = J Circle base
 map : (A B : Type) (f : A -> B) -> (a a' : A) -> a = a' -> f a = f a'
 map A B f a a' p = transport A (\x -> f a = f x) a a' p (idp B (f a))
 
-inv-idp : (p : base = base) -> comp' (inv' p) p = idp Circle base
-inv-idp = J Circle base (\x q -> comp Circle x base x (inv Circle base x q) q = idp Circle x)
-    (idp (base = base) (idp Circle base)) base
-
 wind-succ-loop-neg : (x : Nat) -> comp' (wind (pred (negative x))) (path loop) = wind (negative x)
 wind-succ-loop-neg x =
     comp (base = base) (comp' (comp' (wind (negative x)) (inv' (path loop))) (path loop))
@@ -87,7 +67,7 @@ wind-succ-loop-neg x =
                        (wind (negative x))
     (assoc (wind (negative x)) (inv' (path loop)) (path loop))
     (map (base = base) (base = base) (comp' (wind (negative x)))
-        (comp' (inv' (path loop)) (path loop)) (idp Circle base) (inv-idp (path loop)))
+        (comp' (inv' (path loop)) (path loop)) (idp Circle base) (inv-comp Circle base base (path loop)))
 
 wind-succ-loop : (x : Z) -> comp' (wind (pred x)) (path loop) = wind x
 wind-succ-loop (positive zero) = wind-succ-loop-neg zero

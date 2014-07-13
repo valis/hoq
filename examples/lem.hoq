@@ -1,3 +1,5 @@
+import Paths
+
 data E
 data S = s
 data B = true | false
@@ -23,12 +25,6 @@ biso i = iso B B not not not-not not-not i
 not-eq : (b : B) -> not b = b -> E
 not-eq true  p = coe (\i -> T (p @ i)) right s left
 not-eq false p = coe (\i -> T (p @ i)) left  s right
-
-transport : (A : Type) (B : A -> Type) (a a' : A) -> a = a' -> B a -> B a'
-transport A B _ _ p x = coe (\i -> B (p @ i)) left x right
-
-comp : (A : Type) (a a' a'' : A) -> a = a' -> a' = a'' -> a = a''
-comp A a a' a'' p q = transport A (\x -> a = x) a' a'' q p
 
 not-lem : ((A : Type) -> ((A -> E) -> E) -> A) -> E
 not-lem f = not-eq (f B (\g -> g true))

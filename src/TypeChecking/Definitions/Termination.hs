@@ -33,8 +33,7 @@ checkTerm ctx (PatternVar _) (Var v) = do
 checkTerm ctx (Pattern (PatternCon i _ _ _) pats) term = do
     s <- get
     results <- mapM (\pat -> checkTerm ctx pat term) pats
-    let result = minimum (GT:results)
-    if result /= GT then return LT else case collect term of
+    if minimum (GT:results) /= GT then return LT else case collect term of
         Con i' _ _ _ terms | i == i' -> do
             put s
             checkTerms ctx pats terms

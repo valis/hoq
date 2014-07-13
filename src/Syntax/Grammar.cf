@@ -1,4 +1,4 @@
-entrypoints Defs, Expr;
+entrypoints Module, Expr;
 
 comment "--";
 comment "{-" "-}";
@@ -6,14 +6,18 @@ comment "{-" "-}";
 layout "with";
 layout toplevel;
 
-Defs.         Defs  ::= [Def];
-DefType.      Def   ::= PIdent ":" Expr;
-DefFun.       Def   ::= FunCase;
-DefFunEmpty.  Def   ::= Pattern;
-DefData.      Def   ::= "data" PIdent [DataTele] "=" [Con];
-DefDataWith.  Def   ::= "data" PIdent [DataTele] "=" [Con] "with" "{" [FunCase] "}";
-DefDataEmpty. Def   ::= "data" PIdent [DataTele];
-separator     Def   ";";
+Module.       Module  ::= [Import] [Def];
+Import.       Import  ::= PImport [Name];
+Name.         Name    ::= PIdent;
+DefType.      Def     ::= PIdent ":" Expr;
+DefFun.       Def     ::= FunCase;
+DefFunEmpty.  Def     ::= Pattern;
+DefData.      Def     ::= "data" PIdent [DataTele] "=" [Con];
+DefDataWith.  Def     ::= "data" PIdent [DataTele] "=" [Con] "with" "{" [FunCase] "}";
+DefDataEmpty. Def     ::= "data" PIdent [DataTele];
+separator     Def     ";";
+terminator    Import  ";";
+separator nonempty Name ".";
 
 FunCase.   FunCase  ::= Pattern "=" Expr;
 separator  FunCase  ";";
@@ -78,4 +82,5 @@ position token PSqueeze 's' 'q' 'u' 'e' 'e' 'z' 'e';
 position token PLam '\\';
 position token PPar '(';
 position token Pus '_';
+position token PImport 'i' 'm' 'p' 'o' 'r' 't';
 position token PIdent (letter(letter|digit|'\''|'_'|'-')*);
