@@ -1,51 +1,63 @@
 {
-module Lexer where
+module Syntax.Parser.Lexer
+    ( alexScanTokens
+    , Token(..), Parser
+    , Layout(..)
+    ) where
 
 import Data.Char
 import Data.Word
 import Data.Maybe
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
+import Control.Monad.State
+import Control.Monad.Error
+
+import Syntax.Term
+import TypeChecking.Monad.Warn
 }
 
-$alpha = [a-zA-Z]
-$digit = [0-9]
-$any   = [\x00-\x10ffff]
-@ident = $alpha ($alpha | $digit | \' | \- | \_)*
+$alpha      = [a-zA-Z]
+$digit      = [0-9]
+$any        = [\x00-\x10ffff]
+@ident      = $alpha ($alpha | $digit | \' | \- | \_)*
+@newline    = \n $white*
 
 :-
 
-$white+;
+[$white # \n]+;
 "--".*;
 "{-" ([$any # \-] | \- [$any # \}])* "-}";
 
-"Type" $digit*  {         TokenPos . TokUniverse . listToMaybe . map fst . reads }
-"I"             { const $ TokenPos TokInterval }
-"left"          { const $ TokenPos TokLeft }
-"right"         { const $ TokenPos TokRight }
-"Path"          { const $ TokenPos TokPath }
-"path"          { const $ TokenPos Tokpath }
-"coe"           { const $ TokenPos TokCoe }
-"iso"           { const $ TokenPos TokIso }
-"squeeze"       { const $ TokenPos TokSqueeze }
-"import"        { const $ TokenPos TokImport }
-@ident          {         TokenPos . TokIdent }
-\\              { const $ TokenPos TokLam }
-\(              { const $ TokenPos TokLParen }
-\_              { const $ TokenPos TokUnderscore }
-\:              { \_ _ -> TokColon }
-\=              { \_ _ -> TokEquals }
-\{              { \_ _ -> TokLBrace }
-\}              { \_ _ -> TokRBrace }
-\;              { \_ _ -> TokSemicolon }
-\.              { \_ _ -> TokDot }
-\)              { \_ _ -> TokRParen }
-\|              { \_ _ -> TokPipe }
-\@              { \_ _ -> TokAt }
-"->"            { \_ _ -> TokArrow }
+"Type" $digit*  {       TokUniverse . listToMaybe . map fst . reads }
+"I"             { const TokInterval                                 }
+"left"          { const TokLeft                                     }
+"right"         { const TokRight                                    }
+"Path"          { const TokPath                                     }
+"path"          { const Tokpath                                     }
+"coe"           { const TokCoe                                      }
+"iso"           { const TokIso                                      }
+"squeeze"       { const TokSqueeze                                  }
+"import"        { const TokImport                                   }
+"data"          { const TokData                                     }
+"with"          { const TokWith                                     }
+@ident          {       TokIdent                                    }
+\\              { const TokLam                                      }
+\(              { const TokLParen                                   }
+\:              { const TokColon                                    }
+\=              { const TokEquals                                   }
+\{              { const TokLBrace                                   }
+\}              { const TokRBrace                                   }
+\;              { const TokSemicolon                                }
+\.              { const TokDot                                      }
+\)              { const TokRParen                                   }
+\|              { const TokPipe                                     }
+\@              { const TokAt                                       }
+"->"            { const TokArrow                                    }
+@newline        { const TokNewLine                                  }
 
 {
-data TokenPos
+data Token
     = TokIdent !String
     | TokUniverse !(Maybe Int)
     | TokInterval
@@ -58,13 +70,8 @@ data TokenPos
     | TokSqueeze
     | TokLam
     | TokLParen
-    | TokUnderscore
     | TokImport
-    | TokError
-    deriving Show
-
-data Token
-    = TokenPos !TokenPos !Posn
+    | TokData
     | TokColon
     | TokEquals
     | TokLBrace
@@ -75,22 +82,46 @@ data Token
     | TokPipe
     | TokAt
     | TokArrow
-    deriving Show
-
-data Posn = Posn !Int !Int
-    deriving Show
+    | TokWith
+    | TokNewLine
+    | TokEOF
 
 type AlexInput = (Posn, B.ByteString)
 
-alexScanTokens :: B.ByteString -> [Token]
-alexScanTokens str = go (Posn 1 1, str)
+data Layout = Layout Int | NoLayout deriving Eq
+
+type Parser a = AlexInput -> WarnT [(Posn, String)] (State [Layout]) a
+
+alexScanTokens :: (Token -> Parser a) -> Parser a
+alexScanTokens cont = go
   where
-    go :: AlexInput -> [Token]
-    go inp@(pos, str) = case alexScan inp 0 of
-        AlexEOF                -> []
-        AlexError inp'         -> TokenPos TokError pos : go (findGoodSymbol $ skipOneSymbol inp')
-        AlexSkip  inp' _       -> go inp'
-        AlexToken inp' len act -> act (C.unpack $ B.take len str) pos : go inp'
+    go inp@(pos,str) = case alexScan inp 0 of
+        AlexEOF             -> cont TokEOF inp
+        AlexError inp'      -> do
+            warn [(pos, "Lexer error")]
+            go (findGoodSymbol $ skipOneSymbol inp')
+        AlexSkip  inp' _    -> go inp'
+        AlexToken inp'@(Posn _ c, _) len act -> case act $ C.unpack (B.take len str) of
+            TokNewLine -> do
+                layout:layouts <- lift get
+                case layout of
+                    NoLayout -> go inp'
+                    Layout n -> case compare n c of
+                        LT -> go inp'
+                        EQ -> cont TokSemicolon inp'
+                        GT -> do
+                            lift (put layouts)
+                            cont TokRBrace inp
+            TokRBrace  -> do
+                layout <- lift get
+                if NoLayout `elem` layout
+                then do
+                    lift $ put (tail layout)
+                    cont TokRBrace $ if head layout == NoLayout then inp' else inp
+                else do
+                    warn [(pos, "Misplaced '}'")]
+                    go inp'
+            tok -> cont tok inp'
 
 findGoodSymbol :: AlexInput -> AlexInput
 findGoodSymbol (Posn l c, str) =

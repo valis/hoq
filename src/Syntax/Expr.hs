@@ -41,3 +41,45 @@ parPatGetPos (PatRight (PRight (p,_))) = p
 unArg :: Arg -> String
 unArg NoArg{} = "_"
 unArg (Arg (PIdent (_,s))) = s
+
+data Level = Level Int | NoLevel
+
+instance Eq Level where
+    (==) = (==) `on` level
+
+instance Ord Level where
+    compare = compare `on` level
+
+instance Show Level where
+    show = show . level
+
+instance Enum Level where
+    toEnum 0 = NoLevel
+    toEnum n = Level n
+    fromEnum = level
+
+level :: Level -> Int
+level (Level l) = l
+level NoLevel = 0
+
+data Term p a
+    = Var a
+    | App (Term a) (Term a)
+    | Lam p (Scope1 String Term a)
+    | Pi p (Type a) (Scope String Term a) Level
+    | Con p Int String [([PatternC], Closed (Scope String Term))] [Term a]
+    | FunCall p String [([PatternC], Closed (Scope String Term))]
+    | FunSyn p String (Term a)
+    | Universe p Level
+    | DataType p String Int [Term a]
+    | Interval p
+    | ICon p ICon
+    | Path p Explicit (Maybe (Term a)) [Term a]
+    | PCon p (Maybe (Term a))
+    | At (Term a) (Term a) (Term a) (Term a)
+    | Coe p [Term a]
+    | Iso p [Term a]
+    | Squeeze p [Term a]
+data Type a = Type (Term a) Level
+data Explicit = Explicit | Implicit
+type PatternC = Pattern (Closed (Scope String Term))
