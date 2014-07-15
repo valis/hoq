@@ -24,10 +24,10 @@ type Tele = [([Arg], Expr)]
 typeCheckDataType :: MonadFix m => PIdent -> Tele -> [(PIdent,Tele)] -> [(E.Pattern, Expr)] -> TCM m ()
 typeCheckDataType p@(PIdent (lc,dt)) params cons conds = mdo
     let lcons = length cons
-    (SomeEq ctx, dataType@(Type dtTerm _)) <- checkTele Nil params $ Closed (T.Universe NoLevel)
+    (SomeEq ctx, dataType@(Type dtTerm _)) <- checkTele Nil params (T.Universe NoLevel)
     addDataTypeCheck p dataType lcons
     cons' <- forW (zip cons [0..]) $ \((con@(PIdent (lc,conName)),tele),i) -> do
-        (_, Type conType conLevel) <- checkTele ctx tele $ Closed $ DataType dt lcons []
+        (_, Type conType conLevel) <- checkTele ctx tele $ DataType dt lcons (ctxToVars ctx)
         checkPositivity p (nf WHNF conType)
         let conTerm = T.Con i lc conName (map snd $ filter (\(c,_) -> c == conName) conds') []
         return $ Just (con, conTerm, Type conType conLevel)
@@ -52,15 +52,14 @@ typeCheckDataType p@(PIdent (lc,dt)) params cons conds = mdo
     forM_ cons' $ \(_, T.Con i lc' conName conConds [], _) -> do
         warn $ checkConditions lc (Closed $ T.Con i lc' conName conConds []) conConds
 
-checkTele :: (Monad m, Eq a) => Ctx String Type String a -> Tele -> Closed Term
-    -> TCM m (SomeEq (Ctx String Type String), Type a)
-checkTele ctx [] (Closed term) = return (SomeEq ctx, Type term NoLevel)
+checkTele :: (Monad m, Eq a) => Ctx String Type String a -> Tele -> Term a -> TCM m (SomeEq (Ctx String Type String), Type a)
+checkTele ctx [] term = return (SomeEq ctx, Type term NoLevel)
 checkTele ctx ((args,expr):tele) term = do
     (r1, Type t1 _) <- typeCheckCtx ctx expr Nothing
     lvl1 <- checkIsType ctx expr (nf WHNF t1)
     case extendCtx (map unArg args) Nil (Type r1 lvl1) of
         SomeEq ctx' -> do
-            (rctx, Type r2 lvl2) <- checkTele (ctx +++ ctx') tele term
+            (rctx, Type r2 lvl2) <- checkTele (ctx +++ ctx') tele $ fmap (liftBase ctx') term
             return (rctx, Type (T.Pi (Type r1 lvl1) (abstractTermInCtx ctx' r2) lvl2) $ max lvl1 lvl2)
 
 replaceLevel :: Term a -> Level -> Term a

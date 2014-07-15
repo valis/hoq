@@ -126,13 +126,6 @@ patternsToTerms (pat:pats) = case patternToTerm pat of
     TermInCtx ctx' term -> case patternsToTerms pats of
         TermsInCtx ctx'' terms -> TermsInCtx (ctx' +++ ctx'') $ fmap (liftBase ctx'') term : terms
 
-ctxToVars :: Ctx s f b a -> [Term a]
-ctxToVars = reverse . go
-  where
-    go :: Ctx s f b a -> [Term a]
-    go Nil = []
-    go (Snoc ctx _ _) = Var Bound : map (fmap Free) (go ctx)
-
 mapHead :: [[a]] -> [a]
 mapHead cs = cs >>= \as -> if null as then [] else [head as]
 

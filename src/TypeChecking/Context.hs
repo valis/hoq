@@ -24,6 +24,13 @@ lookupCtx s (Snoc ctx s' t) = if s == s'
     then Just (return Bound, fmap Free t)
     else fmap (\(te, ty) -> (liftM Free te, fmap Free ty)) (lookupCtx s ctx)
 
+ctxToVars :: Monad g => Ctx s f b a -> [g a]
+ctxToVars = reverse . go
+  where
+    go :: Monad g => Ctx s f b a -> [g a]
+    go Nil = []
+    go (Snoc ctx _ _) = return Bound : map (liftM Free) (go ctx)
+
 close :: Monad f => Ctx b g b a -> f a -> f b
 close Nil            t = t
 close (Snoc ctx s _) t = close ctx $ t >>= \v -> return $ case v of
