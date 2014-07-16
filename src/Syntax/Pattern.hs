@@ -1,15 +1,15 @@
 module Syntax.Pattern where
 
 data ICon = ILeft | IRight deriving Eq
-data PatternCon c a = PatternCon Int Int a [([Pattern c a], c)]
-data Pattern c a = Pattern (PatternCon c a) [Pattern c a] | PatternVar a | PatternI ICon | PatternEmpty
+data PatternCon p c a = PatternCon Int Int a [([Pattern p c a], c)]
+data Pattern p c a = Pattern (PatternCon p c a) [Pattern p c a] | PatternVar a | PatternI p ICon | PatternEmpty p
 
-instance Eq (PatternCon c a) where
+instance Eq (PatternCon p c a) where
     PatternCon i _ _ _ == PatternCon i' _ _ _ = i == i'
 
-instance Eq (Pattern c a) where
-    PatternI c   == PatternI c'  = c == c'
-    PatternVar _ == PatternVar _ = True
-    Pattern c _  == Pattern c' _ = c == c'
-    PatternEmpty == PatternEmpty = True
-    _            == _            = False
+instance Eq (Pattern p c a) where
+    PatternI _ c   == PatternI _ c'  = c == c'
+    PatternVar _   == PatternVar _   = True
+    Pattern c _    == Pattern c' _   = c == c'
+    PatternEmpty _ == PatternEmpty _ = True
+    _              == _              = False

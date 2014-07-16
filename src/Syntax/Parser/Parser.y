@@ -93,14 +93,14 @@ FunClauses :: { [Clause] }
     : PIdent Patterns '=' Expr                  { [Clause $1 $2 $4]     }
     | FunClauses ';' PIdent Patterns '=' Expr   { Clause $3 $4 $6 : $1  }
 
-Pattern :: { PatternC' (Attr Posn PatternC' PIdent) }
-    : PIdent                        { PatternVar (AttrVar $1)                               }
-    | posn 'left'                   { PatternVar (Attr $1 $ PatternI ILeft)                 }
-    | posn 'right'                  { PatternVar (Attr $1 $ PatternI IRight)                }
-    | posn '(' ')'                  { PatternVar (Attr $1 PatternEmpty)                     }
-    | posn '(' PIdent Patterns ')'  { Pattern (PatternCon 0 0 (AttrVar $3) []) (reverse $4) }
+Pattern :: { PatternC Posn PIdent }
+    : PIdent                        { PatternVar $1                                 }
+    | posn 'left'                   { PatternI $1 ILeft                             }
+    | posn 'right'                  { PatternI $1 IRight                            }
+    | posn '(' ')'                  { PatternEmpty $1                               }
+    | posn '(' PIdent Patterns ')'  { Pattern (PatternCon 0 0 $3 []) (reverse $4)   }
 
-Patterns :: { [PatternC' (Attr Posn PatternC' PIdent)] }
+Patterns :: { [PatternC Posn PIdent] }
     : {- empty -}       { []    }
     | Patterns Pattern  { $2:$1 }
 
@@ -131,17 +131,17 @@ PIdents :: { [PIdent] }
     | PIdents PIdent    { $2:$1 }
 
 Expr :: { Expr }
-    : Expr1                         { $1                                                    }
-    | posn '\\' PIdents '->' Expr   { Var $ Attr $1 $5 {- TODO: (Lam (reverse $3) $5) -}    }
+    : Expr1                         { $1            }
+    | posn '\\' PIdents '->' Expr   { lam $1 $3 $5  }
 
 Expr1 :: { Expr }
     : Expr2 { $1 }
-    | Expr2 '->' Expr1      { Pi (Type $1 NoLevel) (ScopeTerm $3) NoLevel   } 
-    | PiTeles '->' Expr1    { {- TODO: Pi $1 -} $3                          }
+    | Expr2 '->' Expr1      { Pi (getPos $1) (Type $1 NoLevel) (ScopeTerm $3) NoLevel   }
+    | PiTeles '->' Expr1    {% \_ -> piExpr $1 $3                                       }
 
 Expr2 :: { Expr }
-    : Expr3             { $1                            }
-    | Expr3 '=' Expr3   { Path Implicit Nothing [$1,$3] }
+    : Expr3             { $1                                        }
+    | Expr3 '=' Expr3   { Path (getPos $1) Implicit Nothing [$1,$3] }
 
 Expr3 :: { Expr }
     : Expr4             { $1                }
@@ -152,17 +152,17 @@ Expr4 :: { Expr }
     | Expr4 Expr5 { App $1 $2 } 
 
 Expr5 :: { Expr }
-    : posn Ident        { Var $ Attr $1 $ Var (AttrVar $2)  }
-    | Universe          { Universe (maybe NoLevel Level $1) }
-    | 'I'               { Interval                          }
-    | 'left'            { ICon ILeft                        }
-    | 'right'           { ICon IRight                       }
-    | 'Path'            { Path Explicit Nothing []          }
-    | 'path'            { PCon Nothing                      }
-    | 'coe'             { Coe []                            }
-    | 'iso'             { Iso []                            }
-    | 'squeeze'         { Squeeze []                        }
-    | posn '(' Expr ')' { Var (Attr $1 $3)                  }
+    : PIdent            { Var $1                                }
+    | posn Universe     { Universe $1 (maybe NoLevel Level $2)  }
+    | posn 'I'          { Interval $1                           }
+    | posn 'left'       { ICon $1 ILeft                         }
+    | posn 'right'      { ICon $1 IRight                        }
+    | posn 'Path'       { Path $1 Explicit Nothing []           }
+    | posn 'path'       { PCon $1 Nothing                       }
+    | posn 'coe'        { Coe $1 []                             }
+    | posn 'iso'        { Iso $1 []                             }
+    | posn 'squeeze'    { Squeeze $1 []                         }
+    | posn '(' Expr ')' { $3                                    }
 
 {
 return' :: a -> Parser a
@@ -170,6 +170,40 @@ return' a _ = return a
 
 bind :: Parser a -> (a -> Parser b) -> Parser b
 bind p k e = p e >>= \a -> k a e
+
+lam :: Posn -> [PIdent] -> Expr -> Expr
+lam pos vars term = case go vars term of
+    Lam _ s -> Lam pos s
+    term' -> term'
+  where
+    go [] e = e
+    go (v@(PIdent pos x) : vs) e = go vs $ Lam pos $ Scope1 x (abstract1 v e)
+
+type Expr = Term Posn PIdent
+data PiTele = PiTele Posn Expr Expr
+
+piExpr :: [PiTele] -> Expr -> ParserErr Expr
+piExpr [] term = return term
+piExpr (PiTele pos e1 e2 : teles) term = do
+    vars <- exprToVars e1
+    term' <- piExpr teles term
+    return $ Pi pos (Type e2 NoLevel) (mkScope (PIdent pos) vars term') NoLevel
+
+getPos :: Term Posn PIdent -> Posn
+getPos = getAttr $ \(PIdent pos _) -> pos
+
+exprToVars :: Term Posn PIdent -> ParserErr [String]
+exprToVars term = fmap reverse (go term)
+  where
+    go (Var (PIdent _ v)) = return [v]
+    go (App as (Var (PIdent _ v))) = fmap (v:) (go as)
+    go e = throwError [(getPos term, "Expected a list of identifiers")]
+
+mkScope :: (Functor f, Eq a) => (s -> a) -> [s] -> f a -> Scope s f a
+mkScope f vars term = go vars $ map f (reverse vars)
+  where
+    go [] [] = ScopeTerm term
+    go (d:ds) (r:rs) = Scope d $ fmap (\a -> if a == r then Bound else Free a) (go ds rs)
 
 parseError :: Token -> Parser a
 parseError _ (pos,_) = throwError [(pos, "Syntax error")]

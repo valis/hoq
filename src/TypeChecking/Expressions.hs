@@ -3,7 +3,7 @@
 module TypeChecking.Expressions
     ( typeCheck, typeCheckCtx
     , notInScope, inferErrorMsg, inferParamsErrorMsg
-    , prettyOpen, exprToVars
+    , prettyOpen
     , checkUniverses, checkIsType
     , SomeEq(..), extendCtx
     ) where
@@ -33,13 +33,6 @@ expectedArgErrorMsg lc d = emsgLC lc ("Expected an argument to " ++ show d) enul
 
 prettyOpen :: (Pretty b f, Monad f) => Ctx b g b a -> f a -> EDoc f
 prettyOpen ctx term = epretty $ liftM pretty (close ctx term)
-
-exprToVars :: Monad m => Expr -> EDocM m [Arg]
-exprToVars = liftM reverse . go
-  where
-    go (E.Var a) = return [a]
-    go (E.App as (E.Var a)) = liftM (a:) (go as)
-    go e = throwError [emsgLC (getPos e) "Expected a list of identifiers" enull]
 
 checkUniverses :: (Pretty b Term, Monad m) => Ctx b g b a1 -> Ctx b g b a2
     -> Expr -> Expr -> Term a1 -> Term a2 -> EDocM m Level

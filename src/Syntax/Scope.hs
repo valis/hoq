@@ -57,6 +57,9 @@ instance MonadF (Scope1 s) where
         Bound  -> return Bound
         Free a -> liftM Free (k a)
 
+abstract1 :: (Functor f, Eq a) => a -> f a -> f (Scoped a)
+abstract1 a = fmap $ \a' -> if a == a' then Bound else Free a'
+
 instantiate1 :: Monad f => f a -> f (Scoped a) -> f a
 instantiate1 s t = t >>= \v -> case v of
     Bound  -> s

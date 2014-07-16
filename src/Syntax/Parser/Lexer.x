@@ -1,7 +1,8 @@
 {
 module Syntax.Parser.Lexer
     ( alexScanTokens
-    , Token(..), Parser
+    , Token(..)
+    , Parser, ParserErr
     , Layout(..)
     ) where
 
@@ -90,7 +91,8 @@ type AlexInput = (Posn, B.ByteString)
 
 data Layout = Layout Int | NoLayout deriving Eq
 
-type Parser a = AlexInput -> WarnT [(Posn, String)] (State [Layout]) a
+type ParserErr a = WarnT [(Posn, String)] (State [Layout]) a
+type Parser a = AlexInput -> ParserErr a
 
 alexScanTokens :: (Token -> Parser a) -> Parser a
 alexScanTokens cont = go
