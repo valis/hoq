@@ -44,16 +44,13 @@ import Syntax.Term
     '|'         { TokPipe           }
     '@'         { TokAt             }
     '->'        { TokArrow          }
-    'with'      { TokWith           }
+    'with'      { TokWith $$        }
 
 %%
 
-open :: { () }
-    : '{'   {% \_ -> lift $ modify (NoLayout :)             }
-    | error {% \((_, c), _) -> lift $ modify (Layout c :) }
-
-close :: { () }
-    : '}'   { () }
+with :: { () }
+    : 'with' '{'   {% \_ -> lift $ modify (NoLayout :)  }
+    | 'with' error {% \_ -> lift $ modify (Layout $1 :) }
 
 posn :: { Posn }
     : {- empty -}   {% \(pos,_) -> return pos }
@@ -66,25 +63,27 @@ Import :: { Import }
     | Import '.' Ident  { $3 : $1 }
 
 Def :: { Def }
-    : PIdent ':' Expr                                               { DefType $1 $3                                     }
-    | PIdent Patterns '=' Expr                                      { DefFun $1 $2 (Just $4)                            }
-    | PIdent Patterns                                               { DefFun $1 $2 Nothing                              }
-    | 'data' PIdent DataTeles                                       { DefData $2 (reverse $3) [] []                     }
-    | 'data' PIdent DataTeles '=' Cons                              { DefData $2 (reverse $3) (reverse $5) []           }
-    | 'data' PIdent DataTeles '=' Cons 'with' open FunClauses close { DefData $2 (reverse $3) (reverse $5) (reverse $8) }
-    | 'import' Import                                               { DefImport $2 }
+    : PIdent ':' Expr                                       { DefType $1 $3                                     }
+    | PIdent Patterns '=' Expr                              { DefFun $1 $2 (Just $4)                            }
+    | PIdent Patterns                                       { DefFun $1 $2 Nothing                              }
+    | 'data' PIdent DataTeles                               { DefData $2 (reverse $3) [] []                     }
+    | 'data' PIdent DataTeles '=' Cons                      { DefData $2 (reverse $3) (reverse $5) []           }
+    | 'data' PIdent DataTeles '=' Cons with FunClauses '}'  { DefData $2 (reverse $3) (reverse $5) (reverse $7) }
+    | 'import' Import                                       { DefImport $2 }
 
 DataTeles :: { [(Expr,Expr)] }
     : {- empty -}                     { []              }
     | DataTeles '(' Expr ':' Expr ')' { ($3, $5) : $1   }
 
 Defs :: { [Def] }
-    : {- empty -}   { []    }
-    | Defs Def ';'  { $2:$1 }
-    | Defs     ';'  { $1    }
+    : {- empty -}   { [] }
+    | Def           { [$1]  }
+    | Defs ';'      { $1    }
+    | Defs ';' Def  { $3:$1 }
 
 FunClauses :: { [Clause] }
     : PIdent Patterns '=' Expr                  { [Clause $1 $2 $4]     }
+    | FunClauses ';'                            { $1                    }
     | FunClauses ';' PIdent Patterns '=' Expr   { Clause $3 $4 $6 : $1  }
 
 Pattern :: { PatternC Posn PIdent }

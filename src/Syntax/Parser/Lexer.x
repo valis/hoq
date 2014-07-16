@@ -21,13 +21,16 @@ $alpha      = [a-zA-Z]
 $digit      = [0-9]
 $any        = [\x00-\x10ffff]
 @ident      = ($alpha | \_) ($alpha | $digit | \' | \- | \_)*
-@newline    = \n $white*
+@lcomm      = "--".*
+@mcomm      = "{-" ([$any # \-] | \- [$any # \}])* "-}"
+@newline    = \n ($white | @lcomm | @mcomm)*
+@with       = "with" @newline*
 
 :-
 
 [$white # \n]+;
-"--".*;
-"{-" ([$any # \-] | \- [$any # \}])* "-}";
+@lcomm;
+@mcomm;
 
 "Type" $digit*  {       TokUniverse . listToMaybe . map fst . reads }
 "I"             { const TokInterval                                 }
@@ -40,7 +43,7 @@ $any        = [\x00-\x10ffff]
 "squeeze"       { const TokSqueeze                                  }
 "import"        { const TokImport                                   }
 "data"          { const TokData                                     }
-"with"          { const TokWith                                     }
+@with           { const (TokWith 0)                                 }
 @ident          {       TokIdent                                    }
 \\              { const TokLam                                      }
 \(              { const TokLParen                                   }
@@ -82,7 +85,7 @@ data Token
     | TokPipe
     | TokAt
     | TokArrow
-    | TokWith
+    | TokWith !Int
     | TokNewLine
     | TokEOF
 
@@ -122,6 +125,7 @@ alexScanTokens cont = go
                 else do
                     warn [(pos, "Misplaced '}'")]
                     go inp'
+            TokWith _  -> cont (TokWith c) inp'
             tok -> cont tok inp'
 
 findGoodSymbol :: AlexInput -> AlexInput
