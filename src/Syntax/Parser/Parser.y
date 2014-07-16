@@ -1,7 +1,7 @@
 --
 {
 module Syntax.Parser.Parser
-    ( pModule, pExpr
+    ( pDefs, pExpr
     ) where
 
 import Control.Monad.Trans
@@ -12,7 +12,7 @@ import Syntax.Parser.Lexer
 import Syntax.Term
 }
 
-%name pModule Module
+%name pDefs Defs
 %name pExpr Expr
 %tokentype { Token }
 %error { parseError }
@@ -50,7 +50,7 @@ import Syntax.Term
 
 open :: { () }
     : '{'   {% \_ -> lift $ modify (NoLayout :)             }
-    | error {% \(Posn _ c, _) -> lift $ modify (Layout c :) }
+    | error {% \((_, c), _) -> lift $ modify (Layout c :) }
 
 close :: { () }
     : '}'   { () }
@@ -60,13 +60,6 @@ posn :: { Posn }
 
 PIdent :: { PIdent }
     : posn Ident    { PIdent $1 $2 }
-
-Module :: { Module }
-    : Imports Defs { Module (reverse $1) (reverse $2) } 
-
-Imports :: { [Import] }
-    : {- empty -}                   { []                } 
-    | Imports 'import' Import ';'   { $3 : reverse $1   }
 
 Import :: { Import }
     : Ident             { [$1] } 
@@ -79,6 +72,7 @@ Def :: { Def }
     | 'data' PIdent DataTeles                                       { DefData $2 (reverse $3) [] []                     }
     | 'data' PIdent DataTeles '=' Cons                              { DefData $2 (reverse $3) (reverse $5) []           }
     | 'data' PIdent DataTeles '=' Cons 'with' open FunClauses close { DefData $2 (reverse $3) (reverse $5) (reverse $8) }
+    | 'import' Import                                               { DefImport $2 }
 
 DataTeles :: { [(Expr,Expr)] }
     : {- empty -}                     { []              }
@@ -86,8 +80,8 @@ DataTeles :: { [(Expr,Expr)] }
 
 Defs :: { [Def] }
     : {- empty -}   { []    }
-    | Def           { [$1]  }
-    | Defs ';' Def  { $3:$1 }
+    | Defs Def ';'  { $2:$1 }
+    | Defs     ';'  { $1    }
 
 FunClauses :: { [Clause] }
     : PIdent Patterns '=' Expr                  { [Clause $1 $2 $4]     }
@@ -136,12 +130,12 @@ Expr :: { Expr }
 
 Expr1 :: { Expr }
     : Expr2 { $1 }
-    | Expr2 '->' Expr1      { Pi (getPos $1) (Type $1 NoLevel) (ScopeTerm $3) NoLevel   }
+    | Expr2 '->' Expr1      { Pi (termPos $1) (Type $1 NoLevel) (ScopeTerm $3) NoLevel   }
     | PiTeles '->' Expr1    {% \_ -> piExpr $1 $3                                       }
 
 Expr2 :: { Expr }
     : Expr3             { $1                                        }
-    | Expr3 '=' Expr3   { Path (getPos $1) Implicit Nothing [$1,$3] }
+    | Expr3 '=' Expr3   { Path (termPos $1) Implicit Nothing [$1,$3] }
 
 Expr3 :: { Expr }
     : Expr4             { $1                }
@@ -189,15 +183,15 @@ piExpr (PiTele pos e1 e2 : teles) term = do
     term' <- piExpr teles term
     return $ Pi pos (Type e2 NoLevel) (mkScope (PIdent pos) vars term') NoLevel
 
-getPos :: Term Posn PIdent -> Posn
-getPos = getAttr $ \(PIdent pos _) -> pos
+termPos :: Term Posn PIdent -> Posn
+termPos = getAttr getPos
 
 exprToVars :: Term Posn PIdent -> ParserErr [String]
 exprToVars term = fmap reverse (go term)
   where
     go (Var (PIdent _ v)) = return [v]
     go (App as (Var (PIdent _ v))) = fmap (v:) (go as)
-    go e = throwError [(getPos term, "Expected a list of identifiers")]
+    go e = throwError [(termPos term, "Expected a list of identifiers")]
 
 mkScope :: (Functor f, Eq a) => (s -> a) -> [s] -> f a -> Scope s f a
 mkScope f vars term = go vars $ map f (reverse vars)
