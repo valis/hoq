@@ -3,10 +3,8 @@ module TypeChecking.Definitions
     ) where
 
 import Control.Monad
-import Control.Monad.Error
 
-import Syntax.Expr as E
-import Syntax.Term as T
+import Syntax.Term
 import Syntax.ErrorDoc
 import TypeChecking.Expressions
 import TypeChecking.Definitions.DataTypes

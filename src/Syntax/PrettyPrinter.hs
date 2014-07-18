@@ -47,12 +47,12 @@ ppTermCtx ctx t@(Squeeze _ es) = text "squeeze" <+> ppList ctx t es
 ppList :: [String] -> Term p Doc -> [Term p Doc] -> Doc
 ppList ctx t ts = hsep $ map (ppTermPrec (prec t + 1) ctx) ts
 
-ppScopePrec :: Int -> [String] -> Scope String (Term p) Doc -> ([Doc], Doc)
+ppScopePrec :: Int -> [String] -> Scope String p (Term p) Doc -> ([Doc], Doc)
 ppScopePrec p ctx t =
     let (vars, b, ctx', t') = scopeToTerm ctx text t
     in (map text vars, (if null vars || b then arrow else empty) <+> ppTermPrec p ctx' t')
 
-scopeToTerm :: [String] -> (String -> a) -> Scope String (Term p) a -> ([String], Bool, [String], Term p a)
+scopeToTerm :: [String] -> (String -> a) -> Scope String p (Term p) a -> ([String], Bool, [String], Term p a)
 scopeToTerm ctx f (ScopeTerm t@(Pi _ _ ScopeTerm{} _)) = ([], False, ctx, t)
 scopeToTerm ctx f (ScopeTerm t) = ([], True, ctx, t)
 scopeToTerm ctx f (Scope v s) =

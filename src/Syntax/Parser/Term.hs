@@ -29,11 +29,11 @@ data Def
 data Term p a
     = Var a
     | App (Term p a) (Term p a)
-    | Lam p (Scope1 String (Term p) a)
-    | Pi p (Type p a) (Scope String (Term p) a) Level
-    | Con p Int String [([PatternC p String], Closed (Scope String (Term p)))] [Term p a]
-    | FunCall p String [([PatternC p String], Closed (Scope String (Term p)))]
-    | FunSyn p String (Term p a)
+    | Lam p (Scope1 String p (Term p) a)
+    | Pi p (Type p a) (Scope String p (Term p) a) Level
+    | Con p Int String [([PatternC p String], Closed (Scope String p (Term p)))] [Term p a]
+    | FunCall p String [([PatternC p String], Closed (Scope String p (Term p)))]
+    | FunSyn p String (Closed (Term p))
     | Universe p Level
     | DataType p String Int [Term p a]
     | Interval p
@@ -48,7 +48,7 @@ data Term p a
 data Level = Level Int | NoLevel
 data Type p a = Type (Term p a) Level
 data Explicit = Explicit | Implicit
-type PatternC p = Pattern p (Closed (Scope String (Term p)))
+type PatternC p = Pattern p (Closed (Scope String p (Term p)))
 
 getAttr :: (a -> p) -> Term p a -> p
 getAttr f (Var a) = f a

@@ -42,9 +42,9 @@ instance Eq a => Eq (Term p a) where
         go (App a b) es e2 es' = go a (b:es) e2 es'
         go e1 es (App a b) es' = go e1 es a (b:es')
         go (Lam _ s) es (Lam _ s') es' = s == s' && es == es'
-        go (Lam _ (Scope1 _ s)) es t es' =
+        go (Lam p (Scope1 _ s)) es t es' =
             let (l1,l2) = splitAt (length es' - length es) es'
-            in l2 == es && go s [] (fmap Free t) (map (fmap Free) l1 ++ [Var Bound])
+            in l2 == es && go s [] (fmap Free t) (map (fmap Free) l1 ++ [Var $ Bound p])
         go t es t'@Lam{} es' = go t' es' t es
         go e1@Pi{} es e2@Pi{} es' = pcompare e1 e2 == Just EQ && es == es'
         go (Con _ c _ _ as) es (Con _ c' _ _ as') es' = c == c' && as ++ es == as' ++ es'
@@ -58,7 +58,7 @@ instance Eq a => Eq (Term p a) where
         go (Path _ _ _ as) es (Path _ _ _ as') es' = as ++ es == as' ++ es'
         go (PCon _ f) es (PCon _ f') es' = maybe [] return f ++ es == maybe [] return f' ++ es'
         go (PCon p e) es e' es' = case maybe [] return e ++ es of
-            e1:es1 -> e1 == Lam p (Scope1 "" $ At Nothing (fmap Free e') $ Var Bound) && es1 == es'
+            e1:es1 -> e1 == Lam p (Scope1 "" $ At Nothing (fmap Free e') $ Var $ Bound p) && es1 == es'
             _ -> False
         go e es e'@PCon{} es' = go e' es' e es
         go (At _ a b) es (At _ a' b') es' = a == a' && b == b' && es == es'
@@ -82,8 +82,8 @@ instance Eq a => POrd (Term p a) where
         contraCovariant (pcompare a a') $ pcompare (unScope1 $ dropOnePi p a b lvl) (fmap Free b')
     pcompare (Pi p a b lvl) (Pi p' a' b' lvl') = contraCovariant (pcompare a a') $ pcompareScopes p a b lvl p' a' b' lvl'
       where
-        pcompareScopes :: Eq a => p -> Type p a -> Scope String (Term p) a -> Level
-            -> p -> Type p a -> Scope String (Term p) a -> Level -> Maybe Ordering
+        pcompareScopes :: Eq a => p -> Type p a -> Scope String p (Term p) a -> Level
+            -> p -> Type p a -> Scope String p (Term p) a -> Level -> Maybe Ordering
         pcompareScopes _ _ (ScopeTerm b) _   _  _  (ScopeTerm b') _      = pcompare b b'
         pcompareScopes _ _ (ScopeTerm b) _   p' a'            b'  lvl'   = pcompare b (Pi p' a' b' lvl')
         pcompareScopes p a            b  lvl _  _  (ScopeTerm b') _      = pcompare (Pi p a b lvl) b'
@@ -131,8 +131,8 @@ instance Traversable (Term p) where
     traverse f (Coe p as)           = Coe p          <$> traverse (traverse f) as
     traverse f (Iso p as)           = Iso p          <$> traverse (traverse f) as
     traverse f (Squeeze p as)       = Squeeze p      <$> traverse (traverse f) as
-    traverse f (FunSyn p n e)       = FunSyn p n     <$> traverse f e
     traverse f (DataType p d e as)  = DataType p d e <$> traverse (traverse f) as
+    traverse _ (FunSyn p n e)       = pure (FunSyn p n e)
     traverse _ (FunCall p n cs)     = pure (FunCall p n cs)
     traverse _ (Universe p l)       = pure (Universe p l)
     traverse _ (Interval p)         = pure (Interval p)
@@ -146,7 +146,7 @@ instance Monad (Term p) where
     Pi p (Type e1 lvl1) e2 lvl2 >>= k = Pi p (Type (e1 >>= k) lvl1) (e2 >>>= k) lvl2
     Con p c n cs as             >>= k = Con p c n cs (map (>>= k) as)
     FunCall p n cs              >>= k = FunCall p n cs
-    FunSyn p n e                >>= k = FunSyn p n (e >>= k)
+    FunSyn p n e                >>= _ = FunSyn p n e
     Universe p l                >>= _ = Universe p l
     DataType p d e as           >>= k = DataType p d e $ map (>>= k) as
     Interval p                  >>= _ = Interval p
@@ -174,7 +174,7 @@ collect term = go term []
     go (Squeeze p es)       ts  = Squeeze p         (es ++ ts)
     go _ _ = term
 
-dropOnePi :: p -> Type p a -> Scope String (Term p) a -> Level -> Scope1 String (Term p) a
+dropOnePi :: p -> Type p a -> Scope String p (Term p) a -> Level -> Scope1 String p (Term p) a
 dropOnePi _ _ (ScopeTerm b) _ = Scope1 "_" (fmap Free b)
 dropOnePi _ _ (Scope s (ScopeTerm b)) _ = Scope1 s b
 dropOnePi p a (Scope s b) lvl = Scope1 s $ Pi p (fmap Free a) b lvl

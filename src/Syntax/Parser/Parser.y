@@ -49,7 +49,7 @@ import Syntax.Term
 %%
 
 with :: { () }
-    : 'with' '{'   {% \_ -> lift $ modify (NoLayout :)  }
+    : 'with' '{'   {% \_ -> lift $ modify (NoLayout  :) }
     | 'with' error {% \_ -> lift $ modify (Layout $1 :) }
 
 posn :: { Posn }
@@ -59,8 +59,8 @@ PIdent :: { PIdent }
     : posn Ident    { PIdent $1 $2 }
 
 Import :: { Import }
-    : Ident             { [$1] } 
-    | Import '.' Ident  { $3 : $1 }
+    : Ident             { [$1]  } 
+    | Import '.' Ident  { $3:$1 }
 
 Def :: { Def }
     : PIdent ':' Expr                                       { DefType $1 $3                                     }
@@ -69,14 +69,14 @@ Def :: { Def }
     | 'data' PIdent DataTeles                               { DefData $2 (reverse $3) [] []                     }
     | 'data' PIdent DataTeles '=' Cons                      { DefData $2 (reverse $3) (reverse $5) []           }
     | 'data' PIdent DataTeles '=' Cons with FunClauses '}'  { DefData $2 (reverse $3) (reverse $5) (reverse $7) }
-    | 'import' Import                                       { DefImport $2 }
+    | 'import' Import                                       { DefImport $2                                      }
 
 DataTeles :: { [(Expr,Expr)] }
     : {- empty -}                     { []              }
     | DataTeles '(' Expr ':' Expr ')' { ($3, $5) : $1   }
 
 Defs :: { [Def] }
-    : {- empty -}   { [] }
+    : {- empty -}   { []    }
     | Def           { [$1]  }
     | Defs ';'      { $1    }
     | Defs ';' Def  { $3:$1 }
@@ -101,8 +101,8 @@ Con :: { Con }
     : PIdent ConTeles { ConDef $1 (reverse $2) } 
 
 Cons :: { [Con] }
-    : Con { [$1] } 
-    | Cons '|' Con { $3:$1 }
+    : Con           { [$1]  } 
+    | Cons '|' Con  { $3:$1 }
 
 ConTele :: { ConTele }
     : Expr5                         { TypeTele $1       }
@@ -129,20 +129,20 @@ Expr :: { Expr }
 
 Expr1 :: { Expr }
     : Expr2 { $1 }
-    | Expr2 '->' Expr1      { Pi (termPos $1) (Type $1 NoLevel) (ScopeTerm $3) NoLevel   }
+    | Expr2 '->' Expr1      { Pi (termPos $1) (Type $1 NoLevel) (ScopeTerm $3) NoLevel  }
     | PiTeles '->' Expr1    {% \_ -> piExpr $1 $3                                       }
 
 Expr2 :: { Expr }
-    : Expr3             { $1                                        }
-    | Expr3 '=' Expr3   { Path (termPos $1) Implicit Nothing [$1,$3] }
+    : Expr3             { $1                                            }
+    | Expr3 '=' Expr3   { Path (termPos $1) Implicit Nothing [$1,$3]    }
 
 Expr3 :: { Expr }
     : Expr4             { $1                }
     | Expr3 '@' Expr4   { At Nothing $1 $3  }
 
 Expr4 :: { Expr }
-    : Expr5 { $1 }
-    | Expr4 Expr5 { App $1 $2 } 
+    : Expr5         { $1        }
+    | Expr4 Expr5   { App $1 $2 }
 
 Expr5 :: { Expr }
     : PIdent            { Var $1                                }
@@ -170,7 +170,7 @@ lam pos vars term = case go vars term of
     term' -> term'
   where
     go [] e = e
-    go (v@(PIdent pos x) : vs) e = go vs $ Lam pos $ Scope1 x (abstract1 v e)
+    go (PIdent pos x : vs) e = go vs $ Lam pos $ Scope1 x $ abstract1 (\(PIdent p a) -> if a == x then Just p else Nothing) e
 
 type Expr = Term Posn PIdent
 data PiTele = PiTele Posn Expr Expr
@@ -180,7 +180,7 @@ piExpr [] term = return term
 piExpr (PiTele pos e1 e2 : teles) term = do
     vars <- exprToVars e1
     term' <- piExpr teles term
-    return $ Pi pos (Type e2 NoLevel) (mkScope (PIdent pos) vars term') NoLevel
+    return $ Pi pos (Type e2 NoLevel) (mkScope vars term') NoLevel
 
 termPos :: Term Posn PIdent -> Posn
 termPos = getAttr getPos
@@ -192,11 +192,11 @@ exprToVars term = fmap reverse (go term)
     go (App as (Var (PIdent _ v))) = fmap (v:) (go as)
     go e = throwError [(termPos term, "Expected a list of identifiers")]
 
-mkScope :: (Functor f, Eq a) => (s -> a) -> [s] -> f a -> Scope s f a
-mkScope f vars term = go vars $ map f (reverse vars)
+mkScope :: Functor f => [String] -> f PIdent -> Scope String Posn f PIdent
+mkScope vars term = go vars (reverse vars)
   where
     go [] [] = ScopeTerm term
-    go (d:ds) (r:rs) = Scope d $ fmap (\a -> if a == r then Bound else Free a) (go ds rs)
+    go (d:ds) (r:rs) = Scope d $ fmap (\a@(PIdent p v) -> if v == r then Bound p else Free a) (go ds rs)
 
 parseError :: Token -> Parser a
 parseError _ (pos,_) = throwError [(pos, "Syntax error")]

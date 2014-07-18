@@ -103,7 +103,7 @@ alexScanTokens cont = go
         AlexEOF             -> cont TokEOF inp
         AlexError inp'      -> do
             warn [(pos, "Lexer error")]
-            go (findGoodSymbol $ skipOneSymbol inp')
+            (go . findAGoodSymbol . skippingTheBadOne) inp'
         AlexSkip  inp' _    -> go inp'
         AlexToken inp'@((_, c), _) len act -> case act $ C.unpack (B.take len str) of
             TokNewLine -> do
@@ -128,13 +128,13 @@ alexScanTokens cont = go
             TokWith _  -> cont (TokWith c) inp'
             tok -> cont tok inp'
 
-findGoodSymbol :: AlexInput -> AlexInput
-findGoodSymbol ((l, c), str) =
+findAGoodSymbol :: AlexInput -> AlexInput
+findAGoodSymbol ((l, c), str) =
     let (f,s) = C.break (\c -> isAlpha c || isSpace c || c `elem` "\\(_:={};.)|@") str
     in ((l, c + B.length f), s)
 
-skipOneSymbol :: AlexInput -> AlexInput
-skipOneSymbol inp@((l, c), str) = if B.null str then inp else ((l, c + 1), B.tail str)
+skippingTheBadOne :: AlexInput -> AlexInput
+skippingTheBadOne inp@((l, c), str) = if B.null str then inp else ((l, c + 1), B.tail str)
 
 alexGetByte :: AlexInput -> Maybe (Word8, AlexInput)
 alexGetByte (pos, str) = fmap (\(h,t) -> (h, (alexMove pos $ C.head str, t))) (B.uncons str)

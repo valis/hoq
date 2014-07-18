@@ -15,15 +15,17 @@ import Syntax.Parser
 import Syntax.PrettyPrinter
 import Syntax.ErrorDoc
 import TypeChecking.Monad
--- import TypeChecking.Expressions
+import TypeChecking.Expressions
 import Normalization
 
 ep :: NF -> String -> ScopeM IO ()
 ep mode str = do
-    mres <- runWarnT $ pExpr (C.pack str)
+    mres <- runWarnT $ do
+        term <- pExpr (C.pack str)
+        (term',_) <- typeCheck term Nothing
+        return (fmap getName term')
     liftIO $ case mres of
-        ([], Nothing)   -> return ()
-        ([], Just term) -> putStrLn $ render $ ppTerm $ nf mode (fmap getName term)
+        ([], Just term) -> putStrLn $ render $ ppTerm (nf mode term)
         (errs, _)       -> mapM_ (hPutStrLn stderr . erender) (errs :: [EMsg (Term Posn)])
 
 processCmd :: String -> String -> ScopeM IO ()
