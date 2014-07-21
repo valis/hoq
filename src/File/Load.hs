@@ -14,7 +14,7 @@ import Syntax.Parser
 import Syntax.Parser.Term
 import Syntax.ErrorDoc
 import Syntax.PrettyPrinter()
--- import TypeChecking.Definitions
+import TypeChecking.Definitions
 import TypeChecking.Monad
 
 loadFile :: (MonadIO m, MonadFix m) => String -> ScopeM m ()
@@ -33,4 +33,4 @@ parseDefs s = do
     lift $ forM_ (defs >>= \def -> case def of
         DefImport imp -> [imp]
         _             -> []) $ \moduleName -> loadFile $ foldr1 combine moduleName <.> "hoq"
-    -- typeCheckDefs defs
+    typeCheckDefs defs

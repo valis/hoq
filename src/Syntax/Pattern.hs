@@ -4,6 +4,12 @@ data ICon = ILeft | IRight deriving Eq
 data PatternCon p c a = PatternCon Int Int a [([Pattern p c a], c)]
 data Pattern p c a = Pattern (PatternCon p c a) [Pattern p c a] | PatternVar a | PatternI p ICon | PatternEmpty p
 
+patternGetAttr :: (a -> p) -> Pattern p c a -> p
+patternGetAttr f (Pattern (PatternCon _ _ a _) _) = f a
+patternGetAttr f (PatternVar a) = f a
+patternGetAttr _ (PatternI p _) = p
+patternGetAttr _ (PatternEmpty p) = p
+
 instance Show ICon where
     show ILeft  = "left"
     show IRight = "right"

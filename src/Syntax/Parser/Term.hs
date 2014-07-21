@@ -6,8 +6,8 @@ module Syntax.Parser.Term
     
     , Posn, PIdent(..)
     , Clause(..), Con(..)
-    , Import, ConTele(..)
-    , Def(..)
+    , Import, Def(..)
+    , Tele(..)
     ) where
 
 import Syntax.Scope
@@ -17,13 +17,13 @@ type Posn = (Int, Int)
 data PIdent = PIdent { getPos :: Posn, getName :: String }
 data Clause = Clause PIdent [PatternC Posn PIdent] (Term Posn PIdent)
 type Import = [String]
-data ConTele = VarsTele (Term Posn PIdent) (Term Posn PIdent) | TypeTele (Term Posn PIdent)
-data Con = ConDef PIdent [ConTele]
+data Tele p a = VarsTele [PIdent] (Term p a) | TypeTele (Term p a)
+data Con = ConDef PIdent [Tele Posn PIdent]
 
 data Def
     = DefType PIdent (Term Posn PIdent)
     | DefFun PIdent [PatternC Posn PIdent] (Maybe (Term Posn PIdent))
-    | DefData PIdent [(Term Posn PIdent, Term Posn PIdent)] [Con] [Clause]
+    | DefData PIdent [Tele Posn PIdent] [Con] [Clause]
     | DefImport Import
 
 data Term p a

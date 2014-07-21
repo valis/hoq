@@ -10,6 +10,7 @@ import Control.Monad.Error
 
 import Syntax.Parser.Lexer
 import Syntax.Term
+import TypeChecking.Context
 }
 
 %name pDefs Defs
@@ -63,13 +64,13 @@ Import :: { Import }
     | Import '.' Ident  { $3:$1 }
 
 Def :: { Def }
-    : PIdent ':' Expr                                       { DefType $1 $3                                     }
-    | PIdent Patterns '=' Expr                              { DefFun $1 $2 (Just $4)                            }
-    | PIdent Patterns                                       { DefFun $1 $2 Nothing                              }
-    | 'data' PIdent DataTeles                               { DefData $2 (reverse $3) [] []                     }
-    | 'data' PIdent DataTeles '=' Cons                      { DefData $2 (reverse $3) (reverse $5) []           }
-    | 'data' PIdent DataTeles '=' Cons with FunClauses '}'  { DefData $2 (reverse $3) (reverse $5) (reverse $7) }
-    | 'import' Import                                       { DefImport $2                                      }
+    : PIdent ':' Expr                                       { DefType $1 $3                                             }
+    | PIdent Patterns '=' Expr                              { DefFun $1 $2 (Just $4)                                    }
+    | PIdent Patterns                                       { DefFun $1 $2 Nothing                                      }
+    | 'data' PIdent DataTeles                               {% \_ -> defData $2 (reverse $3) [] []                      }
+    | 'data' PIdent DataTeles '=' Cons                      {% \_ -> defData $2 (reverse $3) (reverse $5) []            }
+    | 'data' PIdent DataTeles '=' Cons with FunClauses '}'  {% \_ -> defData $2 (reverse $3) (reverse $5) (reverse $7)  }
+    | 'import' Import                                       { DefImport $2                                              }
 
 DataTeles :: { [(Expr,Expr)] }
     : {- empty -}                     { []              }
@@ -104,11 +105,11 @@ Cons :: { [Con] }
     : Con           { [$1]  } 
     | Cons '|' Con  { $3:$1 }
 
-ConTele :: { ConTele }
-    : Expr5                         { TypeTele $1       }
-    | posn '(' Expr ':' Expr ')'    { VarsTele $3 $5    }
+ConTele :: { Tele Posn PIdent }
+    : Expr5                         { TypeTele $1                                                   }
+    | posn '(' Expr ':' Expr ')'    {% \_ -> exprToVars $3 >>= \vars -> return (VarsTele vars $5)   }
 
-ConTeles :: { [ConTele] }
+ConTeles :: { [Tele Posn PIdent] }
     : {- empty -}       { []    }
     | ConTeles ConTele  { $2:$1 }
 
@@ -175,21 +176,28 @@ lam pos vars term = case go vars term of
 type Expr = Term Posn PIdent
 data PiTele = PiTele Posn Expr Expr
 
+defData :: PIdent -> [(Expr,Expr)] -> [Con] -> [Clause] -> ParserErr Def
+defData dt params cons conds = do
+    params' <- forM params $ \(e1,e2) -> do
+        vars <- exprToVars e1
+        return (VarsTele vars e2)
+    return (DefData dt params' cons conds)
+
 piExpr :: [PiTele] -> Expr -> ParserErr Expr
 piExpr [] term = return term
 piExpr (PiTele pos e1 e2 : teles) term = do
     vars <- exprToVars e1
     term' <- piExpr teles term
-    return $ Pi pos (Type e2 NoLevel) (mkScope vars term') NoLevel
+    return $ Pi pos (Type e2 NoLevel) (mkScope (map getName vars) term') NoLevel
 
-termPos :: Term Posn PIdent -> Posn
+termPos :: Expr -> Posn
 termPos = getAttr getPos
 
-exprToVars :: Term Posn PIdent -> ParserErr [String]
+exprToVars :: Expr -> ParserErr [PIdent]
 exprToVars term = fmap reverse (go term)
   where
-    go (Var (PIdent _ v)) = return [v]
-    go (App as (Var (PIdent _ v))) = fmap (v:) (go as)
+    go (Var v) = return [v]
+    go (App as (Var v)) = fmap (v:) (go as)
     go e = throwError [(termPos term, "Expected a list of identifiers")]
 
 mkScope :: Functor f => [String] -> f PIdent -> Scope String Posn f PIdent

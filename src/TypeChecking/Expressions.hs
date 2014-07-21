@@ -1,5 +1,7 @@
 module TypeChecking.Expressions
     ( typeCheck, typeCheckCtx
+    , inferErrorMsg, notInScope
+    , prettyOpen, checkIsType
     ) where
 
 import Control.Monad
