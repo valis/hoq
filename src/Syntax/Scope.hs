@@ -10,7 +10,7 @@ import Data.Monoid
 import Data.Foldable
 import Data.Traversable
 
-newtype Closed f = Closed (forall a. f a)
+newtype Closed f = Closed { open :: forall a. f a }
 
 data Scoped p a = Free a | Bound p
 

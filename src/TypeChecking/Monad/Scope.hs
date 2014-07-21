@@ -3,7 +3,7 @@
 module TypeChecking.Monad.Scope
     ( ScopeT, runScopeT
     , addFunction, addConstructor, addDataType
-    , deleteDataType
+    , deleteDataType, deleteFunction
     , getConstructor, getConstructorDataTypes
     , Entry(..), getEntry
     ) where
@@ -39,6 +39,10 @@ addConstructor con dt n te ty = ScopeT $ modify $ \scope ->
 deleteDataType :: Monad m => String -> ScopeT a b c d m ()
 deleteDataType dt = ScopeT $ modify $ \scope ->
     scope { dataTypes = deleteBy (\(v1,_) (v2,_) -> v1 == v2) (dt, error "") (dataTypes scope) }
+
+deleteFunction :: Monad m => String -> ScopeT a b c d m ()
+deleteFunction name = ScopeT $ modify $ \scope ->
+    scope { functions = deleteBy (\(v1,_) (v2,_) -> v1 == v2) (name, error "") (functions scope) }
 
 getConstructor :: Monad m => String -> Maybe String -> ScopeT a b c d m [(Int, c, d)]
 getConstructor con (Just dt) = ScopeT $ liftM (maybeToList . lookup (con, dt) . constructors) get

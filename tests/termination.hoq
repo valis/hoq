@@ -49,3 +49,11 @@ test10 _ = Foo
 test11 : Foo -> Foo
 test11 (Bar (Baz (Bar Foo))) = test11 (Bar Foo)
 test11 _ = test11 Foo
+
+test12 : Nat -> I -> zero = zero
+test12 zero _ = path (\_ -> zero)
+test12 (suc n) i = path (\j -> test12 n j @ i)
+
+test13 : Nat -> I -> zero = zero
+test13 zero _ = path (\_ -> zero)
+test13 (suc n) i = path (\j -> test13 (suc n) j @ i)

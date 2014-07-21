@@ -1,5 +1,3 @@
-{-# LANGUAGE RecursiveDo #-}
-
 module TypeChecking.Definitions.Functions
     ( typeCheckFunction
     ) where
@@ -21,13 +19,13 @@ import Normalization
 
 typeCheckFunction :: MonadFix m => PIdent -> Term Posn PIdent
     -> [(Posn, [PatternC Posn PIdent], Maybe (Term Posn PIdent))] -> TCM m ()
-typeCheckFunction p@(PIdent pos name) ety clauses = mdo
+typeCheckFunction p@(PIdent pos name) ety clauses = do
     (ty, Type u _) <- typeCheck ety Nothing
     lvl <- case u of
             Universe _ lvl -> return lvl
             _              -> throwError [emsgLC (getAttr getPos ety) "" $ pretty "Expected a type"
                                                                         $$ pretty "Actual type:" <+> prettyOpen Nil ty]
-    addFunctionCheck p (FunCall pos name clauses') (Type ty lvl)
+    addFunctionCheck p (FunCall pos name []) (Type ty lvl)
     clausesAndPats <- forW clauses $ \(pos,pats,mexpr) ->  do
         (bf, TermsInCtx ctx _ ty', rtpats) <- typeCheckPatterns Nil (Type (nf WHNF ty) lvl) pats
         case (bf,mexpr) of
@@ -45,9 +43,37 @@ typeCheckFunction p@(PIdent pos name) ety clauses = mdo
                 let scope = closed (abstractTermInCtx ctx term)
                 throwErrors (checkTermination name rtpats scope)
                 return $ Just ((rtpats, scope), (pos, rtpats))
+    lift (deleteFunction name)
     let clauses' = map fst clausesAndPats
+        fc = Closed $ FunCall pos name $ map (fmap $ \(Closed scope) -> Closed $ replaceFunCallsScope name fc scope) clauses'
+    lift $ addFunction name (open fc) (Type ty lvl)
     case checkCoverage (map snd clausesAndPats) of
         Nothing -> when (length clausesAndPats == length (filter (\(_,_,me) -> isJust me) clauses)) $
                 warn [emsgLC pos "Incomplete pattern matching" enull]
         Just uc -> warn $ map (\pos -> emsgLC pos "Unreachable clause" enull) uc
     warn $ checkConditions pos (Closed $ FunCall pos name clauses') (map fst clausesAndPats)
+
+replaceFunCallsScope :: String -> Closed (Term p) -> Scope s p (Term p) a -> Scope s p (Term p) a
+replaceFunCallsScope name fc (ScopeTerm term) = ScopeTerm (replaceFunCalls name fc term)
+replaceFunCallsScope name fc (Scope v scope) = Scope v (replaceFunCallsScope name fc scope)
+
+replaceFunCalls :: String -> Closed (Term p) -> Term p a -> Term p a
+replaceFunCalls name fc = go
+  where
+    go e@Var{} = e
+    go (App e1 e2) = App (go e1) (go e2)
+    go (Lam p (Scope1 s e)) = Lam p $ Scope1 s (replaceFunCalls name fc e)
+    go (Pi p (Type e1 lvl1) e2 lvl2) = Pi p (Type (go e1) lvl1) (replaceFunCallsScope name fc e2) lvl2
+    go (Con p i c cs as) = Con p i c cs (map go as)
+    go fc'@(FunCall _ name' _) = if name == name' then open fc else fc'
+    go e@FunSyn{} = e
+    go e@Universe{} = e
+    go (DataType p dt n as) = DataType p dt n (map go as)
+    go e@Interval{} = e
+    go e@ICon{} = e
+    go (Path p h ma bs) = Path p h (fmap go ma) (map go bs)
+    go (PCon p me) = PCon p (fmap go me)
+    go (At mab c d) = At (fmap (\(a,b) -> (go a, go b)) mab) (go c) (go d)
+    go (Coe p as) = Coe p (map go as)
+    go (Iso p as) = Iso p (map go as)
+    go (Squeeze p as) = Squeeze p (map go as)
