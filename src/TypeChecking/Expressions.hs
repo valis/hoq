@@ -54,10 +54,11 @@ typeCheckCtx ctx term mty = go ctx term [] $ fmap (nfType WHNF) mty
     go _ FunSyn{} _ _ = error "typeCheck: FunSyn"
     go _ DataType{} _ _ = error "typeCheck: DataType"
     go ctx (Var v) ts mty = do
-        (pos, te, Type ty lvl) <- case lookupCtx v ctx of
+        (pos, te, Type ty lvl) <- case lookupCtx (\s p -> s == getName p) getPos v ctx of
             Right (pos, ty) -> return (pos, Var v, ty)
-            Left (PIdent pos "_") -> throwError [emsgLC pos "Expected an identifier" enull]
-            Left (PIdent pos var) -> do
+            Left (PIdent pos _, Just (te, ty)) -> return (pos, te, ty)
+            Left (PIdent pos "_", Nothing) -> throwError [emsgLC pos "Expected an identifier" enull]
+            Left (PIdent pos var, Nothing) -> do
                 mt <- lift $ getEntry var $ case mty of
                     Just (Type (DataType _ dt _ _) _) -> Just dt
                     _                                 -> Nothing
@@ -65,6 +66,7 @@ typeCheckCtx ctx term mty = go ctx term [] $ fmap (nfType WHNF) mty
                     replaceConPos t = t
                 case mt of
                     [FunctionE (FunCall _ name clauses) ty] -> return (pos, FunCall pos name clauses, fmap (liftBase ctx) ty)
+                    [FunctionE (FunSyn _ name expr) ty]     -> return (pos, FunSyn  pos name expr   , fmap (liftBase ctx) ty)
                     [FunctionE te ty]                       -> return (pos, fmap (liftBase ctx) te  , fmap (liftBase ctx) ty)
                     DataTypeE ty e : _                      -> return (pos, DataType pos var e []   , fmap (liftBase ctx) ty)
                     [ConstructorE _ (ScopeTerm con) (ScopeTerm ty, lvl)] ->
@@ -158,9 +160,7 @@ typeCheckCtx ctx term mty = go ctx term [] $ fmap (nfType WHNF) mty
                 Just (Type ty@(Path p h mt1 _) lvl) -> do
                     (r,t) <- go ctx a [] $ fmap (\t1 -> Type
                         (Pi pos (intType pos) (Scope "i" $ ScopeTerm $ App (fmap Free t1) $ Var $ Bound pos) lvl) lvl) mt1
-                    let left  = App r (ICon p ILeft)
-                        right = App r (ICon p IRight)
-                    actExpType ctx (Path p Implicit Nothing [left,right]) ty pos
+                    actExpType ctx (Path p Implicit Nothing [App r (ICon p ILeft), App r (ICon p IRight)]) ty pos
                     return (PCon pos (Just r), Type ty lvl)
                 Just (Type ty _) -> throwError [emsgLC pos "" $ pretty "Expected type:" <+> prettyOpen ctx ty
                                                              $$ pretty "Actual type: Path"]

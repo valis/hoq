@@ -10,7 +10,6 @@ import Control.Monad.Error
 
 import Syntax.Parser.Lexer
 import Syntax.Term
-import TypeChecking.Context
 }
 
 %name pDefs Defs
@@ -21,18 +20,18 @@ import TypeChecking.Context
 %lexer { alexScanTokens } { TokEOF }
 
 %token
-    Ident       { TokIdent $$       }
+    PIdent      { TokIdent    $$    }
     Universe    { TokUniverse $$    }
-    'I'         { TokInterval       }
-    'left'      { TokLeft           }
-    'right'     { TokRight          }
-    'Path'      { TokPath           }
-    'path'      { Tokpath           }
-    'coe'       { TokCoe            }
-    'iso'       { TokIso            }
-    'squeeze'   { TokSqueeze        }
-    '\\'        { TokLam            }
-    '('         { TokLParen         }
+    'I'         { TokInterval $$    }
+    'left'      { TokLeft     $$    }
+    'right'     { TokRight    $$    }
+    'Path'      { TokPath     $$    }
+    'path'      { Tokpath     $$    }
+    'coe'       { TokCoe      $$    }
+    'iso'       { TokIso      $$    }
+    'squeeze'   { TokSqueeze  $$    }
+    '\\'        { TokLam      $$    }
+    '('         { TokLParen   $$    }
     'import'    { TokImport         }
     'data'      { TokData           }
     ':'         { TokColon          }
@@ -45,7 +44,7 @@ import TypeChecking.Context
     '|'         { TokPipe           }
     '@'         { TokAt             }
     '->'        { TokArrow          }
-    'with'      { TokWith $$        }
+    'with'      { TokWith     $$    }
 
 %%
 
@@ -53,11 +52,8 @@ with :: { () }
     : 'with' '{'   {% \_ -> lift $ modify (NoLayout  :) }
     | 'with' error {% \_ -> lift $ modify (Layout $1 :) }
 
-posn :: { Posn }
-    : {- empty -}   {% \(pos,_) -> return pos }
-
-PIdent :: { PIdent }
-    : posn Ident    { PIdent $1 $2 }
+Ident :: { String }
+    : PIdent    { getName $1 }
 
 Import :: { Import }
     : Ident             { [$1]  } 
@@ -65,8 +61,8 @@ Import :: { Import }
 
 Def :: { Def }
     : PIdent ':' Expr                                       { DefType $1 $3                                             }
-    | PIdent Patterns '=' Expr                              { DefFun $1 $2 (Just $4)                                    }
-    | PIdent Patterns                                       { DefFun $1 $2 Nothing                                      }
+    | PIdent Patterns '=' Expr                              { DefFun $1 (reverse $2) (Just $4)                          }
+    | PIdent Patterns                                       { DefFun $1 (reverse $2) Nothing                            }
     | 'data' PIdent DataTeles                               {% \_ -> defData $2 (reverse $3) [] []                      }
     | 'data' PIdent DataTeles '=' Cons                      {% \_ -> defData $2 (reverse $3) (reverse $5) []            }
     | 'data' PIdent DataTeles '=' Cons with FunClauses '}'  {% \_ -> defData $2 (reverse $3) (reverse $5) (reverse $7)  }
@@ -83,16 +79,16 @@ Defs :: { [Def] }
     | Defs ';' Def  { $3:$1 }
 
 FunClauses :: { [Clause] }
-    : PIdent Patterns '=' Expr                  { [Clause $1 $2 $4]     }
-    | FunClauses ';'                            { $1                    }
-    | FunClauses ';' PIdent Patterns '=' Expr   { Clause $3 $4 $6 : $1  }
+    : PIdent Patterns '=' Expr                  { [Clause $1 (reverse $2) $4]       }
+    | FunClauses ';'                            { $1                                }
+    | FunClauses ';' PIdent Patterns '=' Expr   { Clause $3 (reverse $4) $6 : $1    }
 
 Pattern :: { PatternC Posn PIdent }
-    : PIdent                        { PatternVar $1                                 }
-    | posn 'left'                   { PatternI $1 ILeft                             }
-    | posn 'right'                  { PatternI $1 IRight                            }
-    | posn '(' ')'                  { PatternEmpty $1                               }
-    | posn '(' PIdent Patterns ')'  { Pattern (PatternCon 0 0 $3 []) (reverse $4)   }
+    : PIdent                    { PatternVar $1                                 }
+    | 'left'                    { PatternI $1 ILeft                             }
+    | 'right'                   { PatternI $1 IRight                            }
+    | '(' ')'                   { PatternEmpty $1                               }
+    | '(' PIdent Patterns ')'   { Pattern (PatternCon 0 0 $2 []) (reverse $3)   }
 
 Patterns :: { [PatternC Posn PIdent] }
     : {- empty -}       { []    }
@@ -106,15 +102,15 @@ Cons :: { [Con] }
     | Cons '|' Con  { $3:$1 }
 
 ConTele :: { Tele Posn PIdent }
-    : Expr5                         { TypeTele $1                                                   }
-    | posn '(' Expr ':' Expr ')'    {% \_ -> exprToVars $3 >>= \vars -> return (VarsTele vars $5)   }
+    : Expr5                 { TypeTele $1                                                   }
+    | '(' Expr ':' Expr ')' {% \_ -> exprToVars $2 >>= \vars -> return (VarsTele vars $4)   }
 
 ConTeles :: { [Tele Posn PIdent] }
     : {- empty -}       { []    }
     | ConTeles ConTele  { $2:$1 }
 
 PiTele :: { PiTele }
-    : posn '(' Expr ':' Expr ')' { PiTele $1 $3 $5 } 
+    : '(' Expr ':' Expr ')' { PiTele $1 $2 $4 }
 
 PiTeles :: { [PiTele] }
     : PiTele            { [$1]  }
@@ -125,13 +121,13 @@ PIdents :: { [PIdent] }
     | PIdents PIdent    { $2:$1 }
 
 Expr :: { Expr }
-    : Expr1                         { $1            }
-    | posn '\\' PIdents '->' Expr   { lam $1 $3 $5  }
+    : Expr1                     { $1            }
+    | '\\' PIdents '->' Expr    { lam $1 $2 $4  }
 
 Expr1 :: { Expr }
     : Expr2 { $1 }
     | Expr2 '->' Expr1      { Pi (termPos $1) (Type $1 NoLevel) (ScopeTerm $3) NoLevel  }
-    | PiTeles '->' Expr1    {% \_ -> piExpr $1 $3                                       }
+    | PiTeles '->' Expr1    {% \_ -> piExpr (reverse $1) $3                             }
 
 Expr2 :: { Expr }
     : Expr3             { $1                                            }
@@ -146,17 +142,17 @@ Expr4 :: { Expr }
     | Expr4 Expr5   { App $1 $2 }
 
 Expr5 :: { Expr }
-    : PIdent            { Var $1                                }
-    | posn Universe     { Universe $1 (maybe NoLevel Level $2)  }
-    | posn 'I'          { Interval $1                           }
-    | posn 'left'       { ICon $1 ILeft                         }
-    | posn 'right'      { ICon $1 IRight                        }
-    | posn 'Path'       { Path $1 Explicit Nothing []           }
-    | posn 'path'       { PCon $1 Nothing                       }
-    | posn 'coe'        { Coe $1 []                             }
-    | posn 'iso'        { Iso $1 []                             }
-    | posn 'squeeze'    { Squeeze $1 []                         }
-    | posn '(' Expr ')' { $3                                    }
+    : PIdent        { Var $1                                            }
+    | Universe      { Universe (fst $1) $ maybe NoLevel Level (snd $1)  }
+    | 'I'           { Interval $1                                       }
+    | 'left'        { ICon $1 ILeft                                     }
+    | 'right'       { ICon $1 IRight                                    }
+    | 'Path'        { Path $1 Explicit Nothing []                       }
+    | 'path'        { PCon $1 Nothing                                   }
+    | 'coe'         { Coe $1 []                                         }
+    | 'iso'         { Iso $1 []                                         }
+    | 'squeeze'     { Squeeze $1 []                                     }
+    | '(' Expr ')'  { $2                                                }
 
 {
 return' :: a -> Parser a
@@ -201,13 +197,13 @@ exprToVars term = fmap reverse (go term)
     go e = throwError [(termPos term, "Expected a list of identifiers")]
 
 mkScope :: Functor f => [String] -> f PIdent -> Scope String Posn f PIdent
-mkScope vars term = go vars (reverse vars)
+mkScope vars term = go vars
   where
-    go [] [] = ScopeTerm term
-    go (d:ds) (r:rs) = Scope d $ fmap (\a@(PIdent p v) -> if v == r then Bound p else Free a) (go ds rs)
+    go [] = ScopeTerm term
+    go (d:ds) = Scope d $ fmap (\a@(PIdent p v) -> if v == d then Bound p else Free a) (go ds)
 
 parseError :: Token -> Parser a
-parseError _ (pos,_) = throwError [(pos, "Syntax error")]
+parseError tok (pos,_) = throwError [(maybe pos id (tokGetPos tok), "Syntax error")]
 
 myLexer = alexScanTokens
 }

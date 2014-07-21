@@ -24,7 +24,7 @@ typeCheckDataType p@(PIdent pos dt) params cons conds = mdo
     (SomeEq ctx, dataType@(Type dtTerm _)) <- checkTele Nil params (Universe (0,0) NoLevel)
     addDataTypeCheck p dataType lcons
     cons' <- forW (zip cons [0..]) $ \(ConDef con@(PIdent pos conName) tele, i) -> do
-        (_, Type conType conLevel) <- checkTele ctx (abstractCtxTele Nil ctx tele) $
+        (_, Type conType conLevel) <- checkTele ctx (mapCtxTele ctx tele) $
             DataType pos dt lcons $ ctxToVars (const (0,0)) ctx
         checkPositivity p (nf WHNF conType)
         let conTerm = Con pos i conName (map snd $ filter (\(c,_) -> c == conName) conds') []
@@ -39,8 +39,7 @@ typeCheckDataType p@(PIdent pos dt) params cons conds = mdo
             Just (_, _, ty) -> do
                 (bf, TermsInCtx ctx' _ ty', rtpats) <- typeCheckPatterns ctx (nfType WHNF ty) pats
                 when bf $ warn [emsgLC pos "Absurd patterns are not allowed in conditions" enull]
-                (term, _) <- typeCheckCtx (ctx +++ ctx')
-                    (abstractCtxTerm (0,0) (PIdent (0,0)) Nil (ctx +++ ctx') expr) (Just ty')
+                (term, _) <- typeCheckCtx (ctx +++ ctx') (fmap (liftBase $ ctx +++ ctx') expr) (Just ty')
                 let scope = closed (abstractTermInCtx ctx' term)
                 throwErrors (checkTermination con rtpats scope)
                 return $ Just (con, (rtpats, scope))
@@ -66,7 +65,7 @@ checkTele ctx (VarsTele vars expr : tele) term = do
     lvl1 <- checkIsType ctx pos (nf WHNF t1)
     case extendCtx (map getName vars) Nil (Type r1 lvl1) of
         SomeEq ctx' -> do
-            (rctx, Type r2 lvl2) <- checkTele (ctx +++ ctx') (abstractCtxTele ctx ctx' tele) $ fmap (liftBase ctx') term
+            (rctx, Type r2 lvl2) <- checkTele (ctx +++ ctx') (mapCtxTele ctx' tele) $ fmap (liftBase ctx') term
             return (rctx, Type (Pi pos (Type r1 lvl1) (abstractTermInCtx ctx' r2) lvl2) $ max lvl1 lvl2)
 checkTele ctx (TypeTele expr : tele) term = do
     let pos = getAttr (toBase ctx getPos) expr
@@ -75,10 +74,10 @@ checkTele ctx (TypeTele expr : tele) term = do
     (rctx, Type r2 lvl2) <- checkTele ctx tele term
     return (rctx, Type (Pi pos (Type r1 lvl1) (ScopeTerm r2) lvl2) $ max lvl1 lvl2)
 
-abstractCtxTele :: Eq a => Ctx String Posn f PIdent b -> Ctx String Posn f b a -> [Tele Posn b] -> [Tele Posn a]
-abstractCtxTele ctx ctx' = map $ \tele -> case tele of
-    VarsTele vars expr -> VarsTele vars (abstractCtxTerm (0,0) (PIdent (0,0)) ctx ctx' expr)
-    TypeTele      expr -> TypeTele      (abstractCtxTerm (0,0) (PIdent (0,0)) ctx ctx' expr)
+mapCtxTele :: Eq a => Ctx String Posn f b a -> [Tele Posn b] -> [Tele Posn a]
+mapCtxTele ctx = map $ \tele -> case tele of
+    VarsTele vars expr -> VarsTele vars (fmap (liftBase ctx) expr)
+    TypeTele      expr -> TypeTele      (fmap (liftBase ctx) expr)
 
 replaceLevel :: Term Posn a -> Level -> Term Posn a
 replaceLevel (Pi p r1 r2 lvl2) lvl = Pi p r1 (replaceLevelScope r2) lvl2

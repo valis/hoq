@@ -41,7 +41,7 @@ typeCheckFunction p@(PIdent pos name) ety clauses = mdo
                 warn [emsgLC (getAttr getPos expr) msg enull]
                 return Nothing
             (False, Just expr) -> do
-                (term, _) <- typeCheckCtx ctx (abstractCtxTerm (0,0) (PIdent (0,0)) Nil ctx expr) (Just ty')
+                (term, _) <- typeCheckCtx ctx (fmap (liftBase ctx) expr) (Just ty')
                 let scope = closed (abstractTermInCtx ctx term)
                 throwErrors (checkTermination name rtpats scope)
                 return $ Just ((rtpats, scope), (pos, rtpats))

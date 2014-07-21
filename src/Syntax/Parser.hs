@@ -12,7 +12,7 @@ import qualified Syntax.Parser.Parser as P
 import TypeChecking.Monad.Warn
 
 pDefs :: Monad m => B.ByteString -> WarnT [EMsg f] m [Def]
-pDefs = runParser P.pDefs
+pDefs = liftM reverse . runParser P.pDefs
 
 pExpr :: Monad m => B.ByteString -> WarnT [EMsg f] m (Term Posn PIdent)
 pExpr = runParser P.pExpr

@@ -18,11 +18,22 @@ lengthCtx :: Ctx s p f b a -> Int
 lengthCtx Nil = 0
 lengthCtx (Snoc ctx _ _) = lengthCtx ctx + 1
 
-lookupCtx :: Functor f => a -> Ctx s p f b a -> Either b (p, f a)
-lookupCtx b Nil = Left b
-lookupCtx a (Snoc ctx _ t) = case a of
-    Bound p -> Right (p, fmap Free t)
-    Free a' -> fmap (fmap $ fmap Free) (lookupCtx a' ctx)
+lookupCtx :: (Monad g, Functor f) => (s -> b -> Bool) -> (b -> p) -> a -> Ctx s p f b a -> Either (b, Maybe (g a, f a)) (p, f a)
+lookupCtx cmp f a ctx = case maybeToBase a ctx of
+    Left b -> Left (b, go cmp f b ctx)
+    Right r -> Right r
+  where
+    maybeToBase :: Functor f => a -> Ctx s p f b a -> Either b (p, f a)
+    maybeToBase b Nil = Left b
+    maybeToBase a (Snoc ctx _ t) = case a of
+        Bound p -> Right (p, fmap Free t)
+        Free a' -> fmap (fmap $ fmap Free) (maybeToBase a' ctx)
+    
+    go :: (Monad g, Functor f) => (s -> b -> Bool) -> (b -> p) -> b -> Ctx s p f b a -> Maybe (g a, f a)
+    go _ _ b Nil = Nothing
+    go cmp f b (Snoc ctx s t) = if cmp s b
+        then Just (return $ Bound (f b), fmap Free t)
+        else fmap (\(te, ty) -> (liftM Free te, fmap Free ty)) (go cmp f b ctx)
 
 ctxToVars :: Monad g => (s -> p) -> Ctx s p f b a -> [g a]
 ctxToVars f = reverse . go f
@@ -53,12 +64,3 @@ abstractTermInCtx ctx term = go ctx (ScopeTerm term)
     go :: Ctx s p g b a -> Scope s p f a -> Scope s p f b
     go Nil t = t
     go (Snoc ctx s _) t = go ctx (Scope s t)
-
-abstractCtxTerm :: (Functor f, Eq a) => p -> (s -> c) -> Ctx s p g c b -> Ctx s p g b a -> f b -> f a
-abstractCtxTerm p f ctx ctx' = go p ctx' $ \s a -> liftBase (ctx +++ ctx') (f s) == a
-  where
-    go :: Functor f => p -> Ctx s p g b a -> (s -> a -> Bool) -> f b -> f a
-    go _ Nil _ term = term
-    go p (Snoc ctx s _) f term =
-        let f' s a = f s (Free a)
-        in fmap (\a -> if f' s a then Bound p else Free a) (go p ctx f' term)

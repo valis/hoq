@@ -13,8 +13,7 @@ import TypeChecking.Context
 checkTermination :: String -> [PatternC Posn String] -> Closed (Scope String Posn (Term Posn)) -> [EMsg (Term Posn)]
 checkTermination name pats (Closed scope) = map msg $ case scopeToCtx Nil scope of
     TermInCtx ctx term -> collectFunCalls ctx name [] term >>= \(pos,mts) -> case mts of
-        Nothing -> [pos]
-        Just (TermsInCtx ctx ts) -> if evalState (checkTerms ctx pats ts) 0 == LT then [] else [pos]
+        TermsInCtx ctx ts -> if evalState (checkTerms ctx pats ts) 0 == LT then [] else [pos]
   where
     msg :: Posn -> EMsg (Term Posn)
     msg pos = emsgLC pos "Termination check failed" enull
@@ -57,19 +56,18 @@ scopeToCtx ctx (ScopeTerm t) = TermInCtx ctx t
 scopeToCtx ctx (Scope s t) = scopeToCtx (Snoc ctx s $ error "") t
 
 collectFunCalls :: Ctx String Posn (Term Posn) b a -> String -> [Term Posn a] -> Term Posn a
-    -> [(Posn, Maybe (TermsInCtx String Posn (Term Posn) b))]
+    -> [(Posn, TermsInCtx String Posn (Term Posn) b)]
 collectFunCalls _ _ _  Var{} = []
 collectFunCalls ctx name ts (App e1 e2) = collectFunCalls ctx name (e2:ts) e1 ++ collectFunCalls ctx name [] e2
 collectFunCalls ctx name _  (Lam _ (Scope1 v e)) = collectFunCalls (Snoc ctx v $ error "") name [] e
 collectFunCalls ctx name _  (Pi _ (Type e _) s _) = collectFunCalls ctx name [] e ++ go ctx s
   where
-    go :: Ctx String Posn (Term Posn) b a -> Scope String Posn (Term Posn) a
-        -> [(Posn, Maybe (TermsInCtx String Posn (Term Posn) b))]
+    go :: Ctx String Posn (Term Posn) b a -> Scope String Posn (Term Posn) a -> [(Posn, TermsInCtx String Posn (Term Posn) b)]
     go ctx (ScopeTerm t) = collectFunCalls ctx name [] t
     go ctx (Scope v t) = go (Snoc ctx v $ error "") t
 collectFunCalls ctx name ts (Con pos _ name' _ as) =
-    (if name == name' then [(pos, Just $ TermsInCtx ctx $ as ++ ts)] else []) ++ (as >>= collectFunCalls ctx name [])
-collectFunCalls ctx name ts (FunCall pos name' _) = if name == name' then [(pos, Just $ TermsInCtx ctx ts)] else []
+    (if name == name' then [(pos, TermsInCtx ctx $ as ++ ts)] else []) ++ (as >>= collectFunCalls ctx name [])
+collectFunCalls ctx name ts (FunCall pos name' _) = if name == name' then [(pos, TermsInCtx ctx ts)] else []
 collectFunCalls ctx name _  FunSyn{} = []
 collectFunCalls ctx name _  (DataType _ _ _ as) = as >>= collectFunCalls ctx name []
 collectFunCalls ctx name _  Universe{} = []

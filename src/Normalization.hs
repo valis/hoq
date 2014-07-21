@@ -42,9 +42,9 @@ nf mode e = go e []
         Just (r,ts') -> go r ts'
         Nothing      -> apps fc (nfs mode ts)
     go (At mab e1 e2) ts = case (mab, nf WHNF e1, nf WHNF e2) of
-        (_, PCon _ (Just t1), t2)       -> go t1 (t2:ts)
         (Just (a,_), _, ICon _ ILeft)   -> go a ts
         (Just (_,b), _, ICon _ IRight)  -> go b ts
+        (_, PCon _ (Just t1), t2)       -> go t1 (t2:ts)
         (Nothing   , t1, t2)            -> apps (At Nothing (go t1 []) (go t2 [])) (nfs mode ts)
         (Just (a,b), t1, t2)            -> apps (At (Just (go a [], go b [])) (go t1 []) (go t2 [])) (nfs mode ts)
     go (Coe p es) ts = case es ++ ts of

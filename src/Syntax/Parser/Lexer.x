@@ -1,7 +1,7 @@
 {
 module Syntax.Parser.Lexer
     ( alexScanTokens
-    , Token(..)
+    , Token(..), tokGetPos
     , Parser, ParserErr
     , Layout(..)
     ) where
@@ -23,8 +23,9 @@ $any        = [\x00-\x10ffff]
 @ident      = ($alpha | \_) ($alpha | $digit | \' | \- | \_)*
 @lcomm      = "--".*
 @mcomm      = "{-" ([$any # \-] | \- [$any # \}])* "-}"
-@newline    = \n ($white | @lcomm | @mcomm)*
-@with       = "with" @newline*
+@skip       = $white | @lcomm | @mcomm
+@newline    = \n @skip*
+@with       = "with" @skip*
 
 :-
 
@@ -32,47 +33,47 @@ $any        = [\x00-\x10ffff]
 @lcomm;
 @mcomm;
 
-"Type" $digit*  {       TokUniverse . listToMaybe . map fst . reads }
-"I"             { const TokInterval                                 }
-"left"          { const TokLeft                                     }
-"right"         { const TokRight                                    }
-"Path"          { const TokPath                                     }
-"path"          { const Tokpath                                     }
-"coe"           { const TokCoe                                      }
-"iso"           { const TokIso                                      }
-"squeeze"       { const TokSqueeze                                  }
-"import"        { const TokImport                                   }
-"data"          { const TokData                                     }
-@with           { const (TokWith 0)                                 }
-@ident          {       TokIdent                                    }
-\\              { const TokLam                                      }
-\(              { const TokLParen                                   }
-\:              { const TokColon                                    }
-\=              { const TokEquals                                   }
-\{              { const TokLBrace                                   }
-\}              { const TokRBrace                                   }
-\;              { const TokSemicolon                                }
-\.              { const TokDot                                      }
-\)              { const TokRParen                                   }
-\|              { const TokPipe                                     }
-\@              { const TokAt                                       }
-"->"            { const TokArrow                                    }
-@newline        { const TokNewLine                                  }
+"Type" $digit*  { \p s -> TokUniverse (p, listToMaybe $ map fst $ reads $ drop 4 s) }
+"I"             { \p _ -> TokInterval p                                             }
+"left"          { \p _ -> TokLeft p                                                 }
+"right"         { \p _ -> TokRight p                                                }
+"Path"          { \p _ -> TokPath p                                                 }
+"path"          { \p _ -> Tokpath p                                                 }
+"coe"           { \p _ -> TokCoe p                                                  }
+"iso"           { \p _ -> TokIso p                                                  }
+"squeeze"       { \p _ -> TokSqueeze p                                              }
+"import"        { \_ _ -> TokImport                                                 }
+"data"          { \_ _ -> TokData                                                   }
+@with           { \_ _ -> TokWith 0                                                 }
+@ident          { \p s -> TokIdent (PIdent p s)                                     }
+\\              { \p _ -> TokLam p                                                  }
+\(              { \p _ -> TokLParen p                                               }
+\:              { \_ _ -> TokColon                                                  }
+\=              { \_ _ -> TokEquals                                                 }
+\{              { \_ _ -> TokLBrace                                                 }
+\}              { \_ _ -> TokRBrace                                                 }
+\;              { \_ _ -> TokSemicolon                                              }
+\.              { \_ _ -> TokDot                                                    }
+\)              { \_ _ -> TokRParen                                                 }
+\|              { \_ _ -> TokPipe                                                   }
+\@              { \_ _ -> TokAt                                                     }
+"->"            { \_ _ -> TokArrow                                                  }
+@newline        { \_ _ -> TokNewLine                                                }
 
 {
 data Token
-    = TokIdent !String
-    | TokUniverse !(Maybe Int)
-    | TokInterval
-    | TokLeft
-    | TokRight
-    | TokPath
-    | Tokpath
-    | TokCoe
-    | TokIso
-    | TokSqueeze
-    | TokLam
-    | TokLParen
+    = TokIdent !PIdent
+    | TokUniverse !(Posn, Maybe Int)
+    | TokInterval !Posn
+    | TokLeft !Posn
+    | TokRight !Posn
+    | TokPath !Posn
+    | Tokpath !Posn
+    | TokCoe !Posn
+    | TokIso !Posn
+    | TokSqueeze !Posn
+    | TokLam !Posn
+    | TokLParen !Posn
     | TokImport
     | TokData
     | TokColon
@@ -88,6 +89,20 @@ data Token
     | TokWith !Int
     | TokNewLine
     | TokEOF
+
+tokGetPos :: Token -> Maybe Posn
+tokGetPos (TokIdent (PIdent pos _)) = Just pos
+tokGetPos (TokUniverse (pos, _)) = Just pos
+tokGetPos (TokLeft pos) = Just pos
+tokGetPos (TokRight pos) = Just pos
+tokGetPos (TokPath pos) = Just pos
+tokGetPos (Tokpath pos) = Just pos
+tokGetPos (TokCoe pos) = Just pos
+tokGetPos (TokIso pos) = Just pos
+tokGetPos (TokSqueeze pos) = Just pos
+tokGetPos (TokLam pos) = Just pos
+tokGetPos (TokLParen pos) = Just pos
+tokGetPos _ = Nothing
 
 type AlexInput = (Posn, B.ByteString)
 
@@ -105,7 +120,7 @@ alexScanTokens cont = go
             warn [(pos, "Lexer error")]
             (go . findAGoodSymbol . skippingTheBadOne) inp'
         AlexSkip  inp' _    -> go inp'
-        AlexToken inp'@((_, c), _) len act -> case act $ C.unpack (B.take len str) of
+        AlexToken inp'@((_, c), _) len act -> case act pos $ C.unpack (B.take len str) of
             TokNewLine -> do
                 layout:layouts <- lift get
                 case layout of
