@@ -6,18 +6,18 @@ import Data.List
 
 import Syntax.Pattern
 
-data PatternType c = Interval | DataType Int [(Int, [Pattern c])] | Unknown
+data PatternType c p a = Interval | DataType Int [(Int, [Pattern c p a])] | Unknown
 
 data OK = OK | Incomplete deriving Eq
 data Result = Result OK [Int]
 
-checkCoverage :: [((Int,Int),[Pattern c])] -> Maybe [(Int,Int)]
+checkCoverage :: [((Int,Int),[Pattern c p a])] -> Maybe [(Int,Int)]
 checkCoverage []      = Just []
 checkCoverage clauses = case checkClauses (map snd clauses) of
     Result Incomplete _ -> Nothing
     Result OK used -> Just $ map (\i -> fst $ clauses !! i) $ [0 .. length clauses - 1] \\ used
 
-checkClauses :: [[Pattern c]] -> Result
+checkClauses :: [[Pattern c p a]] -> Result
 checkClauses [] = Result Incomplete []
 checkClauses clauses =
     let (t, clauses', b) = checkNull 0 Unknown clauses in
@@ -25,14 +25,15 @@ checkClauses clauses =
         (Just i, Result Incomplete u) -> Result OK (i:u)
         (_, r) -> r
 
-checkNull :: Int -> PatternType c -> [[Pattern c]] -> (PatternType c, [(Pattern c, [Pattern c])], Maybe Int)
+checkNull :: Int -> PatternType c p a -> [[Pattern c p a]] -> (PatternType c p a, [(Pattern c p a, [Pattern c p a])], Maybe Int)
 checkNull _ t [] = (t, [], Nothing)
 checkNull i t ([] : cs) = (t, [], Just i)
 checkNull i t ((pat:pats) : cs) =
     let (t1, cs', b) = checkNull (i + 1) t cs
         t2 = case pat of
-                PatternI _                     -> Interval
-                PatternVar _                   -> t1
+                PatternI{}                     -> Interval
+                PatternVar{}                   -> t1
+                PatternEmpty{}                 -> t1
                 Pattern (PatternCon _ n _ _) _ ->
                     let heads = pat : concatMap (\c -> if null c then [] else [head c]) cs
                     in DataType n $ heads >>= \p -> case p of
@@ -40,24 +41,24 @@ checkNull i t ((pat:pats) : cs) =
                         _ -> []
     in (t2, (pat, pats) : cs', b)
 
-checkNonEmptyClauses :: PatternType c -> [(Pattern c, [Pattern c])] -> Result
+checkNonEmptyClauses :: PatternType c p a -> [(Pattern c p a, [Pattern c p a])] -> Result
 checkNonEmptyClauses _ [] = Result Incomplete []
 checkNonEmptyClauses Interval           clauses = checkIntervalClauses clauses
 checkNonEmptyClauses (DataType n conds) clauses = checkDataTypeClauses n conds clauses
 checkNonEmptyClauses Unknown            clauses = checkClauses (map snd clauses)
 
-checkIntervalClauses :: [(Pattern c, [Pattern c])] -> Result
+checkIntervalClauses :: [(Pattern c p a, [Pattern c p a])] -> Result
 checkIntervalClauses clauses =
     let get con = map (\(i,(_,ps)) -> (i,ps)) $ filterWithIndex (\(c,_) -> c == con) clauses
-        lefts   = get (PatternI ILeft)
-        rights  = get (PatternI IRight)
-        vars    = get (PatternVar "")
+        lefts   = get $ PatternI (error "") ILeft
+        rights  = get $ PatternI (error "") IRight
+        vars    = get $ PatternVar (error "")
         Result _  is0 = checkClauses (map snd lefts)
         Result _  is1 = checkClauses (map snd rights)
         Result ok is2 = checkClauses (map snd vars)
     in  Result ok $ getIndices lefts is0 ++ getIndices rights is1 ++ getIndices vars is2
 
-checkDataTypeClauses :: Int -> [(Int, [Pattern c])] -> [(Pattern c, [Pattern c])] -> Result
+checkDataTypeClauses :: Int -> [(Int, [Pattern c p a])] -> [(Pattern c p a, [Pattern c p a])] -> Result
 checkDataTypeClauses n conds clauses = getResults $ flip map [0 .. n-1] $ \j ->
     let getLength [] = 0
         getLength (Pattern (PatternCon i _ _ _) args : _) | i == j = length args
@@ -65,12 +66,12 @@ checkDataTypeClauses n conds clauses = getResults $ flip map [0 .. n-1] $ \j ->
         len = getLength (map fst clauses)
         
         getPatterns (Pattern _ pats) = pats
-        getPatterns _                = replicate len (PatternVar "_")
+        getPatterns _                = replicate len $ PatternVar (error "")
     in map (\(i,(p,ps)) -> (i, getPatterns p ++ ps))
-           (filterWithIndex (\(c,_) -> c == Pattern (PatternCon j n "" []) [] || c == PatternVar "") clauses)
+           (filterWithIndex (\(c,_) -> c == Pattern (PatternCon j n (error "") []) [] || c == PatternVar (error "")) clauses)
        ++ (conds >>= \(c,ps) -> if j == c then [(-1, ps)] else [])
   where
-    getResults :: [[(Int, [Pattern c])]] -> Result
+    getResults :: [[(Int, [Pattern c p a])]] -> Result
     getResults [] = Result OK []
     getResults (con:cons) =
         let Result ok1 is1 = checkClauses (map snd con)

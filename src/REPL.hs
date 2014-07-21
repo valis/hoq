@@ -8,28 +8,25 @@ import System.IO
 import Control.Monad
 import Control.Monad.Trans
 import Text.PrettyPrint
+import qualified Data.ByteString.Char8 as C
 
-import Syntax.BNFC.ParGrammar
-import Syntax.BNFC.ErrM
 import Syntax.Term
+import Syntax.Parser
 import Syntax.PrettyPrinter
 import Syntax.ErrorDoc
 import TypeChecking.Monad
 import TypeChecking.Expressions
 import Normalization
 
-parseExpr :: Monad m => String -> TCM m (Term String)
-parseExpr s = case pExpr (myLexer s) of
-    Bad err -> throwError [emsg err enull]
-    Ok expr -> liftM fst (typeCheck expr Nothing)
-
 ep :: NF -> String -> ScopeM IO ()
 ep mode str = do
-    mres <- runWarnT (parseExpr str)
+    mres <- runWarnT $ do
+        term <- pExpr (C.pack str)
+        (term',_) <- typeCheck term Nothing
+        return (fmap getName term')
     liftIO $ case mres of
-        ([], Nothing)   -> return ()
         ([], Just term) -> putStrLn $ render $ ppTerm (nf mode term)
-        (errs, _)       -> mapM_ (hPutStrLn stderr . erender) errs
+        (errs, _)       -> mapM_ (hPutStrLn stderr . erender) (errs :: [EMsg (Term Posn)])
 
 processCmd :: String -> String -> ScopeM IO ()
 processCmd "quit" _   = liftIO exitSuccess
