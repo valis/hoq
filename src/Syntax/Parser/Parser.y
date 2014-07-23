@@ -53,17 +53,13 @@ with :: { () }
     | 'with' error {% \_ -> lift $ modify (Layout $1 :) }
 
 Def :: { Def }
-    : PIdent ':' Expr                                       { DefType $1 $3                                             }
-    | PIdent Patterns '=' Expr                              { DefFun $1 (reverse $2) (Just $4)                          }
-    | PIdent Patterns                                       { DefFun $1 (reverse $2) Nothing                            }
-    | 'data' PIdent DataTeles                               {% \_ -> defData $2 (reverse $3) [] []                      }
-    | 'data' PIdent DataTeles '=' Cons                      {% \_ -> defData $2 (reverse $3) (reverse $5) []            }
-    | 'data' PIdent DataTeles '=' Cons with FunClauses '}'  {% \_ -> defData $2 (reverse $3) (reverse $5) (reverse $7)  }
-    | Import                                                { DefImport $1                                              }
-
-DataTeles :: { [(Expr,Expr)] }
-    : {- empty -}                     { []              }
-    | DataTeles '(' Expr ':' Expr ')' { ($3, $5) : $1   }
+    : PIdent ':' Expr                                   { DefType $1 $3                                     }
+    | PIdent Patterns '=' Expr                          { DefFun $1 (reverse $2) (Just $4)                  }
+    | PIdent Patterns                                   { DefFun $1 (reverse $2) Nothing                    }
+    | 'data' PIdent Teles                               { DefData $2 (reverse $3) [] []                     }
+    | 'data' PIdent Teles '=' Cons                      { DefData $2 (reverse $3) (reverse $5) []           }
+    | 'data' PIdent Teles '=' Cons with FunClauses '}'  { DefData $2 (reverse $3) (reverse $5) (reverse $7) }
+    | Import                                            { DefImport $1                                      }
 
 Defs :: { [Def] }
     : {- empty -}   { []    }
@@ -88,19 +84,19 @@ Patterns :: { [PatternC Posn PIdent] }
     | Patterns Pattern  { $2:$1 }
 
 Con :: { Con }
-    : PIdent ConTeles { ConDef $1 (reverse $2) } 
+    : PIdent Teles  { ConDef $1 (reverse $2) } 
 
 Cons :: { [Con] }
     : Con           { [$1]  } 
     | Cons '|' Con  { $3:$1 }
 
-ConTele :: { Tele Posn PIdent }
+Tele :: { Tele Posn PIdent }
     : Expr5                 { TypeTele $1                                                   }
     | '(' Expr ':' Expr ')' {% \_ -> exprToVars $2 >>= \vars -> return (VarsTele vars $4)   }
 
-ConTeles :: { [Tele Posn PIdent] }
-    : {- empty -}       { []    }
-    | ConTeles ConTele  { $2:$1 }
+Teles :: { [Tele Posn PIdent] }
+    : {- empty -}   { []    }
+    | Teles Tele    { $2:$1 }
 
 PiTele :: { PiTele }
     : '(' Expr ':' Expr ')' { PiTele $1 $2 $4 }
@@ -164,13 +160,6 @@ lam pos vars term = case go vars term of
 
 type Expr = Term Posn PIdent
 data PiTele = PiTele Posn Expr Expr
-
-defData :: PIdent -> [(Expr,Expr)] -> [Con] -> [Clause] -> ParserErr Def
-defData dt params cons conds = do
-    params' <- forM params $ \(e1,e2) -> do
-        vars <- exprToVars e1
-        return (VarsTele vars e2)
-    return (DefData dt params' cons conds)
 
 piExpr :: [PiTele] -> Expr -> ParserErr Expr
 piExpr [] term = return term

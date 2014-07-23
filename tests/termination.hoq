@@ -57,3 +57,11 @@ test12 (suc n) i = path (\j -> test12 n j @ i)
 test13 : Nat -> I -> zero = zero
 test13 zero _ = path (\_ -> zero)
 test13 (suc n) i = path (\j -> test13 (suc n) j @ i)
+
+test14 : Nat -> I -> zero = zero
+test14 zero _ = path (\_ -> zero)
+test14 (suc n) i = path (\j -> test14 n i @ j)
+
+test15 : Nat -> I -> zero = zero
+test15 zero _ = path (\_ -> zero)
+test15 (suc n) i = path (\j -> test15 (suc n) i @ j)
