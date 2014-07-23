@@ -26,6 +26,7 @@ $any        = [\x00-\x10ffff]
 @skip       = $white | @lcomm | @mcomm
 @newline    = \n @skip*
 @with       = "with" @skip*
+@import     = "import" $white+ @ident ("." @ident)*
 
 :-
 
@@ -42,7 +43,8 @@ $any        = [\x00-\x10ffff]
 "coe"           { \p _ -> TokCoe p                                                  }
 "iso"           { \p _ -> TokIso p                                                  }
 "squeeze"       { \p _ -> TokSqueeze p                                              }
-"import"        { \_ _ -> TokImport                                                 }
+@import         { \_ s -> TokImport $ breaks '.' $
+                    dropWhile (\c -> not (isAlpha c) && c /= '_') (drop 6 s)        }
 "data"          { \_ _ -> TokData                                                   }
 @with           { \_ _ -> TokWith 0                                                 }
 @ident          { \p s -> TokIdent (PIdent p s)                                     }
@@ -74,7 +76,7 @@ data Token
     | TokSqueeze !Posn
     | TokLam !Posn
     | TokLParen !Posn
-    | TokImport
+    | TokImport ![String]
     | TokData
     | TokColon
     | TokEquals
@@ -103,6 +105,11 @@ tokGetPos (TokSqueeze pos) = Just pos
 tokGetPos (TokLam pos) = Just pos
 tokGetPos (TokLParen pos) = Just pos
 tokGetPos _ = Nothing
+
+breaks :: Eq a => a -> [a] -> [[a]]
+breaks a as = case break (== a) as of
+    (as1, [])    -> [as1]
+    (as1, _:as2) -> as1 : breaks a as2
 
 type AlexInput = (Posn, B.ByteString)
 

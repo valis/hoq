@@ -22,6 +22,7 @@ import Syntax.Term
 %token
     PIdent      { TokIdent    $$    }
     Universe    { TokUniverse $$    }
+    Import      { TokImport   $$    }
     'I'         { TokInterval $$    }
     'left'      { TokLeft     $$    }
     'right'     { TokRight    $$    }
@@ -32,7 +33,6 @@ import Syntax.Term
     'squeeze'   { TokSqueeze  $$    }
     '\\'        { TokLam      $$    }
     '('         { TokLParen   $$    }
-    'import'    { TokImport         }
     'data'      { TokData           }
     ':'         { TokColon          }
     '='         { TokEquals         }
@@ -52,13 +52,6 @@ with :: { () }
     : 'with' '{'   {% \_ -> lift $ modify (NoLayout  :) }
     | 'with' error {% \_ -> lift $ modify (Layout $1 :) }
 
-Ident :: { String }
-    : PIdent    { getName $1 }
-
-Import :: { Import }
-    : Ident             { [$1]  } 
-    | Import '.' Ident  { $3:$1 }
-
 Def :: { Def }
     : PIdent ':' Expr                                       { DefType $1 $3                                             }
     | PIdent Patterns '=' Expr                              { DefFun $1 (reverse $2) (Just $4)                          }
@@ -66,7 +59,7 @@ Def :: { Def }
     | 'data' PIdent DataTeles                               {% \_ -> defData $2 (reverse $3) [] []                      }
     | 'data' PIdent DataTeles '=' Cons                      {% \_ -> defData $2 (reverse $3) (reverse $5) []            }
     | 'data' PIdent DataTeles '=' Cons with FunClauses '}'  {% \_ -> defData $2 (reverse $3) (reverse $5) (reverse $7)  }
-    | 'import' Import                                       { DefImport $2                                              }
+    | Import                                                { DefImport $1                                              }
 
 DataTeles :: { [(Expr,Expr)] }
     : {- empty -}                     { []              }
