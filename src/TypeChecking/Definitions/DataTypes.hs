@@ -124,7 +124,7 @@ collectDataTypes (DataType _ d _ as)    = d : (as >>= collectDataTypes)
 collectDataTypes Universe{}             = []
 collectDataTypes Interval{}             = []
 collectDataTypes ICon{}                 = []
-collectDataTypes (Path _ _ me1 es)      = maybe [] collectDataTypes me1 ++ (es >>= collectDataTypes)
+collectDataTypes (Path _ _ me1 es)      = maybe [] (collectDataTypes . fst) me1 ++ (es >>= collectDataTypes)
 collectDataTypes (PCon _ me)            = maybe [] collectDataTypes me
 collectDataTypes (At _ e3 e4)           = collectDataTypes e3 ++ collectDataTypes e4
 collectDataTypes (Coe _ es)             = es >>= collectDataTypes

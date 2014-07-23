@@ -54,7 +54,7 @@ instance Eq a => Eq (Term p a) where
         go (DataType _ d _ as) es (DataType _ d' _ as') es' = d == d' && as ++ es == as' ++ es'
         go (Interval _) es (Interval _) es' = es == es'
         go (ICon _ c) es (ICon _ c') es' = c == c' && es == es'
-        go (Path _ Explicit a as) es (Path _ Explicit a' as') es' = a == a' && as ++ es == as' ++ es'
+        go (Path _ Explicit (Just (a,_)) as) es (Path _ Explicit (Just (a',_)) as') es' = a == a' && as ++ es == as' ++ es'
         go (Path _ _ _ as) es (Path _ _ _ as') es' = as ++ es == as' ++ es'
         go (PCon _ f) es (PCon _ f') es' = maybe [] return f ++ es == maybe [] return f' ++ es'
         go (PCon p e) es e' es' = case maybe [] return e ++ es of
@@ -124,8 +124,9 @@ instance Traversable (Term p) where
         At <$> maybe (pure Nothing) (\(e1,e2) -> (\r1 r2 -> Just (r1,r2)) <$>
         traverse f e1 <*> traverse f e2) me12 <*> traverse f e3 <*> traverse f e4
     traverse f (Pi p (Type e1 lvl1) e2 lvl2) =
-        (\e1' e2' -> Pi p (Type e1' lvl1) e2' lvl2) <$> traverse f e1 <*> traverse f e2
-    traverse f (Path p h me es)     = Path p h       <$> traverse (traverse f) me <*> traverse (traverse f) es
+        (\e1' e2' -> Pi p (Type e1' lvl1) e2' lvl2)  <$> traverse f e1 <*> traverse f e2
+    traverse f (Path p h me es)     = Path p h       <$> traverse (\(e,l) -> (,) <$> traverse f e <*> pure l) me
+                                                     <*> traverse (traverse f) es
     traverse f (PCon p e)           = PCon p         <$> traverse (traverse f) e
     traverse f (Con p c n cs as)    = Con p c n cs   <$> traverse (traverse f) as
     traverse f (Coe p as)           = Coe p          <$> traverse (traverse f) as
@@ -151,7 +152,7 @@ instance Monad (Term p) where
     DataType p d e as           >>= k = DataType p d e $ map (>>= k) as
     Interval p                  >>= _ = Interval p
     ICon p c                    >>= _ = ICon p c
-    Path p h me1 es             >>= k = Path p h (fmap (>>= k) me1) $ map (>>= k) es
+    Path p h me1 es             >>= k = Path p h (fmap (\(e1,l) -> (e1 >>= k, l)) me1) $ map (>>= k) es
     PCon p e                    >>= k = PCon p $ fmap (>>= k) e
     At me12 e3 e4               >>= k = At (fmap (\(e1,e2) -> (e1 >>= k, e2 >>= k)) me12) (e3 >>= k) (e4 >>= k)
     Coe p es                    >>= k = Coe p $ map (>>= k) es

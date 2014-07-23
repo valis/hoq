@@ -129,7 +129,7 @@ typeCheckCtx ctx term mty = go ctx term [] $ fmap (nfType WHNF) mty
         unless (null ts) $ warn [argsErrorMsg pos "A type"]
         (r1, Type t1 lvl) <- go ctx a1 [] Nothing
         (r2, _) <- go ctx a2 [] $ Just $ Type (nf WHNF t1) lvl
-        return (Path pos Implicit (Just $ Lam pos $ Scope1 "_" $ fmap Free t1) [r1,r2], Type (Universe pos lvl) $ succ lvl)
+        return (Path pos Implicit (Just (Lam pos $ Scope1 "_" $ fmap Free t1, lvl)) [r1,r2], Type (Universe pos lvl) $ succ lvl)
     go ctx (Path pos _ _ bs) ts Nothing = case bs ++ ts of
         [] -> throwError [expectedArgErrorMsg pos "Path"]
         a:as -> do
@@ -138,17 +138,17 @@ typeCheckCtx ctx term mty = go ctx term [] $ fmap (nfType WHNF) mty
             let r1' c = Type (App r1 $ ICon pos c) lvl
                 mkType t = Type t (succ lvl)
             case as of
-                [] -> return (Path pos Explicit (Just r1) [], mkType $
+                [] -> return (Path pos Explicit (Just (r1,lvl)) [], mkType $
                     Pi pos (r1' ILeft) (ScopeTerm $ Pi pos (r1' IRight) (ScopeTerm $ Universe pos lvl) $ succ lvl) $ succ lvl)
                 [a2] -> do
                     (r2, _) <- go ctx a2 [] $ Just $ nfType WHNF (r1' ILeft)
-                    return (Path pos Explicit (Just r1) [r2], mkType $
+                    return (Path pos Explicit (Just (r1,lvl)) [r2], mkType $
                         Pi pos (r1' IRight) (ScopeTerm $ Universe pos lvl) $ succ lvl)
                 a2:a3:as' -> do
                     unless (null as') $ warn [argsErrorMsg pos "A type"]
                     (r2, _) <- go ctx a2 [] $ Just $ nfType WHNF (r1' ILeft)
                     (r3, _) <- go ctx a3 [] $ Just $ nfType WHNF (r1' IRight)
-                    return (Path pos Explicit (Just r1) [r2,r3], mkType $ Universe pos lvl)
+                    return (Path pos Explicit (Just (r1,lvl)) [r2,r3], mkType $ Universe pos lvl)
     go ctx (PCon pos ma) ts mty = case maybeToList ma ++ ts of
         [] -> throwError [expectedArgErrorMsg pos "path"]
         a:as -> do
@@ -158,8 +158,8 @@ typeCheckCtx ctx term mty = go ctx term [] $ fmap (nfType WHNF) mty
                     (te, ty, _) <- typeCheckLambda ctx a (intType pos)
                     return (te, ty)
                 Just (Type ty@(Path p h mt1 _) lvl) -> do
-                    (r,t) <- go ctx a [] $ fmap (\t1 -> Type
-                        (Pi pos (intType pos) (Scope "i" $ ScopeTerm $ App (fmap Free t1) $ Var $ Bound pos) lvl) lvl) mt1
+                    (r,t) <- go ctx a [] $ fmap (\(t1,l1) -> Type
+                        (Pi pos (intType pos) (Scope "i" $ ScopeTerm $ App (fmap Free t1) $ Var $ Bound pos) l1) l1) mt1
                     actExpType ctx (Path p Implicit Nothing [App r (ICon p ILeft), App r (ICon p IRight)]) ty pos
                     return (PCon pos (Just r), Type ty lvl)
                 Just (Type ty _) -> throwError [emsgLC pos "" $ pretty "Expected type:" <+> prettyOpen ctx ty
@@ -169,7 +169,7 @@ typeCheckCtx ctx term mty = go ctx term [] $ fmap (nfType WHNF) mty
         (r1, Type t1 lvl) <- go ctx b [] Nothing
         (r2, _) <- go ctx c [] $ Just (intType pos)
         case nf WHNF t1 of
-            Path _ _ (Just a) [b',c'] -> do
+            Path _ _ (Just (a,_)) [b',c'] -> do
                 (tes, ty) <- typeCheckApps pos ctx ts $ Type (App a r2) lvl
                 return (apps (At (Just (b', c')) r1 r2) tes, ty)
             Path _ _ Nothing _ -> throwError [emsgLC pos "Cannot infer type" enull]
@@ -208,7 +208,7 @@ typeCheckCtx ctx term mty = go ctx term [] $ fmap (nfType WHNF) mty
             (r3, _) <- go ctx a3 [] $ Just $ Type (Pi pos (Type r1 lvl1) (ScopeTerm r2) lvl2) lvl
             (r4, _) <- go ctx a4 [] $ Just $ Type (Pi pos (Type r2 lvl2) (ScopeTerm r1) lvl1) lvl
             let h e s1 s3 s4 tlvl = go ctx e [] $ Just $ Type (Pi pos (Type s1 tlvl) (Scope "x" $
-                    ScopeTerm $ Path pos Implicit (Just $ Pi pos (intType pos) (ScopeTerm $ fmap Free s1) tlvl)
+                    ScopeTerm $ Path pos Implicit (Just (Lam pos $ Scope1 "_" $ fmap (Free . Free) s1, tlvl))
                     [App (fmap Free s4) $ App (fmap Free s3) $ Var $ Bound pos, Var $ Bound pos]) tlvl) tlvl
             (r5, _) <- h a5 r1 r3 r4 lvl1
             (r6, _) <- h a6 r2 r4 r3 lvl2

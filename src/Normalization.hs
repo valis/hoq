@@ -27,8 +27,8 @@ nf mode e = go e []
     go (Con p c n [] es)    ts = Con p c n [] $ nfs mode (es ++ ts)
     go (DataType p d e es)  [] = DataType p d e $ nfs mode es
     go (DataType p d e es)  ts = DataType p d e $ nfs mode (es ++ ts)
-    go (Path p h ma es)     [] = Path p h (if mode == NF then fmap (nf NF) ma else ma) $ nfs mode es
-    go (Path p h ma es)     ts = Path p h (if mode == NF then fmap (nf NF) ma else ma) $ nfs mode (es ++ ts)
+    go (Path p h ma es)     [] = Path p h (if mode == NF then fmap (\(a,l) -> (nf NF a, l)) ma else ma) $ nfs mode es
+    go (Path p h ma es)     ts = Path p h (if mode == NF then fmap (\(a,l) -> (nf NF a, l)) ma else ma) $ nfs mode (es ++ ts)
     go (Lam p (Scope1 v t)) [] = Lam p $ Scope1 v $ if mode == WHNF then t else nf mode t
     go (Lam _ (Scope1 _ s)) (t:ts) = go (instantiate1 t s) ts
     go (FunSyn _ _ (Closed term)) ts = go term ts

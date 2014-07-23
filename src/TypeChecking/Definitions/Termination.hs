@@ -74,7 +74,7 @@ collectFunCalls ctx name _  Universe{} = []
 collectFunCalls ctx name _  Interval{} = []
 collectFunCalls ctx name _  ICon{} = []
 collectFunCalls ctx name _  (Path _ _ me1 es) =
-    maybe [] (collectFunCalls ctx name []) me1 ++ (es >>= collectFunCalls ctx name [])
+    maybe [] (collectFunCalls ctx name [] . fst) me1 ++ (es >>= collectFunCalls ctx name [])
 collectFunCalls ctx name _  (PCon _ me) = maybe [] (collectFunCalls ctx name []) me
 collectFunCalls ctx name _  (At _ e3 e4) = collectFunCalls ctx name [] e3 ++ collectFunCalls ctx name [] e4
 collectFunCalls ctx name _  (Coe _ es) = es >>= collectFunCalls ctx name []

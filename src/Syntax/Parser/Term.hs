@@ -38,7 +38,7 @@ data Term p a
     | DataType p String Int [Term p a]
     | Interval p
     | ICon p ICon
-    | Path p Explicit (Maybe (Term p a)) [Term p a]
+    | Path p Explicit (Maybe (Term p a, Level)) [Term p a]
     | PCon p (Maybe (Term p a))
     | At (Maybe (Term p a, Term p a)) (Term p a) (Term p a)
     | Coe p [Term p a]
