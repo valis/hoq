@@ -2,7 +2,7 @@ module Syntax.Term
     ( module Syntax.Parser.Term
     , POrd(..), lessOrEqual
     , apps, collect, dropOnePi
-    , mapTerm, mapType
+    , mapTerm, mapType, mapScope'
     ) where
 
 import Prelude.Extras
@@ -49,9 +49,9 @@ instance Eq a => Eq (Term p a) where
         go (App a b) es e2 es' = go a (b:es) e2 es'
         go e1 es (App a b) es' = go e1 es a (b:es')
         go (Lam _ s) es (Lam _ s') es' = s == s' && es == es'
-        go (Lam p (Scope1 _ s)) es t es' =
+        go (Lam _ (Scope1 _ s)) es t es' =
             let (l1,l2) = splitAt (length es' - length es) es'
-            in l2 == es && go s [] (fmap Free t) (map (fmap Free) l1 ++ [Var $ Bound p])
+            in l2 == es && go s [] (fmap Free t) (map (fmap Free) l1 ++ [Var Bound])
         go t es t'@Lam{} es' = go t' es' t es
         go e1@Pi{} es e2@Pi{} es' = pcompare e1 e2 == Just EQ && es == es'
         go (Con _ c _ _ as) es (Con _ c' _ _ as') es' = c == c' && as ++ es == as' ++ es'
@@ -65,7 +65,7 @@ instance Eq a => Eq (Term p a) where
         go (Path _ _ _ as) es (Path _ _ _ as') es' = as ++ es == as' ++ es'
         go (PCon _ f) es (PCon _ f') es' = maybe [] return f ++ es == maybe [] return f' ++ es'
         go (PCon p e) es e' es' = case maybe [] return e ++ es of
-            e1:es1 -> e1 == Lam p (Scope1 "" $ At Nothing (fmap Free e') $ Var $ Bound p) && es1 == es'
+            e1:es1 -> e1 == Lam p (Scope1 "" $ At Nothing (fmap Free e') $ Var Bound) && es1 == es'
             _ -> False
         go e es e'@PCon{} es' = go e' es' e es
         go (At _ a b) es (At _ a' b') es' = a == a' && b == b' && es == es'
@@ -89,8 +89,8 @@ instance Eq a => POrd (Term p a) where
         contraCovariant (pcompare a a') $ pcompare (unScope1 $ dropOnePi p a b lvl) (fmap Free b')
     pcompare (Pi p a b lvl) (Pi p' a' b' lvl') = contraCovariant (pcompare a a') $ pcompareScopes p a b lvl p' a' b' lvl'
       where
-        pcompareScopes :: Eq a => p -> Type p a -> Scope String p (Term p) a -> Level
-            -> p -> Type p a -> Scope String p (Term p) a -> Level -> Maybe Ordering
+        pcompareScopes :: Eq a => p -> Type p a -> Scope String (Term p) a -> Level
+            -> p -> Type p a -> Scope String (Term p) a -> Level -> Maybe Ordering
         pcompareScopes _ _ (ScopeTerm b) _   _  _  (ScopeTerm b') _      = pcompare b b'
         pcompareScopes _ _ (ScopeTerm b) _   p' a'            b'  lvl'   = pcompare b (Pi p' a' b' lvl')
         pcompareScopes p a            b  lvl _  _  (ScopeTerm b') _      = pcompare (Pi p a b lvl) b'
@@ -182,10 +182,14 @@ collect term = go term []
     go (Squeeze p es)       ts  = Squeeze p         (es ++ ts)
     go _ _ = term
 
+mapScope' :: (p -> p') -> Scope s (Term p) a -> Scope s (Term p') a
+mapScope' f (ScopeTerm t) = ScopeTerm (mapTerm f t)
+mapScope' f (Scope s t) = Scope s (mapScope' f t)
+
 mapTerm :: (p -> p') -> Term p a -> Term p' a
 mapTerm _ (Var a) = Var a
 mapTerm f (App a b) = App (mapTerm f a) (mapTerm f b)
-mapTerm f (Lam p (Scope1 v t)) = Lam (f p) $ Scope1 v $ fmap (mapScoped f) (mapTerm f t)
+mapTerm f (Lam p (Scope1 v t)) = Lam (f p) $ Scope1 v (mapTerm f t)
 mapTerm f (Pi p t s l) = Pi (f p) (mapType f t) (mapScope' f s) l
 mapTerm f (Con p i s cs as) = Con (f p) i s cs $ map (mapTerm f) as
 mapTerm f (FunCall p s cs) = FunCall (f p) s cs
@@ -204,11 +208,7 @@ mapTerm f (Squeeze p as) = Squeeze (f p) $ map (mapTerm f) as
 mapType :: (p -> p') -> Type p a -> Type p' a
 mapType f (Type t l) = Type (mapTerm f t) l
 
-mapScope' :: (p -> p') -> Scope s p (Term p) a -> Scope s p' (Term p') a
-mapScope' f (ScopeTerm t) = ScopeTerm (mapTerm f t)
-mapScope' f (Scope s t)   = Scope s $ fmap (mapScoped f) (mapScope' f t)
-
-dropOnePi :: p -> Type p a -> Scope String p (Term p) a -> Level -> Scope1 String p (Term p) a
+dropOnePi :: p -> Type p a -> Scope String (Term p) a -> Level -> Scope1 String (Term p) a
 dropOnePi _ _ (ScopeTerm b) _ = Scope1 "_" (fmap Free b)
 dropOnePi _ _ (Scope s (ScopeTerm b)) _ = Scope1 s b
 dropOnePi p a (Scope s b) lvl = Scope1 s $ Pi p (fmap Free a) b lvl

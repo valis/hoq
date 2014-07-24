@@ -148,7 +148,7 @@ piExpr (PiTele pos e1 e2 : teles) term = do
     term' <- piExpr teles term
     return $ Pi pos (Type e2 NoLevel) (go (map getName vars) $ ScopeTerm term') NoLevel
   where
-    go :: [String] -> Scope String Posn (Term Posn) PIdent -> Scope String Posn (Term Posn) PIdent
+    go :: [String] -> Scope String (Term Posn) PIdent -> Scope String (Term Posn) PIdent
     go [] scope = scope
     go (d:ds) scope = Scope d $ fmap Free (go ds scope)
 

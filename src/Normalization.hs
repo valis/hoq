@@ -56,8 +56,8 @@ nf mode e = go e []
                                                      e2' == ICon (error "") IRight && e4' == ICon (error "") ILeft, e1') of
                 (True, _, _, _) -> go e3 es''
                 (_, b1, b2, Iso _ [t1,t2,t3,t4,t5,t6]) | b1 || b2 -> go (App (if b1 then t3 else t4) e3) es''
-                (_, b1, b2, _) | b1 || b2 -> case nf NF $ App (fmap Free e1') $ Var $ Bound (error "") of
-                    Iso p [t1,t2,t3,t4,t5,t6, Var (Bound _)] -> case sequenceA $ Iso p [t1,t2,t3,t4,t5,t6] of
+                (_, b1, b2, _) | b1 || b2 -> case nf NF $ App (fmap Free e1') $ Var Bound of
+                    Iso p [t1,t2,t3,t4,t5,t6, Var Bound] -> case sequenceA $ Iso p [t1,t2,t3,t4,t5,t6] of
                         Free (Iso _ [t1',t2',t3',t4',t5',t6']) -> go (App (if b1 then t3' else t4') e3) es''
                         _ -> Coe p (nfs mode es')
                     _ -> Coe p (nfs mode es')
@@ -77,20 +77,20 @@ nf mode e = go e []
 nfType :: Eq a => NF -> Type () a -> Type () a
 nfType mode (Type t lvl) = Type (nf mode t) lvl
 
-nfScope :: Eq a => Scope s () (Term ()) a -> Scope s () (Term ()) a
+nfScope :: Eq a => Scope s (Term ()) a -> Scope s (Term ()) a
 nfScope (ScopeTerm t) = ScopeTerm (nf NF t)
 nfScope (Scope v   s) = Scope v (nfScope s)
 
 isStationary :: Eq a => Term () a -> Bool
-isStationary t = case sequenceA $ nf NF $ App (fmap Free t) $ Var $ Bound () of
+isStationary t = case sequenceA $ nf NF $ App (fmap Free t) $ Var Bound of
     Free _  -> True
-    Bound _ -> False
+    Bound   -> False
 
 nfs :: Eq a => NF -> [Term () a] -> [Term () a]
 nfs NF terms = map (nf NF) terms
 nfs _  terms = terms
 
-instantiatePat :: Eq a => [Pattern () c s] -> Scope b () (Term ()) a -> [Term () a] -> Maybe (Term () a, [Term () a])
+instantiatePat :: Eq a => [Pattern () c s] -> Scope b (Term ()) a -> [Term () a] -> Maybe (Term () a, [Term () a])
 instantiatePat [] (ScopeTerm term) terms = Just (term, terms)
 instantiatePat (PatternVar _ : pats) (Scope _ scope) (term:terms) = instantiatePat pats (instantiateScope term scope) terms
 instantiatePat (PatternI _ con : pats) scope (term:terms) = case nf WHNF term of
@@ -101,5 +101,5 @@ instantiatePat (Pattern (PatternCon con _ _ _) pats1 : pats) scope (term:terms) 
     _ -> Nothing
 instantiatePat _ _ _ = Nothing
 
-instantiateCases :: Eq a => [([Pattern () c s], Closed (Scope b () (Term ())))] -> [Term () a] -> Maybe (Term () a, [Term () a])
+instantiateCases :: Eq a => [([Pattern () c s], Closed (Scope b (Term ())))] -> [Term () a] -> Maybe (Term () a, [Term () a])
 instantiateCases clauses terms = msum $ map (\(pats, Closed scope) -> instantiatePat pats scope terms) clauses

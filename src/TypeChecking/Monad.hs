@@ -16,7 +16,7 @@ import Syntax.ErrorDoc
 
 type EDocM = WarnT [EMsg (Term ())]
 type ScopeM = ScopeT (Term () PIdent) (Type () PIdent)
-    (Scope String () (Term ()) PIdent) (Scope String () (Term ()) PIdent, Level)
+    (Scope String (Term ()) PIdent) (Scope String (Term ()) PIdent, Level)
 type TCM m = EDocM (ScopeM m)
 
 runTCM :: Monad m => TCM m a -> m (Maybe a)
@@ -41,7 +41,7 @@ addDataTypeCheck (PIdent pos var) ty b = do
         _                 -> lift (addDataType var ty b)
 
 addConstructorCheck :: Monad m => PIdent -> String -> Int
-    -> Scope String () (Term ()) PIdent -> Scope String () (Term ()) PIdent -> Level -> TCM m ()
+    -> Scope String (Term ()) PIdent -> Scope String (Term ()) PIdent -> Level -> TCM m ()
 addConstructorCheck (PIdent pos var) dt n te ty lvl = do
     mr <- lift $ getEntry var (Just dt)
     case mr of

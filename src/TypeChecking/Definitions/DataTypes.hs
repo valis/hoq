@@ -25,7 +25,7 @@ typeCheckDataType p@(PIdent pos dt) params cons conds = mdo
     addDataTypeCheck p dataType lcons
     cons' <- forW (zip cons [0..]) $ \(ConDef con@(PIdent pos conName) tele, i) -> do
         (_, Type conType conLevel) <- checkTele ctx (mapCtxTele ctx tele) $
-            DataType () dt lcons $ ctxToVars (const ()) ctx
+            DataType () dt lcons (ctxToVars ctx)
         checkPositivity p (nf WHNF conType)
         let conTerm = Con pos i conName (map snd $ filter (\(c,_) -> c == conName) conds') []
         return $ Just (con, conTerm, Type conType conLevel)
@@ -53,12 +53,12 @@ typeCheckDataType p@(PIdent pos dt) params cons conds = mdo
 
 data SomeEq f = forall a. Eq a => SomeEq (f a)
 
-extendCtx :: (Functor t, Eq a) => [s] -> Ctx s p t b a -> t a -> SomeEq (Ctx s p t b)
+extendCtx :: (Functor t, Eq a) => [s] -> Ctx s t b a -> t a -> SomeEq (Ctx s t b)
 extendCtx [] ctx _ = SomeEq ctx
 extendCtx (x:xs) ctx t = extendCtx xs (Snoc ctx x t) (fmap Free t)
 
-checkTele :: (Monad m, Eq a) => Ctx String () (Type ()) PIdent a -> [Tele Posn a] -> Term () a
-    -> TCM m (SomeEq (Ctx String () (Type ()) PIdent), Type () a)
+checkTele :: (Monad m, Eq a) => Ctx String (Type ()) PIdent a -> [Tele Posn a] -> Term () a
+    -> TCM m (SomeEq (Ctx String (Type ()) PIdent), Type () a)
 checkTele ctx [] term = return (SomeEq ctx, Type term NoLevel)
 checkTele ctx (VarsTele vars expr : tele) term = do
     (r1, Type t1 _) <- typeCheckCtx ctx expr Nothing
@@ -73,7 +73,7 @@ checkTele ctx (TypeTele expr : tele) term = do
     (rctx, Type r2 lvl2) <- checkTele ctx tele term
     return (rctx, Type (Pi () (Type r1 lvl1) (ScopeTerm r2) lvl2) $ max lvl1 lvl2)
 
-mapCtxTele :: Eq a => Ctx String p f b a -> [Tele q b] -> [Tele q a]
+mapCtxTele :: Eq a => Ctx String f b a -> [Tele p b] -> [Tele p a]
 mapCtxTele ctx = map $ \tele -> case tele of
     VarsTele vars expr -> VarsTele vars (fmap (liftBase ctx) expr)
     TypeTele      expr -> TypeTele      (fmap (liftBase ctx) expr)
@@ -81,25 +81,25 @@ mapCtxTele ctx = map $ \tele -> case tele of
 replaceLevel :: Term () a -> Level -> Term () a
 replaceLevel (Pi p r1 r2 lvl2) lvl = Pi p r1 (replaceLevelScope r2) lvl2
   where
-    replaceLevelScope :: Scope String () (Term ()) a -> Scope String () (Term ()) a
+    replaceLevelScope :: Scope String (Term ()) a -> Scope String (Term ()) a
     replaceLevelScope (ScopeTerm t) = ScopeTerm (replaceLevel t lvl)
-    replaceLevelScope (Scope v t) = Scope v (replaceLevelScope t)
+    replaceLevelScope (Scope v t)   = Scope v   (replaceLevelScope t)
 replaceLevel _ lvl = Universe () lvl
 
 checkPositivity :: (Eq a, Monad m) => PIdent -> Term () a -> EDocM m ()
 checkPositivity dt (Pi _ (Type a _) b _) = checkNoNegative dt (nf WHNF a) >> checkPositivityScope b
   where
-    checkPositivityScope :: (Eq a, Monad m) => Scope String () (Term ()) a -> EDocM m ()
+    checkPositivityScope :: (Eq a, Monad m) => Scope String (Term ()) a -> EDocM m ()
     checkPositivityScope (ScopeTerm t) = checkPositivity dt (nf WHNF t)
-    checkPositivityScope (Scope v t) = checkPositivityScope t
+    checkPositivityScope (Scope v t)   = checkPositivityScope t
 checkPositivity _ _ = return ()
 
 checkNoNegative :: (Eq a, Monad m) => PIdent -> Term () a -> EDocM m ()
 checkNoNegative dt (Pi _ (Type a _) b _) = checkNoDataType dt a >> checkNoNegativeScope b
   where
-    checkNoNegativeScope :: (Eq a, Monad m) => Scope String () (Term ()) a -> EDocM m ()
+    checkNoNegativeScope :: (Eq a, Monad m) => Scope String (Term ()) a -> EDocM m ()
     checkNoNegativeScope (ScopeTerm t) = checkNoNegative dt (nf WHNF t)
-    checkNoNegativeScope (Scope v t) = checkNoNegativeScope t
+    checkNoNegativeScope (Scope v t)   = checkNoNegativeScope t
 checkNoNegative _ _ = return ()
 
 checkNoDataType :: Monad m => PIdent -> Term p a -> EDocM m ()
@@ -112,7 +112,7 @@ collectDataTypes (App e1 e2)            = collectDataTypes e1 ++ collectDataType
 collectDataTypes (Lam _ (Scope1 _ e))   = collectDataTypes e
 collectDataTypes (Pi _ (Type e _) s _)  = collectDataTypes e ++ go s
   where
-    go :: Scope s p (Term p) a -> [String]
+    go :: Scope s (Term p) a -> [String]
     go (ScopeTerm t) = collectDataTypes t
     go (Scope _   s) = go s
 collectDataTypes (Con _ _ _ _ as)       = as >>= collectDataTypes

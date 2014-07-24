@@ -53,9 +53,9 @@ typeCheckFunction p@(PIdent pos name) ety clauses = do
         Just uc -> warn $ map (\pos -> emsgLC pos "Unreachable clause" enull) uc
     warn $ checkConditions pos (Closed $ FunCall () name clauses') (map fst clausesAndPats)
 
-replaceFunCallsScope :: String -> Closed (Term p) -> Scope s p (Term p) a -> Scope s p (Term p) a
+replaceFunCallsScope :: String -> Closed (Term p) -> Scope s (Term p) a -> Scope s (Term p) a
 replaceFunCallsScope name fc (ScopeTerm term) = ScopeTerm (replaceFunCalls name fc term)
-replaceFunCallsScope name fc (Scope v scope) = Scope v (replaceFunCallsScope name fc scope)
+replaceFunCallsScope name fc (Scope v scope)  = Scope v   (replaceFunCallsScope name fc scope)
 
 replaceFunCalls :: String -> Closed (Term p) -> Term p a -> Term p a
 replaceFunCalls name fc = go
