@@ -20,9 +20,10 @@ typeCheckDefs (DefType p@(PIdent pos name) ty : defs) =
             warn [emsgLC pos ("Missing a realization of function " ++ show name) enull]
             typeCheckDefs defs
         (defs1,defs2) -> do
-            typeCheckFunction p ty $ map (\d -> case d of
+            typeCheckFunction p ty (map (\d -> case d of
                 DefFun (PIdent pos _) pats expr -> (pos, pats, expr)
-                _ -> error "typeCheckDefs") defs1
+                _ -> error "typeCheckDefs") defs1)
+                `catchError` \errs -> warn errs >> return ()
             typeCheckDefs defs2
 typeCheckDefs (DefFun p@(PIdent pos name) [] (Just expr) : defs) = do
     (term, ty) <- typeCheck expr Nothing

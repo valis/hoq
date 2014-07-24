@@ -50,6 +50,10 @@ test11 : Foo -> Foo
 test11 (Bar (Baz (Bar Foo))) = test11 (Bar Foo)
 test11 _ = test11 Foo
 
+test11' : Foo -> Foo
+test11' (Bar (Baz (Bar Foo))) = test11' (Baz Foo)
+test11' _ = Foo
+
 test12 : Nat -> I -> zero = zero
 test12 zero _ = path (\_ -> zero)
 test12 (suc n) i = path (\j -> test12 n j @ i)

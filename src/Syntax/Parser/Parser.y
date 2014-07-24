@@ -21,16 +21,7 @@ import Syntax.Term
 
 %token
     PIdent      { TokIdent    $$    }
-    Universe    { TokUniverse $$    }
     Import      { TokImport   $$    }
-    'I'         { TokInterval $$    }
-    'left'      { TokLeft     $$    }
-    'right'     { TokRight    $$    }
-    'Path'      { TokPath     $$    }
-    'path'      { Tokpath     $$    }
-    'coe'       { TokCoe      $$    }
-    'iso'       { TokIso      $$    }
-    'squeeze'   { TokSqueeze  $$    }
     '\\'        { TokLam      $$    }
     '('         { TokLParen   $$    }
     'data'      { TokData           }
@@ -74,8 +65,6 @@ FunClauses :: { [Clause] }
 
 Pattern :: { PatternC Posn PIdent }
     : PIdent                    { PatternVar $1                                 }
-    | 'left'                    { PatternI $1 ILeft                             }
-    | 'right'                   { PatternI $1 IRight                            }
     | '(' ')'                   { PatternEmpty $1                               }
     | '(' PIdent Patterns ')'   { Pattern (PatternCon 0 0 $2 []) (reverse $3)   }
 
@@ -131,17 +120,8 @@ Expr4 :: { Expr }
     | Expr4 Expr5   { App $1 $2 }
 
 Expr5 :: { Expr }
-    : PIdent        { Var $1                                            }
-    | Universe      { Universe (fst $1) $ maybe NoLevel Level (snd $1)  }
-    | 'I'           { Interval $1                                       }
-    | 'left'        { ICon $1 ILeft                                     }
-    | 'right'       { ICon $1 IRight                                    }
-    | 'Path'        { Path $1 Explicit Nothing []                       }
-    | 'path'        { PCon $1 Nothing                                   }
-    | 'coe'         { Coe $1 []                                         }
-    | 'iso'         { Iso $1 []                                         }
-    | 'squeeze'     { Squeeze $1 []                                     }
-    | '(' Expr ')'  { $2                                                }
+    : PIdent        { Var $1    }
+    | '(' Expr ')'  { $2        }
 
 {
 return' :: a -> Parser a
@@ -156,7 +136,7 @@ lam pos vars term = case go vars term of
     term' -> term'
   where
     go [] e = e
-    go (PIdent pos x : vs) e = go vs $ Lam pos $ Scope1 x $ abstract1 (\(PIdent p a) -> if a == x then Just p else Nothing) e
+    go (PIdent pos x : vs) e = go vs $ Lam pos $ Scope1 x (fmap Free e)
 
 type Expr = Term Posn PIdent
 data PiTele = PiTele Posn Expr Expr
@@ -166,7 +146,11 @@ piExpr [] term = return term
 piExpr (PiTele pos e1 e2 : teles) term = do
     vars <- exprToVars e1
     term' <- piExpr teles term
-    return $ Pi pos (Type e2 NoLevel) (mkScope (map getName vars) term') NoLevel
+    return $ Pi pos (Type e2 NoLevel) (go (map getName vars) $ ScopeTerm term') NoLevel
+  where
+    go :: [String] -> Scope String Posn (Term Posn) PIdent -> Scope String Posn (Term Posn) PIdent
+    go [] scope = scope
+    go (d:ds) scope = Scope d $ fmap Free (go ds scope)
 
 termPos :: Expr -> Posn
 termPos = getAttr getPos
@@ -177,12 +161,6 @@ exprToVars term = fmap reverse (go term)
     go (Var v) = return [v]
     go (App as (Var v)) = fmap (v:) (go as)
     go e = throwError [(termPos term, "Expected a list of identifiers")]
-
-mkScope :: Functor f => [String] -> f PIdent -> Scope String Posn f PIdent
-mkScope vars term = go vars
-  where
-    go [] = ScopeTerm term
-    go (d:ds) = Scope d $ fmap (\a@(PIdent p v) -> if v == d then Bound p else Free a) (go ds)
 
 parseError :: Token -> Parser a
 parseError tok (pos,_) = throwError [(maybe pos id (tokGetPos tok), "Syntax error")]

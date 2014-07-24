@@ -22,6 +22,12 @@ instance Ord Level where
 instance Show Level where
     show = show . level
 
+instance Read Level where
+    readsPrec _ ('T':'y':'p':'e':s) = case reads s of
+        [] -> [(NoLevel, s)]
+        is -> map (\(i,r) -> (Level i, r)) is
+    readsPrec _ _ = []
+
 instance Enum Level where
     toEnum 0 = NoLevel
     toEnum n = Level n

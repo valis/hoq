@@ -17,7 +17,11 @@ data TermsInCtx b = forall a. Eq a => TermsInCtx (Ctx String Posn (Type Posn) b 
 
 typeCheckPattern :: (Monad m, Eq a) => Ctx String Posn (Type Posn) PIdent a -> Type Posn a
     -> PatternC Posn PIdent -> TCM m (Bool, Maybe (TermInCtx a), PatternC Posn String)
-typeCheckPattern ctx (Type (Interval _) _) (PatternI p con)  = return (False, Just $ TermInCtx Nil $ ICon p con, PatternI p con)
+typeCheckPattern _ _ PatternI{} = error "typeCheckPattern: PatternI"
+typeCheckPattern ctx (Type Interval{} _) (PatternVar (PIdent pos "left")) =
+    return (False, Just $ TermInCtx Nil $ ICon pos ILeft, PatternI pos ILeft)
+typeCheckPattern ctx (Type Interval{} _) (PatternVar (PIdent pos "right")) =
+    return (False, Just $ TermInCtx Nil $ ICon pos IRight, PatternI pos IRight)
 typeCheckPattern ctx (Type (DataType _ _ 0 _) _) (PatternEmpty _) = return (True, Nothing, PatternVar "_")
 typeCheckPattern ctx (Type ty _) (PatternEmpty pos) =
     throwError [emsgLC pos "" $ pretty "Expected non-empty type:" <+> prettyOpen ctx ty]

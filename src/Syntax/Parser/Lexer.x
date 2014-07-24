@@ -8,7 +8,6 @@ module Syntax.Parser.Lexer
 
 import Data.Word
 import Data.Char(isAlpha,isSpace)
-import Data.Maybe
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
 import Control.Monad.State
@@ -34,15 +33,6 @@ $any        = [\x00-\x10ffff]
 @lcomm;
 @mcomm;
 
-"Type" $digit*  { \p s -> TokUniverse (p, listToMaybe $ map fst $ reads $ drop 4 s) }
-"I"             { \p _ -> TokInterval p                                             }
-"left"          { \p _ -> TokLeft p                                                 }
-"right"         { \p _ -> TokRight p                                                }
-"Path"          { \p _ -> TokPath p                                                 }
-"path"          { \p _ -> Tokpath p                                                 }
-"coe"           { \p _ -> TokCoe p                                                  }
-"iso"           { \p _ -> TokIso p                                                  }
-"squeeze"       { \p _ -> TokSqueeze p                                              }
 @import         { \_ s -> TokImport $ breaks '.' $
                     dropWhile (\c -> not (isAlpha c) && c /= '_') (drop 6 s)        }
 "data"          { \_ _ -> TokData                                                   }
@@ -65,15 +55,6 @@ $any        = [\x00-\x10ffff]
 {
 data Token
     = TokIdent !PIdent
-    | TokUniverse !(Posn, Maybe Int)
-    | TokInterval !Posn
-    | TokLeft !Posn
-    | TokRight !Posn
-    | TokPath !Posn
-    | Tokpath !Posn
-    | TokCoe !Posn
-    | TokIso !Posn
-    | TokSqueeze !Posn
     | TokLam !Posn
     | TokLParen !Posn
     | TokImport ![String]
@@ -94,14 +75,6 @@ data Token
 
 tokGetPos :: Token -> Maybe Posn
 tokGetPos (TokIdent (PIdent pos _)) = Just pos
-tokGetPos (TokUniverse (pos, _)) = Just pos
-tokGetPos (TokLeft pos) = Just pos
-tokGetPos (TokRight pos) = Just pos
-tokGetPos (TokPath pos) = Just pos
-tokGetPos (Tokpath pos) = Just pos
-tokGetPos (TokCoe pos) = Just pos
-tokGetPos (TokIso pos) = Just pos
-tokGetPos (TokSqueeze pos) = Just pos
 tokGetPos (TokLam pos) = Just pos
 tokGetPos (TokLParen pos) = Just pos
 tokGetPos _ = Nothing
