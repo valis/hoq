@@ -53,10 +53,10 @@ liftBase :: Ctx s p f b a -> b -> a
 liftBase Nil = id
 liftBase (Snoc ctx _ _) = Free . liftBase ctx
 
-toBase :: Ctx s p f b a -> (b -> p) -> a -> p
-toBase Nil f a = f a
-toBase Snoc{} _ (Bound p) = p
-toBase (Snoc ctx _ _) f (Free a) = toBase ctx f a
+toBase :: Ctx s p f b a -> a -> Either p b
+toBase Nil b = Right b
+toBase Snoc{} (Bound p) = Left p
+toBase (Snoc ctx _ _) (Free a) = toBase ctx a
 
 abstractTermInCtx :: Ctx s p g b a -> f a -> Scope s p f b
 abstractTermInCtx ctx term = go ctx (ScopeTerm term)

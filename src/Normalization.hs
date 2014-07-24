@@ -10,7 +10,7 @@ import Syntax.Term
 
 data NF = NF | HNF | WHNF deriving Eq
 
-nf :: Eq a => NF -> Term p a -> Term p a
+nf :: Eq a => NF -> Term () a -> Term () a
 nf mode e = go e []
   where
     go (App a b)            ts = go a (b:ts)
@@ -74,23 +74,23 @@ nf mode e = go e []
         i : ICon _ IRight : _ -> if mode == WHNF then i else nf mode i
         es'                   -> Squeeze p $ nfs mode (es ++ ts)
 
-nfType :: Eq a => NF -> Type p a -> Type p a
+nfType :: Eq a => NF -> Type () a -> Type () a
 nfType mode (Type t lvl) = Type (nf mode t) lvl
 
-nfScope :: Eq a => Scope s p (Term p) a -> Scope s p (Term p) a
+nfScope :: Eq a => Scope s () (Term ()) a -> Scope s () (Term ()) a
 nfScope (ScopeTerm t) = ScopeTerm (nf NF t)
 nfScope (Scope v   s) = Scope v (nfScope s)
 
-isStationary :: Eq a => Term p a -> Bool
-isStationary t = case sequenceA $ nf NF $ App (fmap Free t) $ Var $ Bound (error "") of
+isStationary :: Eq a => Term () a -> Bool
+isStationary t = case sequenceA $ nf NF $ App (fmap Free t) $ Var $ Bound () of
     Free _  -> True
     Bound _ -> False
 
-nfs :: Eq a => NF -> [Term p a] -> [Term p a]
+nfs :: Eq a => NF -> [Term () a] -> [Term () a]
 nfs NF terms = map (nf NF) terms
 nfs _  terms = terms
 
-instantiatePat :: Eq a => [Pattern p c s] -> Scope b p (Term p) a -> [Term p a] -> Maybe (Term p a, [Term p a])
+instantiatePat :: Eq a => [Pattern () c s] -> Scope b () (Term ()) a -> [Term () a] -> Maybe (Term () a, [Term () a])
 instantiatePat [] (ScopeTerm term) terms = Just (term, terms)
 instantiatePat (PatternVar _ : pats) (Scope _ scope) (term:terms) = instantiatePat pats (instantiateScope term scope) terms
 instantiatePat (PatternI _ con : pats) scope (term:terms) = case nf WHNF term of
@@ -101,5 +101,5 @@ instantiatePat (Pattern (PatternCon con _ _ _) pats1 : pats) scope (term:terms) 
     _ -> Nothing
 instantiatePat _ _ _ = Nothing
 
-instantiateCases :: Eq a => [([Pattern p c s], Closed (Scope b p (Term p)))] -> [Term p a] -> Maybe (Term p a, [Term p a])
+instantiateCases :: Eq a => [([Pattern () c s], Closed (Scope b () (Term ())))] -> [Term () a] -> Maybe (Term () a, [Term () a])
 instantiateCases clauses terms = msum $ map (\(pats, Closed scope) -> instantiatePat pats scope terms) clauses

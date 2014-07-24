@@ -25,7 +25,7 @@ typeCheckFunction p@(PIdent pos name) ety clauses = do
             Universe _ lvl -> return lvl
             _              -> throwError [emsgLC (getAttr getPos ety) "" $ pretty "Expected a type"
                                                                         $$ pretty "Actual type:" <+> prettyOpen Nil ty]
-    addFunctionCheck p (FunCall pos name []) (Type ty lvl)
+    addFunctionCheck p (FunCall () name []) (Type ty lvl)
     clausesAndPats <- forW clauses $ \(pos,pats,mexpr) ->  do
         (bf, TermsInCtx ctx _ ty', rtpats) <- typeCheckPatterns Nil (Type (nf WHNF ty) lvl) pats
         case (bf,mexpr) of
@@ -41,17 +41,17 @@ typeCheckFunction p@(PIdent pos name) ety clauses = do
             (False, Just expr) -> do
                 (term, _) <- typeCheckCtx ctx (fmap (liftBase ctx) expr) (Just ty')
                 let scope = closed (abstractTermInCtx ctx term)
-                throwErrors (checkTermination name rtpats scope)
+                -- throwErrors (checkTermination name rtpats scope)
                 return $ Just ((rtpats, scope), (pos, rtpats))
     lift (deleteFunction name)
     let clauses' = map fst clausesAndPats
-        fc = Closed $ FunCall pos name $ map (fmap $ \(Closed scope) -> Closed $ replaceFunCallsScope name fc scope) clauses'
+        fc = Closed $ FunCall () name $ map (fmap $ \(Closed scope) -> Closed $ replaceFunCallsScope name fc scope) clauses'
     lift $ addFunction name (open fc) (Type ty lvl)
     case checkCoverage (map snd clausesAndPats) of
         Nothing -> when (length clausesAndPats == length (filter (\(_,_,me) -> isJust me) clauses)) $
                 warn [emsgLC pos "Incomplete pattern matching" enull]
         Just uc -> warn $ map (\pos -> emsgLC pos "Unreachable clause" enull) uc
-    warn $ checkConditions pos (Closed $ FunCall pos name clauses') (map fst clausesAndPats)
+    warn $ checkConditions pos (Closed $ FunCall () name clauses') (map fst clausesAndPats)
 
 replaceFunCallsScope :: String -> Closed (Term p) -> Scope s p (Term p) a -> Scope s p (Term p) a
 replaceFunCallsScope name fc (ScopeTerm term) = ScopeTerm (replaceFunCalls name fc term)

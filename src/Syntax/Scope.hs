@@ -37,6 +37,10 @@ instance Applicative (Scoped p) where
     _ <*> Bound p = Bound p
     Free f <*> Free a = Free (f a)
 
+mapScoped :: (p -> p') -> Scoped p a -> Scoped p' a
+mapScoped f (Bound p) = Bound (f p)
+mapScoped _ (Free a)  = Free a
+
 class MonadF t where
     (>>>=) :: Monad f => t f a -> (a -> f b) -> t f b
 

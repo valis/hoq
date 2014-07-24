@@ -2,6 +2,7 @@ module Syntax.Term
     ( module Syntax.Parser.Term
     , POrd(..), lessOrEqual
     , apps, collect, dropOnePi
+    , mapTerm, mapType
     ) where
 
 import Prelude.Extras
@@ -180,6 +181,32 @@ collect term = go term []
     go (Iso p es)           ts  = Iso p             (es ++ ts)
     go (Squeeze p es)       ts  = Squeeze p         (es ++ ts)
     go _ _ = term
+
+mapTerm :: (p -> p') -> Term p a -> Term p' a
+mapTerm _ (Var a) = Var a
+mapTerm f (App a b) = App (mapTerm f a) (mapTerm f b)
+mapTerm f (Lam p (Scope1 v t)) = Lam (f p) $ Scope1 v $ fmap (mapScoped f) (mapTerm f t)
+mapTerm f (Pi p t s l) = Pi (f p) (mapType f t) (mapScope' f s) l
+mapTerm f (Con p i s cs as) = Con (f p) i s cs $ map (mapTerm f) as
+mapTerm f (FunCall p s cs) = FunCall (f p) s cs
+mapTerm f (FunSyn p s t) = FunSyn (f p) s t
+mapTerm f (Universe p l) = Universe (f p) l
+mapTerm f (DataType p s n as) = DataType (f p) s n $ map (mapTerm f) as
+mapTerm f (Interval p) = Interval (f p)
+mapTerm f (ICon p c) = ICon (f p) c
+mapTerm f (Path p h ma bs) = Path (f p) h (fmap (\(a,l) -> (mapTerm f a, l)) ma) $ map (mapTerm f) bs
+mapTerm f (PCon p ma) = PCon (f p) $ fmap (mapTerm f) ma
+mapTerm f (At mab c d) = At (fmap (\(a,b) -> (mapTerm f a, mapTerm f b)) mab) (mapTerm f c) (mapTerm f d)
+mapTerm f (Coe p as) = Coe (f p) $ map (mapTerm f) as
+mapTerm f (Iso p as) = Iso (f p) $ map (mapTerm f) as
+mapTerm f (Squeeze p as) = Squeeze (f p) $ map (mapTerm f) as
+
+mapType :: (p -> p') -> Type p a -> Type p' a
+mapType f (Type t l) = Type (mapTerm f t) l
+
+mapScope' :: (p -> p') -> Scope s p (Term p) a -> Scope s p' (Term p') a
+mapScope' f (ScopeTerm t) = ScopeTerm (mapTerm f t)
+mapScope' f (Scope s t)   = Scope s $ fmap (mapScoped f) (mapScope' f t)
 
 dropOnePi :: p -> Type p a -> Scope String p (Term p) a -> Level -> Scope1 String p (Term p) a
 dropOnePi _ _ (ScopeTerm b) _ = Scope1 "_" (fmap Free b)

@@ -26,7 +26,7 @@ ep mode str = do
         return (fmap getName term')
     liftIO $ case mres of
         ([], Just term) -> putStrLn $ render $ ppTerm (nf mode term)
-        (errs, _)       -> mapM_ (hPutStrLn stderr . erender) (errs :: [EMsg (Term Posn)])
+        (errs, _)       -> mapM_ (hPutStrLn stderr . erender) (errs :: [EMsg (Term ())])
 
 processCmd :: String -> String -> ScopeM IO ()
 processCmd "quit" _   = liftIO exitSuccess

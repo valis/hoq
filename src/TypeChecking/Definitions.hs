@@ -27,7 +27,7 @@ typeCheckDefs (DefType p@(PIdent pos name) ty : defs) =
             typeCheckDefs defs2
 typeCheckDefs (DefFun p@(PIdent pos name) [] (Just expr) : defs) = do
     (term, ty) <- typeCheck expr Nothing
-    addFunctionCheck p (FunSyn pos name $ closed term) ty
+    addFunctionCheck p (FunSyn () name $ closed term) ty
     typeCheckDefs defs
 typeCheckDefs (DefFun (PIdent pos name) [] Nothing : defs) = do
     warn [emsgLC pos "Expected right hand side" enull]
