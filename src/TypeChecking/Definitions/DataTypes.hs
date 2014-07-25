@@ -27,7 +27,7 @@ typeCheckDataType p@(PIdent pos dt) params cons conds = mdo
         (_, Type conType conLevel) <- checkTele ctx (mapCtxTele ctx tele) $
             DataType () dt lcons (ctxToVars ctx)
         checkPositivity p (nf WHNF conType)
-        let conTerm = Con pos i conName (map snd $ filter (\(c,_) -> c == conName) conds') []
+        let conTerm = Con pos i con (map snd $ filter (\(c,_) -> c == conName) conds') []
         return $ Just (con, conTerm, Type conType conLevel)
     forM_ cons' $ \(con, te, Type ty lvl) ->
         addConstructorCheck con dt lcons (abstractTermInCtx ctx $ mapTerm (const ()) te)
@@ -42,7 +42,7 @@ typeCheckDataType p@(PIdent pos dt) params cons conds = mdo
                 when bf $ warn [emsgLC pos "Absurd patterns are not allowed in conditions" enull]
                 (term, _) <- typeCheckCtx (ctx +++ ctx') (fmap (liftBase $ ctx +++ ctx') expr) (Just ty')
                 let scope = closed (abstractTermInCtx ctx' term)
-                -- throwErrors (checkTermination con rtpats scope)
+                throwErrors (checkTermination con rtpats scope)
                 return $ Just (con, (rtpats, scope))
     lift $ deleteDataType dt
     let lvls = map (\(_, _, Type _ lvl) -> lvl) cons'

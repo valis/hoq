@@ -29,9 +29,9 @@ ppTermCtx ctx t@Lam{} = go ctx [] t
         let (ctx', n') = renameName n ctx
         in go ctx' (text n' : vars) $ instantiate1 (Var $ text n') s
     go ctx vars t' = text "\\" <> hsep (reverse vars) <+> arrow <+> ppTermPrec (prec t) ctx t'
-ppTermCtx ctx t@(Con _ _ n _ as) = text n <+> ppList ctx t as
+ppTermCtx ctx t@(Con _ _ (PIdent _ n) _ as) = text n <+> ppList ctx t as
 ppTermCtx _ (FunSyn _ n _) = text n
-ppTermCtx _ (FunCall _ n _) = text n
+ppTermCtx _ (FunCall _ (PIdent _ n) _) = text n
 ppTermCtx ctx t@(DataType _ d _ as) = text d <+> ppList ctx t as
 ppTermCtx _ Interval{} = text "I"
 ppTermCtx _ (ICon _ ILeft) = text "left"

@@ -74,17 +74,17 @@ findSuspiciousPairs cs (pat@(Pattern con@(PatternCon i _ name conds) args) : pat
     ext0 :: [PatternC () String] -> TermsInCtx (Term ()) b -> TermsInCtx2 (Term ()) b
     ext0 args (TermsInCtx ctx terms) = case patternsToTerms pats of
         TermsInCtx ctx' terms' -> TermsInCtx2 (ctx +++ ctx')
-            (fmap (liftBase ctx') (Con () i name conds $ substPatterns args terms) : terms')
+            (fmap (liftBase ctx') (Con () i (PIdent (0,0) name) conds $ substPatterns args terms) : terms')
             (map (fmap $ liftBase ctx') terms ++ ctxToVars ctx')
     
     ext1 :: TermsInCtx2 (Term ()) b -> TermsInCtx2 (Term ()) b
     ext1 (TermsInCtx2 ctx terms1 terms2) = case patternsToTerms pats of
-        TermsInCtx ctx' terms' -> TermsInCtx2 (ctx +++ ctx') (fmap (liftBase ctx') (Con () i name conds terms1) : terms')
+        TermsInCtx ctx' terms' -> TermsInCtx2 (ctx +++ ctx') (fmap (liftBase ctx') (Con () i (PIdent (0,0) name) conds terms1) : terms')
                                                              (map (fmap $ liftBase ctx') terms2 ++ ctxToVars ctx')
     
     ext2 :: Ctx String (Term ()) a b -> [Term () b] -> TermsInCtx2 (Term ()) b -> TermsInCtx2 (Term ()) a
     ext2 ctx terms (TermsInCtx2 ctx' terms1 terms2) =
-        TermsInCtx2 (ctx +++ ctx') (fmap (liftBase ctx') (Con () i name conds terms) : terms1)
+        TermsInCtx2 (ctx +++ ctx') (fmap (liftBase ctx') (Con () i (PIdent (0,0) name) conds terms) : terms1)
                                    (map (fmap $ liftBase ctx') (ctxToVars ctx) ++ terms2)
 
 unifyPatterns :: PatternC () String -> PatternC () String -> Maybe [PatternC () String]
@@ -118,14 +118,14 @@ substPatterns pats terms = evalState (mapM substPattern pats) terms
         return term
     substPattern (Pattern (PatternCon i _ name conds) pats) = do
         terms <- mapM substPattern pats
-        return (Con () i name conds terms)
+        return (Con () i (PIdent (0,0) name) conds terms)
 
 patternToTerm :: PatternC () String -> TermInCtx (Term ()) a
 patternToTerm (PatternI p con) = TermInCtx Nil (ICon p con)
 patternToTerm (PatternEmpty _) = TermInCtx (Snoc Nil "_" $ error "") (Var Bound)
 patternToTerm (PatternVar var) = TermInCtx (Snoc Nil var $ error "") (Var Bound)
 patternToTerm (Pattern (PatternCon i _ name conds) pats) = case patternsToTerms pats of
-    TermsInCtx ctx' terms -> TermInCtx ctx' $ Con () i name conds terms
+    TermsInCtx ctx' terms -> TermInCtx ctx' $ Con () i (PIdent (0,0) name) conds terms
 
 patternsToTerms :: [PatternC () String] -> TermsInCtx (Term ()) a
 patternsToTerms [] = TermsInCtx Nil []

@@ -32,7 +32,7 @@ typeCheckPattern ctx ty@(Type (DataType _ dt _ params) _) (PatternVar (PIdent po
         [] -> return (False, Just $ TermInCtx (Snoc Nil var ty) $ Var Bound, PatternVar var)
         (n,con,(conType,_)):_ -> if isDataType conType
             then let con'@(Con _ i conName conds _) = instantiate params $ fmap (liftBase ctx) $ mapScope' (const ()) con
-                 in return (False, Just $ TermInCtx Nil con', Pattern (PatternCon i n conName conds) [])
+                 in return (False, Just $ TermInCtx Nil con', Pattern (PatternCon i n (getName conName) conds) [])
             else throwError [emsgLC pos ("Not enough arguments to " ++ show var) enull]
   where
     isDataType :: Scope a (Term p) b -> Bool
@@ -49,7 +49,7 @@ typeCheckPattern ctx (Type (DataType _ dt _ params) _) (Pattern (PatternCon _ _ 
             let Con _ i _ conds _ = instantiate params $ fmap (liftBase ctx) $ mapScope' (const ()) con
                 conType' = Type (nf WHNF $ instantiate params $ fmap (liftBase ctx) $ mapScope' (const ()) conType) lvl
             (bf, TermsInCtx ctx' terms (Type ty _), rtpats) <- typeCheckPatterns ctx conType' pats
-            let res = TermInCtx ctx' (Con () i conName conds terms)
+            let res = TermInCtx ctx' (Con () i (PIdent pos conName) conds terms)
             case nf WHNF ty of
                 DataType{} -> return (bf, Just res, Pattern (PatternCon i n conName conds) rtpats)
                 _          -> throwError [emsgLC pos "Not enough arguments" enull]
