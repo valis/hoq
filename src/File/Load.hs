@@ -11,7 +11,6 @@ import Control.Exception
 import qualified Data.ByteString as B
 
 import Syntax.Parser
-import Syntax.Parser.Term
 import Syntax.ErrorDoc
 import Syntax.PrettyPrinter()
 import TypeChecking.Definitions

@@ -40,25 +40,25 @@ instance Applicative Scoped where
 class MonadF t where
     (>>>=) :: Monad f => t f a -> (a -> f b) -> t f b
 
-data Scope1 s f a = Scope1 s (f (Scoped a))
+data Scope1 f a = Scope1 (f (Scoped a))
 
-unScope1 :: Scope1 s f a -> f (Scoped a)
-unScope1 (Scope1 _ t) = t
+unScope1 :: Scope1 f a -> f (Scoped a)
+unScope1 (Scope1 t) = t
 
-instance (Eq1 f, Eq a) => Eq (Scope1 s f a) where
-    Scope1 _ t1 == Scope1 _ t2 = t1 ==# t2
+instance (Eq1 f, Eq a) => Eq (Scope1 f a) where
+    Scope1 t1 == Scope1 t2 = t1 ==# t2
 
-instance Functor f => Functor (Scope1 s f) where
-    fmap f (Scope1 s t) = Scope1 s $ fmap (fmap f) t
+instance Functor f => Functor (Scope1 f) where
+    fmap f (Scope1 t) = Scope1 $ fmap (fmap f) t
 
-instance Foldable f => Foldable (Scope1 s f) where
-    foldMap f (Scope1 _ t) = foldMap (foldMap f) t
+instance Foldable f => Foldable (Scope1 f) where
+    foldMap f (Scope1 t) = foldMap (foldMap f) t
 
-instance Traversable f => Traversable (Scope1 s f) where
-    traverse f (Scope1 s t) = Scope1 s <$> traverse (traverse f) t
+instance Traversable f => Traversable (Scope1 f) where
+    traverse f (Scope1 t) = Scope1 <$> traverse (traverse f) t
 
-instance MonadF (Scope1 s) where
-    Scope1 s t >>>= k = Scope1 s $ t >>= \v -> case v of
+instance MonadF Scope1 where
+    Scope1 t >>>= k = Scope1 $ t >>= \v -> case v of
         Bound   -> return Bound
         Free a  -> liftM Free (k a)
 

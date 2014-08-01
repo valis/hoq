@@ -4,7 +4,7 @@ module TypeChecking.Definitions
 
 import Control.Monad.Fix
 
-import Syntax.Parser.Term
+import Syntax
 import Syntax.ErrorDoc
 import TypeChecking.Expressions
 import TypeChecking.Definitions.DataTypes

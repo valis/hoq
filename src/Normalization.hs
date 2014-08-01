@@ -6,16 +6,18 @@ module Normalization
 import Control.Monad
 import Data.Traversable
 
-import Syntax.Term
+import Syntax
 
 data NF = NF | HNF | WHNF deriving Eq
 
-nf :: Eq a => NF -> Term () a -> Term () a
-nf mode e = go e []
+nf :: Eq a => NF -> Term Syntax a -> Term Syntax a
+nf = undefined
+
+nfSyntax :: Eq a => NF -> Syntax -> [Term Syntax a] -> Term Syntax a
+nfSyntax mode t ts = go t ts []
   where
-    go (App a b)            ts = go a (b:ts)
-    go e@Var{}              ts = apps e (nfs mode ts)
-    go e@Universe{}         _  = e
+    go App [Apply a as, t]  ts = go a as (t:ts)
+    go t@Universe{} _       _  = t
     go (Pi p a b lvl)       _  | mode == NF = Pi p (nfType NF a) (nfScope b) lvl
     go e@Pi{}               _  = e
     go e@Interval{}         _  = e

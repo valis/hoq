@@ -10,7 +10,6 @@ import Data.Maybe
 
 import Syntax.Term
 import Syntax.ErrorDoc
-import Syntax.PrettyPrinter
 import TypeChecking.Context
 import Normalization
 
@@ -24,6 +23,14 @@ checkConditions lc func cs =
     
     scopeToEDoc :: Scope String (Term ()) String -> EDoc (Term ())
     scopeToEDoc t = epretty $ fmap pretty $ let (_,_,_,t') = scopeToTerm [] id t in t'
+
+scopeToTerm :: [String] -> (String -> a) -> Scope String (Term p) a -> ([String], Bool, [String], Term p a)
+scopeToTerm ctx f (ScopeTerm t@(Pi _ _ ScopeTerm{} _)) = ([], False, ctx, t)
+scopeToTerm ctx f (ScopeTerm t) = ([], True, ctx, t)
+scopeToTerm ctx f (Scope v s) =
+    let (ctx', v') = renameName v ctx
+        (vs, b, ctx'', d) = scopeToTerm ctx' f $ instantiateScope (Var $ f v') s
+    in  (v' : vs, b, ctx'', d)
 
 data TermInCtx  f b = forall a. TermInCtx  (Ctx String f b a) (f a)
 data TermsInCtx f b = forall a. TermsInCtx (Ctx String f b a) [f a]

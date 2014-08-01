@@ -12,7 +12,6 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C
 import Control.Monad.State
 
-import Syntax.Parser.Term
 import TypeChecking.Monad.Warn
 }
 
@@ -37,7 +36,7 @@ $any        = [\x00-\x10ffff]
                     dropWhile (\c -> not (isAlpha c) && c /= '_') (drop 6 s)        }
 "data"          { \_ _ -> TokData                                                   }
 @with           { \_ _ -> TokWith 0                                                 }
-@ident          { \p s -> TokIdent (PIdent p s)                                     }
+@ident          { \p s -> TokIdent (p, s)                                           }
 \\              { \p _ -> TokLam p                                                  }
 \(              { \p _ -> TokLParen p                                               }
 \:              { \_ _ -> TokColon                                                  }
@@ -54,7 +53,7 @@ $any        = [\x00-\x10ffff]
 
 {
 data Token
-    = TokIdent !PIdent
+    = TokIdent !(Posn, String)
     | TokLam !Posn
     | TokLParen !Posn
     | TokImport ![String]
@@ -73,8 +72,10 @@ data Token
     | TokNewLine
     | TokEOF
 
+type Posn = (Int,Int)
+
 tokGetPos :: Token -> Maybe Posn
-tokGetPos (TokIdent (PIdent pos _)) = Just pos
+tokGetPos (TokIdent (pos, _)) = Just pos
 tokGetPos (TokLam pos) = Just pos
 tokGetPos (TokLParen pos) = Just pos
 tokGetPos _ = Nothing

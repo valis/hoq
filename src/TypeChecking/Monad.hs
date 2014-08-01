@@ -6,17 +6,18 @@ module TypeChecking.Monad
     , lift
     ) where
 
+import Data.Void
 import Control.Monad
 import Control.Monad.Trans(lift)
 
 import TypeChecking.Monad.Warn
 import TypeChecking.Monad.Scope
-import Syntax.Parser.Term
+import Syntax
 import Syntax.ErrorDoc
 
 type EDocM = WarnT [EMsg (Term ())]
-type ScopeM = ScopeT (Term () PIdent) (Type () PIdent)
-    (Scope String (Term ()) PIdent) (Scope String (Term ()) PIdent, Level)
+type ScopeM = ScopeT (Term Syntax Void) (Type Syntax Void)
+    (Scope String (Term Syntax) PIdent) (Scope String (Term Syntax) PIdent, Level)
 type TCM m = EDocM (ScopeM m)
 
 runTCM :: Monad m => TCM m a -> m (Maybe a)

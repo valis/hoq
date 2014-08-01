@@ -5,8 +5,8 @@ module Syntax.Parser
 import Control.Monad.State
 import qualified Data.ByteString as B
 
+import Syntax
 import Syntax.ErrorDoc
-import Syntax.Parser.Term
 import Syntax.Parser.Lexer
 import qualified Syntax.Parser.Parser as P
 import TypeChecking.Monad.Warn
@@ -14,7 +14,7 @@ import TypeChecking.Monad.Warn
 pDefs :: Monad m => B.ByteString -> WarnT [EMsg f] m [Def]
 pDefs = liftM reverse . runParser P.pDefs
 
-pExpr :: Monad m => B.ByteString -> WarnT [EMsg f] m (Term Posn PIdent)
+pExpr :: Monad m => B.ByteString -> WarnT [EMsg f] m RawExpr
 pExpr = runParser P.pExpr
 
 runParser :: Monad m => Parser a -> B.ByteString -> WarnT [EMsg f] m a

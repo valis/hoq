@@ -6,7 +6,7 @@ import Control.Monad
 import Control.Monad.Fix
 import Data.Maybe
 
-import Syntax.Parser.Term
+import Syntax
 import Syntax.ErrorDoc
 import TypeChecking.Monad
 import TypeChecking.Context
@@ -14,10 +14,10 @@ import TypeChecking.Expressions
 import TypeChecking.Definitions.Patterns
 import TypeChecking.Definitions.Coverage
 import TypeChecking.Definitions.Conditions
-import TypeChecking.Definitions.Termination
+-- import TypeChecking.Definitions.Termination
 import Normalization
 
-typeCheckFunction :: MonadFix m => PIdent -> Term Posn PIdent
+typeCheckFunction :: MonadFix m => PIdent -> Term (Posn, Syntax) Void
     -> [(Posn, [PatternC Posn PIdent], Maybe (Term Posn PIdent))] -> TCM m ()
 typeCheckFunction p@(PIdent pos name) ety clauses = do
     (ty, Type u _) <- typeCheck ety Nothing
@@ -41,7 +41,7 @@ typeCheckFunction p@(PIdent pos name) ety clauses = do
             (False, Just expr) -> do
                 (term, _) <- typeCheckCtx ctx (fmap (liftBase ctx) expr) (Just ty')
                 let scope = closed (abstractTermInCtx ctx term)
-                throwErrors (checkTermination name rtpats scope)
+                -- throwErrors (checkTermination name rtpats scope)
                 return $ Just ((rtpats, scope), (pos, rtpats))
     lift (deleteFunction name)
     let clauses' = map fst clausesAndPats

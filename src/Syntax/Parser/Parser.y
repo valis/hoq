@@ -9,7 +9,7 @@ import Control.Monad.State
 import Control.Monad.Error
 
 import Syntax.Parser.Lexer
-import Syntax.Term
+import Syntax
 }
 
 %name pDefs Defs
@@ -20,7 +20,7 @@ import Syntax.Term
 %lexer { alexScanTokens } { TokEOF }
 
 %token
-    PIdent      { TokIdent    $$    }
+    TIdent      { TokIdent    $$    }
     Import      { TokImport   $$    }
     '\\'        { TokLam      $$    }
     '('         { TokLParen   $$    }
@@ -38,6 +38,9 @@ import Syntax.Term
     'with'      { TokWith     $$    }
 
 %%
+
+PIdent :: { PIdent }
+    : TIdent    { uncurry PIdent $1 }
 
 with :: { () }
     : 'with' '{'   {% \_ -> lift $ modify (NoLayout  :) }
@@ -63,12 +66,12 @@ FunClauses :: { [Clause] }
     | FunClauses ';'                            { $1                                }
     | FunClauses ';' PIdent Patterns '=' Expr   { Clause $3 (reverse $4) $6 : $1    }
 
-Pattern :: { PatternC Posn PIdent }
+Pattern :: { PatternP PIdent }
     : PIdent                    { PatternVar $1                                 }
     | '(' ')'                   { PatternEmpty $1                               }
     | '(' PIdent Patterns ')'   { Pattern (PatternCon 0 0 $2 []) (reverse $3)   }
 
-Patterns :: { [PatternC Posn PIdent] }
+Patterns :: { [PatternP PIdent] }
     : {- empty -}       { []    }
     | Patterns Pattern  { $2:$1 }
 
@@ -79,11 +82,11 @@ Cons :: { [Con] }
     : Con           { [$1]  } 
     | Cons '|' Con  { $3:$1 }
 
-Tele :: { Tele Posn PIdent }
+Tele :: { Tele }
     : Expr5                 { TypeTele $1                                                   }
     | '(' Expr ':' Expr ')' {% \_ -> exprToVars $2 >>= \vars -> return (VarsTele vars $4)   }
 
-Teles :: { [Tele Posn PIdent] }
+Teles :: { [Tele] }
     : {- empty -}   { []    }
     | Teles Tele    { $2:$1 }
 
@@ -98,30 +101,30 @@ PIdents :: { [PIdent] }
     : PIdent            { [$1]  }
     | PIdents PIdent    { $2:$1 }
 
-Expr :: { Expr }
-    : Expr1                     { $1            }
-    | '\\' PIdents '->' Expr    { lam $1 $2 $4  }
+Expr :: { RawExpr }
+    : Expr1                     { $1                                    }
+    | '\\' PIdents '->' Expr    { Apply ($1, Lam $ map getName $2) [$4] }
 
-Expr1 :: { Expr }
-    : Expr2 { $1 }
-    | Expr2 '->' Expr1      { Pi (termPos $1) (Type $1 NoLevel) (ScopeTerm $3) NoLevel  }
-    | PiTeles '->' Expr1    {% \_ -> piExpr (reverse $1) $3                             }
+Expr1 :: { RawExpr }
+    : Expr2                 { $1                                                    }
+    | Expr2 '->' Expr1      { Apply (termPos $1, Pi [] NoLevel NoLevel) [$1, $3]    }
+    | PiTeles '->' Expr1    {% \_ -> piExpr (reverse $1) $3                         }
 
-Expr2 :: { Expr }
-    : Expr3             { $1                                            }
-    | Expr3 '=' Expr3   { Path (termPos $1) Implicit Nothing [$1,$3]    }
+Expr2 :: { RawExpr }
+    : Expr3             { $1                                                }
+    | Expr3 '=' Expr3   { Apply (termPos $1, Path Implicit NoLevel) [$1,$3] }
 
-Expr3 :: { Expr }
-    : Expr4             { $1                }
-    | Expr3 '@' Expr4   { At Nothing $1 $3  }
+Expr3 :: { RawExpr }
+    : Expr4             { $1                                }
+    | Expr3 '@' Expr4   { Apply (termPos $1, At) [$1, $3]   }
 
-Expr4 :: { Expr }
-    : Expr5         { $1        }
-    | Expr4 Expr5   { App $1 $2 }
+Expr4 :: { RawExpr }
+    : Expr5         { $1                                }
+    | Expr4 Expr5   { Apply (termPos $1, App) [$1, $2]  }
 
-Expr5 :: { Expr }
-    : PIdent        { Var $1    }
-    | '(' Expr ')'  { $2        }
+Expr5 :: { RawExpr }
+    : TIdent        { Apply (fst $1, Ident $ snd $1) [] }
+    | '(' Expr ')'  { $2                                }
 
 {
 return' :: a -> Parser a
@@ -130,37 +133,25 @@ return' a _ = return a
 bind :: Parser a -> (a -> Parser b) -> Parser b
 bind p k e = p e >>= \a -> k a e
 
-lam :: Posn -> [PIdent] -> Expr -> Expr
-lam pos vars term = case go vars term of
-    Lam _ s -> Lam pos s
-    term' -> term'
-  where
-    go [] e = e
-    go (PIdent pos x : vs) e = go vs $ Lam pos $ Scope1 x (fmap Free e)
+data PiTele = PiTele Posn RawExpr RawExpr
 
-type Expr = Term Posn PIdent
-data PiTele = PiTele Posn Expr Expr
-
-piExpr :: [PiTele] -> Expr -> ParserErr Expr
+piExpr :: [PiTele] -> RawExpr -> ParserErr RawExpr
 piExpr [] term = return term
-piExpr (PiTele pos e1 e2 : teles) term = do
-    vars <- exprToVars e1
+piExpr (PiTele pos t1 t2 : teles) term = do
+    vars <- exprToVars t1
     term' <- piExpr teles term
-    return $ Pi pos (Type e2 NoLevel) (go (map getName vars) $ ScopeTerm term') NoLevel
-  where
-    go :: [String] -> Scope String (Term Posn) PIdent -> Scope String (Term Posn) PIdent
-    go [] scope = scope
-    go (d:ds) scope = Scope d $ fmap Free (go ds scope)
+    return $ Apply (pos, Pi (map getName vars) NoLevel NoLevel) [t2,term']
 
-termPos :: Expr -> Posn
-termPos = getAttr getPos
+termPos :: RawExpr -> Posn
+termPos (Apply (pos, _) _) = pos
+termPos _ = error "termPos"
 
-exprToVars :: Expr -> ParserErr [PIdent]
+exprToVars :: RawExpr -> ParserErr [PIdent]
 exprToVars term = fmap reverse (go term)
   where
-    go (Var v) = return [v]
-    go (App as (Var v)) = fmap (v:) (go as)
-    go e = throwError [(termPos term, "Expected a list of identifiers")]
+    go (Apply (pos, Ident v) []) = return [PIdent pos v]
+    go (Apply (_, App) [as, Apply (pos, Ident v) []]) = fmap (PIdent pos v :) (go as)
+    go _ = throwError [(termPos term, "Expected a list of identifiers")]
 
 parseError :: Token -> Parser a
 parseError tok (pos,_) = throwError [(maybe pos id (tokGetPos tok), "Syntax error")]

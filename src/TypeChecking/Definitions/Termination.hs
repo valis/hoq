@@ -6,7 +6,7 @@ module TypeChecking.Definitions.Termination
 
 import Control.Monad.State
 
-import Syntax.Term
+import Syntax
 import Syntax.ErrorDoc
 import TypeChecking.Context
 

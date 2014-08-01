@@ -15,7 +15,7 @@ import TypeChecking.Context
 import TypeChecking.Expressions
 import TypeChecking.Definitions.Patterns
 import TypeChecking.Definitions.Conditions
-import TypeChecking.Definitions.Termination
+-- import TypeChecking.Definitions.Termination
 import Normalization
 
 typeCheckDataType :: MonadFix m => PIdent -> [Tele Posn PIdent] -> [Con] -> [Clause] -> TCM m ()
@@ -42,7 +42,7 @@ typeCheckDataType p@(PIdent pos dt) params cons conds = mdo
                 when bf $ warn [emsgLC pos "Absurd patterns are not allowed in conditions" enull]
                 (term, _) <- typeCheckCtx (ctx +++ ctx') (fmap (liftBase $ ctx +++ ctx') expr) (Just ty')
                 let scope = closed (abstractTermInCtx ctx' term)
-                throwErrors (checkTermination con rtpats scope)
+                -- throwErrors (checkTermination con rtpats scope)
                 return $ Just (con, (rtpats, scope))
     lift $ deleteDataType dt
     let lvls = map (\(_, _, Type _ lvl) -> lvl) cons'
