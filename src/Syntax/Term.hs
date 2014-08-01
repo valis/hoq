@@ -1,6 +1,7 @@
 module Syntax.Term
     ( Term(..)
     , EqT(..)
+    , cterm
     , module Syntax.Scope
     ) where
 
@@ -51,3 +52,6 @@ instance (EqT p, Eq a) => Eq (Term p a) where
     _ == _ = False
 
 instance EqT p => Eq1 (Term p) where (==#) = (==)
+
+cterm :: p -> Term p a
+cterm p = Apply p []

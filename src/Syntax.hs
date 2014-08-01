@@ -3,6 +3,7 @@ module Syntax
     , Level(..), Explicit(..)
     , PatternC, PatternP
     , lessOrEqual
+    , apps, capps, collect
     , module Syntax.Term, module Syntax.Pattern
     
     , RawExpr, Posn, PIdent(..)
@@ -144,3 +145,17 @@ lessOrEqual t t' = case pcompare t t' of
 
 instance Functor (Type p) where
     fmap f (Type t l) = Type (fmap f t) l
+
+apps :: Term Syntax a -> [Term Syntax a] -> Term Syntax a
+apps t [] = t
+apps t (t':ts) = apps (Apply App [t,t']) ts
+
+capps :: Syntax -> [Term Syntax a] -> Term Syntax a
+capps = apps . cterm
+
+collect :: Term Syntax a -> (Maybe Syntax, [Term Syntax a])
+collect = go []
+  where
+    go as (Apply App [t1, t2]) = go (t2:as) t1
+    go as (Apply t _) = (Just t, as)
+    go as _ = (Nothing, as)
