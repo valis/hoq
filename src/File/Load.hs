@@ -10,6 +10,7 @@ import Control.Monad.Trans
 import Control.Exception
 import qualified Data.ByteString as B
 
+import Syntax
 import Syntax.Parser
 import Syntax.ErrorDoc
 import Syntax.PrettyPrinter()

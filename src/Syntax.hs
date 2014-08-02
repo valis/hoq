@@ -20,13 +20,13 @@ type Posn = (Int, Int)
 data PIdent = PIdent { getPos :: Posn, getName :: String }
 data Clause = Clause PIdent [PatternP PIdent] RawExpr
 type Import = [String]
-data Tele = VarsTele [PIdent] RawExpr | TypeTele RawExpr
-data Con = ConDef PIdent [Tele]
+data Tele a = VarsTele [PIdent] (Term (Posn, Syntax) a) | TypeTele (Term (Posn, Syntax) a)
+data Con = ConDef PIdent [Tele Void]
 
 data Def
     = DefType PIdent RawExpr
     | DefFun PIdent [PatternP PIdent] (Maybe RawExpr)
-    | DefData PIdent [Tele] [Con] [Clause]
+    | DefData PIdent [Tele Void] [Con] [Clause]
     | DefImport Import
 
 {-

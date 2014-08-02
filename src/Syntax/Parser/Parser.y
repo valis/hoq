@@ -7,6 +7,7 @@ module Syntax.Parser.Parser
 import Control.Monad.Trans
 import Control.Monad.State
 import Control.Monad.Error
+import Data.Void
 
 import Syntax.Parser.Lexer
 import Syntax
@@ -82,11 +83,11 @@ Cons :: { [Con] }
     : Con           { [$1]  } 
     | Cons '|' Con  { $3:$1 }
 
-Tele :: { Tele }
+Tele :: { Tele Void }
     : Expr5                 { TypeTele $1                                                   }
     | '(' Expr ':' Expr ')' {% \_ -> exprToVars $2 >>= \vars -> return (VarsTele vars $4)   }
 
-Teles :: { [Tele] }
+Teles :: { [Tele Void] }
     : {- empty -}   { []    }
     | Teles Tele    { $2:$1 }
 

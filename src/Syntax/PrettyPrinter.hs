@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances #-}
+
 module Syntax.PrettyPrinter
     ( ppTerm
     ) where
@@ -7,12 +9,10 @@ import Data.Bifoldable
 import Data.Void
 
 import Syntax
--- import qualified Syntax.ErrorDoc as E
+import qualified Syntax.ErrorDoc as E
 
-{-
-instance E.Pretty1 (Term p) where
+instance E.Pretty1 (Term Syntax) where
     pretty1 t = ppTermCtx (freeVars t) t
--}
 
 freeVars :: Term Syntax a -> [String]
 freeVars = biconcatMap (\t -> case t of
@@ -23,13 +23,14 @@ freeVars = biconcatMap (\t -> case t of
     _                       -> []) (const [])
 
 ppTerm :: Term Syntax Void -> Doc
-ppTerm t = ppTermCtx (freeVars t) t
+ppTerm t = ppTermCtx (freeVars t) (vacuous t)
 
-ppTermCtx :: [String] -> Term Syntax Void -> Doc
+ppTermCtx :: [String] -> Term Syntax Doc -> Doc
+ppTermCtx _ (Var d) = d
 ppTermCtx ctx (Apply s ts) = ppSyntax ctx s ts
 ppTermCtx _ _ = error "ppTermCtx"
 
-ppSyntax :: [String] -> Syntax -> [Term Syntax Void] -> Doc
+ppSyntax :: [String] -> Syntax -> [Term Syntax Doc] -> Doc
 ppSyntax _ (Universe NoLevel) _ = text "Type"
 ppSyntax _ (Universe l) _ = text $ "Type" ++ show l
 ppSyntax ctx App [t1, t2] = ppTermPrec (prec App) ctx t1 <+> ppTermPrec (prec App + 1) ctx t2
@@ -54,16 +55,16 @@ ppSyntax ctx t@Squeeze ts = text "squeeze" <+> ppList ctx t ts
 ppSyntax ctx t@(Ident n) ts = text n <+> ppList ctx t ts
 ppSyntax _ _ _ = error "ppSyntax"
 
-ppList :: [String] -> Syntax -> [Term Syntax Void] -> Doc
+ppList :: [String] -> Syntax -> [Term Syntax Doc] -> Doc
 ppList ctx t ts = hsep $ map (ppTermPrec (prec t + 1) ctx) ts
 
-ppBound :: Int -> [String] -> [String] -> Term Syntax Void -> Doc
+ppBound :: Int -> [String] -> [String] -> Term Syntax Doc -> Doc
 ppBound p ctx (v:vs') (Lambda (Scope1 t)) =
     let (ctx',v') = renameName2 v ctx (freeVars t)
     in ppBound p ctx' vs' $ instantiate1 (Apply (Ident v') []) t
 ppBound p ctx _ t = ppTermPrec p ctx t
 
-ppTermPrec :: Int -> [String] -> Term Syntax Void -> Doc
+ppTermPrec :: Int -> [String] -> Term Syntax Doc -> Doc
 ppTermPrec p ctx t = if p > precTerm t then parens (ppTermCtx ctx t) else ppTermCtx ctx t
 
 arrow :: Doc

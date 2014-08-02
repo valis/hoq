@@ -2,6 +2,7 @@ module TypeChecking.Expressions
     ( typeCheck, typeCheckCtx
     , inferErrorMsg, notInScope
     , prettyOpen, checkIsType
+    , termPos
     ) where
 
 import Control.Monad
@@ -43,10 +44,9 @@ checkIsType ctx pos t = throwError [emsgLC pos "" $ pretty "Expected type: Type"
 intType :: Type Syntax a
 intType = Type (cterm Interval) NoLevel
 
-{-
-termPos :: Context a -> Term (Posn, Syntax) a -> Posn
-termPos ctx = getAttr $ maybe (0,0) getPos . toBase ctx
--}
+termPos :: Term (Posn, s) a -> Posn
+termPos (Apply (pos, _) _) = pos
+termPos _ = error "termPos"
 
 typeCheck :: Monad m => Term (Posn, Syntax) Void -> Maybe (Type Syntax Void) -> TCM m (Term Syntax Void, Type Syntax Void)
 typeCheck = typeCheckCtx Nil

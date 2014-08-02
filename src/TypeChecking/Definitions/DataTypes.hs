@@ -7,8 +7,11 @@ module TypeChecking.Definitions.DataTypes
 import Control.Monad
 import Control.Monad.Fix
 import Data.List
+import Data.Bifunctor
+import Data.Bifoldable
+import Data.Void
 
-import Syntax.Term
+import Syntax
 import Syntax.ErrorDoc
 import TypeChecking.Monad
 import TypeChecking.Context
@@ -18,20 +21,18 @@ import TypeChecking.Definitions.Conditions
 import TypeChecking.Definitions.Termination
 import Normalization
 
-typeCheckDataType :: MonadFix m => PIdent -> [Tele Posn PIdent] -> [Con] -> [Clause] -> TCM m ()
+typeCheckDataType :: MonadFix m => PIdent -> [Tele Void] -> [Con] -> [Clause] -> TCM m ()
 typeCheckDataType p@(PIdent pos dt) params cons conds = mdo
     let lcons = length cons
-    (SomeEq ctx, dataType@(Type dtTerm _)) <- checkTele Nil params (Universe () NoLevel)
+    (SomeEq ctx, dataType@(Type dtTerm _)) <- checkTele Nil params $ cterm (Universe NoLevel)
     addDataTypeCheck p dataType lcons
     cons' <- forW (zip cons [0..]) $ \(ConDef con@(PIdent pos conName) tele, i) -> do
-        (_, Type conType conLevel) <- checkTele ctx (mapCtxTele ctx tele) $
-            DataType () dt lcons (ctxToVars ctx)
+        (_, Type conType conLevel) <- checkTele ctx (mapCtxTele ctx tele) $ capps (DataType dt lcons) (ctxToVars ctx)
         checkPositivity p (nf WHNF conType)
-        let conTerm = Con pos i con (map snd $ filter (\(c,_) -> c == conName) conds') []
+        let conTerm = Con i con (map snd $ filter (\(c,_) -> c == conName) conds')
         return $ Just (con, conTerm, Type conType conLevel)
     forM_ cons' $ \(con, te, Type ty lvl) ->
-        addConstructorCheck con dt lcons (abstractTermInCtx ctx $ mapTerm (const ()) te)
-                                         (abstractTermInCtx ctx $ mapTerm (const ()) ty) lvl
+        addConstructorCheck con dt lcons (abstractTermInCtx ctx $ cterm te) (abstractTermInCtx ctx ty) lvl
     conds' <- forW conds $ \(Clause (PIdent pos con) pats expr) ->
         case find (\(PIdent _ c, _, _) -> c == con) cons' of
             Nothing -> do
@@ -48,8 +49,7 @@ typeCheckDataType p@(PIdent pos dt) params cons conds = mdo
     let lvls = map (\(_, _, Type _ lvl) -> lvl) cons'
         lvl = if null lvls then NoLevel else maximum lvls
     lift $ addDataType dt (Type (replaceLevel dtTerm lvl) lvl) lcons
-    forM_ cons' $ \(_, Con _ i conName conConds [], _) ->
-        warn $ checkConditions pos (Closed $ Con () i conName conConds []) conConds
+    forM_ cons' $ \(PIdent pos _, con@(Con _ _ conds), _) -> warn $ checkConditions pos (Closed $ cterm con) conds
 
 data SomeEq f = forall a. Eq a => SomeEq (f a)
 
@@ -57,74 +57,52 @@ extendCtx :: (Functor t, Eq a) => [s] -> Ctx s t b a -> t a -> SomeEq (Ctx s t b
 extendCtx [] ctx _ = SomeEq ctx
 extendCtx (x:xs) ctx t = extendCtx xs (Snoc ctx x t) (fmap Free t)
 
-checkTele :: (Monad m, Eq a) => Ctx String (Type ()) PIdent a -> [Tele Posn a] -> Term () a
-    -> TCM m (SomeEq (Ctx String (Type ()) PIdent), Type () a)
+checkTele :: (Monad m, Eq a) => Ctx String (Type Syntax) Void a -> [Tele a] -> Term Syntax a
+    -> TCM m (SomeEq (Ctx String (Type Syntax) Void), Type Syntax a)
 checkTele ctx [] term = return (SomeEq ctx, Type term NoLevel)
 checkTele ctx (VarsTele vars expr : tele) term = do
     (r1, Type t1 _) <- typeCheckCtx ctx expr Nothing
-    lvl1 <- checkIsType ctx (termPos ctx expr) (nf WHNF t1)
+    lvl1 <- checkIsType ctx (termPos expr) (nf WHNF t1)
     case extendCtx (map getName vars) Nil (Type r1 lvl1) of
         SomeEq ctx' -> do
             (rctx, Type r2 lvl2) <- checkTele (ctx +++ ctx') (mapCtxTele ctx' tele) $ fmap (liftBase ctx') term
-            return (rctx, Type (Pi () (Type r1 lvl1) (abstractTermInCtx ctx' r2) lvl2) $ max lvl1 lvl2)
+            let (vs,r2') = abstractTerm ctx' r2
+            return (rctx, Type (Apply (Pi vs lvl1 lvl2) [r1,r2']) $ max lvl1 lvl2)
 checkTele ctx (TypeTele expr : tele) term = do
     (r1, Type t1 _) <- typeCheckCtx ctx expr Nothing
-    lvl1 <- checkIsType ctx (termPos ctx expr) (nf WHNF t1)
+    lvl1 <- checkIsType ctx (termPos expr) (nf WHNF t1)
     (rctx, Type r2 lvl2) <- checkTele ctx tele term
-    return (rctx, Type (Pi () (Type r1 lvl1) (ScopeTerm r2) lvl2) $ max lvl1 lvl2)
+    return (rctx, Type (Apply (Pi [] lvl1 lvl2) [r1,r2]) $ max lvl1 lvl2)
 
-mapCtxTele :: Eq a => Ctx String f b a -> [Tele p b] -> [Tele p a]
+abstractTerm :: Ctx s g b a -> Term p a -> ([s], Term p b)
+abstractTerm Nil term = ([], term)
+abstractTerm (Snoc ctx v _) term = first (v:) $ abstractTerm ctx $ Lambda (Scope1 term)
+
+mapCtxTele :: Eq a => Ctx String f b a -> [Tele b] -> [Tele a]
 mapCtxTele ctx = map $ \tele -> case tele of
     VarsTele vars expr -> VarsTele vars (fmap (liftBase ctx) expr)
     TypeTele      expr -> TypeTele      (fmap (liftBase ctx) expr)
 
-replaceLevel :: Term () a -> Level -> Term () a
-replaceLevel (Pi p r1 r2 lvl2) lvl = Pi p r1 (replaceLevelScope r2) lvl2
-  where
-    replaceLevelScope :: Scope String (Term ()) a -> Scope String (Term ()) a
-    replaceLevelScope (ScopeTerm t) = ScopeTerm (replaceLevel t lvl)
-    replaceLevelScope (Scope v t)   = Scope v   (replaceLevelScope t)
-replaceLevel _ lvl = Universe () lvl
+replaceLevel :: Term Syntax a -> Level -> Term Syntax a
+replaceLevel (Apply p@Pi{} [a,b]) lvl = Apply p [a, replaceLevel b lvl]
+replaceLevel (Lambda (Scope1 t)) lvl = Lambda $ Scope1 (replaceLevel t lvl)
+replaceLevel _ lvl = cterm (Universe lvl)
 
-checkPositivity :: (Eq a, Monad m) => PIdent -> Term () a -> EDocM m ()
-checkPositivity dt (Pi _ (Type a _) b _) = checkNoNegative dt (nf WHNF a) >> checkPositivityScope b
-  where
-    checkPositivityScope :: (Eq a, Monad m) => Scope String (Term ()) a -> EDocM m ()
-    checkPositivityScope (ScopeTerm t) = checkPositivity dt (nf WHNF t)
-    checkPositivityScope (Scope v t)   = checkPositivityScope t
+checkPositivity :: (Eq a, Monad m) => PIdent -> Term Syntax a -> EDocM m ()
+checkPositivity dt (Apply Pi{} [a,b]) = checkNoNegative dt (nf WHNF a) >> checkPositivity dt (nf WHNF b)
+checkPositivity dt (Lambda (Scope1 t)) = checkPositivity dt (nf WHNF t)
 checkPositivity _ _ = return ()
 
-checkNoNegative :: (Eq a, Monad m) => PIdent -> Term () a -> EDocM m ()
-checkNoNegative dt (Pi _ (Type a _) b _) = checkNoDataType dt a >> checkNoNegativeScope b
-  where
-    checkNoNegativeScope :: (Eq a, Monad m) => Scope String (Term ()) a -> EDocM m ()
-    checkNoNegativeScope (ScopeTerm t) = checkNoNegative dt (nf WHNF t)
-    checkNoNegativeScope (Scope v t)   = checkNoNegativeScope t
+checkNoNegative :: (Eq a, Monad m) => PIdent -> Term Syntax a -> EDocM m ()
+checkNoNegative dt (Apply Pi{} [a,b]) = checkNoDataType dt a >> checkNoNegative dt (nf WHNF b)
+checkNoNegative dt (Lambda (Scope1 t)) = checkNoNegative dt (nf WHNF t)
 checkNoNegative _ _ = return ()
 
-checkNoDataType :: Monad m => PIdent -> Term p a -> EDocM m ()
+checkNoDataType :: Monad m => PIdent -> Term Syntax a -> EDocM m ()
 checkNoDataType (PIdent pos dt) t = when (dt `elem` collectDataTypes t) $
     throwError [emsgLC pos "Data type is not strictly positive" enull]
 
-collectDataTypes :: Term p a           -> [String]
-collectDataTypes Var{}                  = []
-collectDataTypes (App e1 e2)            = collectDataTypes e1 ++ collectDataTypes e2
-collectDataTypes (Lam _ (Scope1 _ e))   = collectDataTypes e
-collectDataTypes (Pi _ (Type e _) s _)  = collectDataTypes e ++ go s
-  where
-    go :: Scope s (Term p) a -> [String]
-    go (ScopeTerm t) = collectDataTypes t
-    go (Scope _   s) = go s
-collectDataTypes (Con _ _ _ _ as)       = as >>= collectDataTypes
-collectDataTypes FunCall{}              = []
-collectDataTypes FunSyn{}               = []
-collectDataTypes (DataType _ d _ as)    = d : (as >>= collectDataTypes)
-collectDataTypes Universe{}             = []
-collectDataTypes Interval{}             = []
-collectDataTypes ICon{}                 = []
-collectDataTypes (Path _ _ me1 es)      = maybe [] (collectDataTypes . fst) me1 ++ (es >>= collectDataTypes)
-collectDataTypes (PCon _ me)            = maybe [] collectDataTypes me
-collectDataTypes (At _ e3 e4)           = collectDataTypes e3 ++ collectDataTypes e4
-collectDataTypes (Coe _ es)             = es >>= collectDataTypes
-collectDataTypes (Iso _ es)             = es >>= collectDataTypes
-collectDataTypes (Squeeze _ es)         = es >>= collectDataTypes
+collectDataTypes :: Term Syntax a -> [String]
+collectDataTypes = biconcatMap (\t -> case t of
+    DataType dt _   -> [dt]
+    _               -> []) (const [])
