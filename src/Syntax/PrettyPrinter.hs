@@ -38,30 +38,30 @@ ppSyntax ctx p@(Pi vs _ _) [t1, t2] = (if null vs
     then ppTermPrec (prec p + 1) ctx t1
     else parens $ hsep (map text vs) <+> colon <+> ppTermCtx ctx t1) <+> arrow <+> ppBound (prec p) ctx vs t2
 ppSyntax ctx l@(Lam vs) [t] = text "\\" <> hsep (map text vs) <+> arrow <+> ppBound (prec l) ctx vs t
-ppSyntax ctx t@(Con _ (PIdent _ n) _) ts = text n <+> ppList ctx t ts
-ppSyntax ctx t@(FunSyn n _) ts = text n <+> ppList ctx t ts
-ppSyntax ctx t@(FunCall (PIdent _ n) _) ts = text n <+> ppList ctx t ts
-ppSyntax ctx t@(DataType d _) ts = text d <+> ppList ctx t ts
+ppSyntax ctx (Con _ (PIdent _ n) _) ts = text n <+> ppList ctx ts
+ppSyntax ctx (FunSyn n _) ts = text n <+> ppList ctx ts
+ppSyntax ctx (FunCall (PIdent _ n) _) ts = text n <+> ppList ctx ts
+ppSyntax ctx (DataType d _) ts = text d <+> ppList ctx ts
 ppSyntax _ Interval _ = text "I"
 ppSyntax _ (ICon ILeft) _ = text "left"
 ppSyntax _ (ICon IRight) _ = text "right"
 ppSyntax ctx t@(Path Implicit _) [_,t2,t3] = ppTermPrec (prec t + 1) ctx t2 <+> equals <+> ppTermPrec (prec t + 1) ctx t3
-ppSyntax ctx t@(Path Explicit _) ts = text "Path" <+> ppList ctx t ts
-ppSyntax ctx t@PCon ts = text "path" <+> ppList ctx t ts
+ppSyntax ctx (Path Explicit _) ts = text "Path" <+> ppList ctx ts
+ppSyntax ctx PCon ts = text "path" <+> ppList ctx ts
 ppSyntax ctx t@At [_,_,t3,t4] = ppTermPrec (prec t) ctx t3 <+> text "@" <+> ppTermPrec (prec t + 1) ctx t4
-ppSyntax ctx t@Coe ts = text "coe" <+> ppList ctx t ts
-ppSyntax ctx t@Iso ts = text "iso" <+> ppList ctx t ts
-ppSyntax ctx t@Squeeze ts = text "squeeze" <+> ppList ctx t ts
-ppSyntax ctx t@(Ident n) ts = text n <+> ppList ctx t ts
+ppSyntax ctx Coe ts = text "coe" <+> ppList ctx ts
+ppSyntax ctx Iso ts = text "iso" <+> ppList ctx ts
+ppSyntax ctx Squeeze ts = text "squeeze" <+> ppList ctx ts
+ppSyntax ctx (Ident n) ts = text n <+> ppList ctx ts
 ppSyntax _ _ _ = error "ppSyntax"
 
-ppList :: [String] -> Syntax -> [Term Syntax Doc] -> Doc
-ppList ctx t ts = hsep $ map (ppTermPrec (prec t + 1) ctx) ts
+ppList :: [String] -> [Term Syntax Doc] -> Doc
+ppList ctx ts = hsep $ map (ppTermPrec (prec App + 1) ctx) ts
 
 ppBound :: Int -> [String] -> [String] -> Term Syntax Doc -> Doc
-ppBound p ctx (v:vs') (Lambda (Scope1 t)) =
+ppBound p ctx (v:vs) (Lambda (Scope1 t)) =
     let (ctx',v') = renameName2 v ctx (freeVars t)
-    in ppBound p ctx' vs' $ instantiate1 (Apply (Ident v') []) t
+    in ppBound p ctx' vs $ instantiate1 (cterm $ Ident v') t
 ppBound p ctx _ t = ppTermPrec p ctx t
 
 ppTermPrec :: Int -> [String] -> Term Syntax Doc -> Doc
@@ -78,25 +78,24 @@ renameName2 var ctx ctx' = if var `elem` ctx && var `elem` ctx'
     then renameName (var ++ "'") ctx'
     else (var:ctx,var)
 
-prec :: Syntax         -> Int
-prec Ident{}            = 10
-prec Universe{}         = 10
-prec FunSyn{}           = 10
-prec FunCall{}          = 10
-prec Con{}              = 10
-prec DataType{}         = 10
-prec (Path Explicit _)  = 10
-prec PCon               = 10
-prec Interval           = 10
-prec ICon{}             = 10
-prec Coe                = 10
-prec Iso                = 10
-prec Squeeze            = 10
-prec App                = 9
-prec At                 = 8
-prec (Path Implicit _)  = 7
-prec Pi{}               = 6
-prec Lam{}              = 5
+prec :: Syntax -> Int
+prec Ident{}    = 10
+prec Universe{} = 10
+prec FunSyn{}   = 10
+prec FunCall{}  = 10
+prec Con{}      = 10
+prec DataType{} = 10
+prec Interval   = 10
+prec ICon{}     = 10
+prec Coe        = 10
+prec Iso        = 10
+prec Squeeze    = 10
+prec PCon       = 9
+prec App        = 9
+prec At         = 8
+prec Path{}     = 7
+prec Pi{}       = 6
+prec Lam{}      = 5
 
 precTerm :: Term Syntax a -> Int
 precTerm Var{} = 10

@@ -86,8 +86,8 @@ typeCheckCtx ctx term mty = go ctx term [] $ fmap (nfType WHNF) mty
                         pretty ("Posible data types: " ++ intercalate ", " acts)]
             _  -> throwError [inferErrorMsg pos $ show var]
         case eres of
-            Left (te, Type ty lvl) -> do
-                (tes, Type ty' lvl') <- typeCheckApps pos ctx ts (Type ty lvl)
+            Left (te, ty) -> do
+                (tes, Type ty' lvl') <- typeCheckApps pos ctx ts ty
                 case (mty, ty') of
                     (Nothing, _)            -> return ()
                     (Just (Type ety _), _)  -> actExpType ctx ty' ety pos
@@ -95,10 +95,8 @@ typeCheckCtx ctx term mty = go ctx term [] $ fmap (nfType WHNF) mty
             Right res -> return res
     go ctx (Apply (_, App) [t1,t2]) ts mty = go ctx t1 (t2:ts) mty
     go ctx (Apply (_, Lam []) [te]) [] mty = go ctx te [] mty
-    go ctx (Apply (pos, Lam (v:vs)) te) [] (Just ty@(Type (Apply (Pi _ lvl1 lvl2) [a,b]) _)) = do
-        (te', _) <- go (Snoc ctx v $ Type a lvl1) (Apply (pos, Lam vs) te) [] $ Just $ Type (nf WHNF $ case b of
-            Lambda (Scope1 b')  -> b'
-            _                   -> fmap Free b) lvl2
+    go ctx (Apply (pos, Lam (v:vs)) te) [] (Just ty@(Type (Apply p@(Pi _ lvl1 lvl2) [a,b]) _)) = do
+        (te', _) <- go (Snoc ctx v $ Type a lvl1) (Apply (pos, Lam vs) te) [] $ Just $ Type (nf WHNF $ snd $ dropOnePi p a b) lvl2
         let te'' = case te' of
                 Apply (Lam vs') [t] -> Apply (Lam $ v:vs') [Lambda $ Scope1 t]
                 _                   -> Apply (Lam [v]) [Lambda $ Scope1 te']
@@ -160,39 +158,40 @@ typeCheckKeyword ctx pos "right" as Nothing = do
     return (cterm $ ICon IRight, intType)
 typeCheckKeyword ctx pos "Path" [] _ = throwError [expectedArgErrorMsg pos "Path"]
 typeCheckKeyword ctx pos "Path" (a:as) Nothing = do
-    (r1, _, v, t1) <- typeCheckLambda ctx a intType
+    (r1, _, (v, t1)) <- typeCheckLambda ctx a intType
     lvl <- checkIsType (Snoc ctx v $ error "") (termPos a) t1
     let r1' c = Apply App [r1, cterm (ICon c)]
         mkType t = Type t (succ lvl)
     case as of
-        [] -> return (capps (Path Explicit lvl) [r1], mkType $
+        [] -> return (Apply (Path Explicit lvl) [r1], mkType $
             Apply (Pi [] lvl $ succ lvl) [r1' ILeft, Apply (Pi [] lvl $ succ lvl) [r1' IRight, cterm $ Universe lvl]])
         [a2] -> do
             (r2, _) <- typeCheckCtx ctx a2 $ Just $ Type (nf WHNF $ r1' ILeft) lvl
-            return (capps (Path Explicit lvl) [r1,r2], mkType $ Apply (Pi [] lvl $ succ lvl) [r1' IRight, cterm $ Universe lvl])
+            return (Apply (Path Explicit lvl) [r1,r2], mkType $ Apply (Pi [] lvl $ succ lvl) [r1' IRight, cterm $ Universe lvl])
         a2:a3:as' -> do
             unless (null as') $ warn [argsErrorMsg pos "A type"]
             (r2, _) <- typeCheckCtx ctx a2 $ Just $ Type (nf WHNF $ r1' ILeft) lvl
             (r3, _) <- typeCheckCtx ctx a3 $ Just $ Type (nf WHNF $ r1' IRight) lvl
-            return (capps (Path Explicit lvl) [r1,r2,r3], mkType $ cterm $ Universe lvl)
+            return (Apply (Path Explicit lvl) [r1,r2,r3], mkType $ cterm $ Universe lvl)
 typeCheckKeyword ctx pos "path" [] _ = throwError [expectedArgErrorMsg pos "path"]
 typeCheckKeyword ctx pos "path" (a:as) mty = do
     unless (null as) $ warn [argsErrorMsg pos "A path"]
     case mty of
         Nothing -> do
-            (te, ty, _, _) <- typeCheckLambda ctx a intType
-            return (te, ty)
+            (te, Type ty lvl, _) <- typeCheckLambda ctx a intType
+            let te' c = Apply App [te, cterm $ ICon c]
+            return (te, Type (Apply (Path Implicit lvl) [ty, te' ILeft, te' IRight]) lvl)
         Just (Type ty@(Apply (Path _ l1) [t1,_,_]) lvl) -> do
             (r,t) <- typeCheckCtx ctx a $ Just $
                 Type (Apply (Pi ["i"] NoLevel l1) [cterm Interval, Lambda $ Scope1 $ Apply App [fmap Free t1, Var Bound]]) l1
             actExpType ctx (Apply (Path Implicit l1)
                 [t1, Apply App [r, cterm $ ICon ILeft], Apply App [r, cterm $ ICon IRight]]) ty pos
-            return (capps PCon [r], Type ty lvl)
+            return (Apply PCon [r], Type ty lvl)
         Just (Type ty _) -> throwError [emsgLC pos "" $ pretty "Expected type:" <+> prettyOpen ctx ty
                                                      $$ pretty "Actual type: Path"]
 typeCheckKeyword ctx pos "coe" [] _ = throwError [expectedArgErrorMsg pos "coe"]
 typeCheckKeyword ctx pos "coe" (a1:as) Nothing = do
-    (r1, _, v, t1) <- typeCheckLambda ctx a1 intType
+    (r1, _, (v, t1)) <- typeCheckLambda ctx a1 intType
     lvl <- checkIsType (Snoc ctx v $ error "") (termPos a1) t1
     let res = Apply (Pi ["r"] NoLevel lvl) [cterm Interval, Lambda $ Scope1 $ Apply App [fmap Free r1, Var Bound]]
     case as of
@@ -249,7 +248,14 @@ typeCheckKeyword ctx pos var ts (Just (Type ty _)) = do
     (te', Type ty' lvl') <- typeCheckKeyword ctx pos var ts Nothing
     actExpType ctx ty' ty pos
     return (te', Type ty' lvl')
-typeCheckKeyword _ pos var _ _ = throwError [notInScope pos "" var]
+typeCheckKeyword ctx pos var ts mty = case lookupCtx var ctx of
+    Just (te, ty)  -> do
+        (tes, Type ty' lvl') <- typeCheckApps pos ctx ts ty
+        case (mty, ty') of
+            (Nothing, _)            -> return ()
+            (Just (Type ety _), _)  -> actExpType ctx ty' ety pos
+        return (apps te tes, Type ty' lvl')
+    Nothing -> throwError [notInScope pos "" var]
 
 actExpType :: (Monad m, Eq a) => Context a -> Term Syntax a -> Term Syntax a -> Posn -> EDocM m ()
 actExpType ctx act exp pos =
@@ -263,35 +269,33 @@ typeCheckApps :: (Monad m, Eq a) => Posn -> Context a -> [Term (Posn, Syntax) Vo
 typeCheckApps pos ctx terms ty = go terms (nfType WHNF ty)
   where
     go [] ty = return ([], ty)
-    go (term:terms) (Type (Apply (Pi _ lvl1 lvl2) [a,b]) _) = do
+    go (term:terms) (Type (Apply p@(Pi _ lvl1 lvl2) [a,b]) _) = do
         (term, _)   <- typeCheckCtx ctx term $ Just (Type a lvl1)
         (terms, ty) <- go terms $ Type (nf WHNF $ case b of
-            Lambda (Scope1 b')  -> instantiate1 term b'
-            _                   -> b) lvl2
+            Lambda{} -> instantiate1 term $ snd (dropOnePi p a b)
+            _        -> b) lvl2
         return (term:terms, ty)
     go _ (Type ty _) = throwError [emsgLC pos "" $ pretty "Expected pi type"
                                                 $$ pretty "Actual type:" <+> prettyOpen ctx ty]
 
 typeCheckLambda :: (Monad m, Eq a) => Context a -> Term (Posn, Syntax) Void -> Type Syntax a
-    -> TCM m (Term Syntax a, Type Syntax a, String, Term Syntax (Scoped a))
+    -> TCM m (Term Syntax a, Type Syntax a, (String, Term Syntax (Scoped a)))
 typeCheckLambda ctx (Apply (pos, Lam (v:vs)) [te]) (Type ty lvl) = do
     (te', Type ty' lvl') <- typeCheckCtx (Snoc ctx v $ Type ty lvl) (if null vs then te else Apply (pos, Lam vs) [te]) Nothing
     let te'' = case te' of
                 Apply (Lam vs') [te''] -> Apply (Lam $ v:vs') [Lambda $ Scope1 te'']
                 _ -> Apply (Lam [v]) [Lambda $ Scope1 te']
-    return (te'', Type (Apply (Pi [v] lvl lvl') [ty, Lambda $ Scope1 ty']) $ max lvl lvl', v, ty')
+    return (te'', Type (Apply (Pi [v] lvl lvl') [ty, Lambda $ Scope1 ty']) $ max lvl lvl', (v, ty'))
 typeCheckLambda ctx te ty = do
     (te', Type ty' lvl') <- typeCheckCtx ctx te Nothing
     case nf WHNF ty' of
-        ty''@(Apply (Pi vs lvla lvlb) [a,b]) ->
+        ty''@(Apply p@(Pi vs lvla lvlb) [a,b]) ->
             let na = nf NF a
                 Type nty lvlty = nfType NF ty
             in if (nty `lessOrEqual` na)
-                then return (te', Type ty'' lvl', if null vs then "_" else head vs, case b of
-                    Lambda (Scope1 b')  -> b'
-                    _                   -> fmap Free b)
+                then return (te', Type ty'' lvl', dropOnePi p a b)
                 else throwError [emsgLC (termPos te) "" $
                         pretty "Expected type:" <+> prettyOpen ctx (Apply (Pi vs lvlty lvlb) [nty,b]) $$
-                        pretty "Actual type:"   <+> prettyOpen ctx (Apply (Pi vs lvla  lvlb) [na ,b])]
+                        pretty "Actual type:"   <+> prettyOpen ctx (Apply p [na,b])]
         _ -> throwError [emsgLC (termPos te) "" $ pretty "Expected pi type"
                                                $$ pretty "Actual type:" <+> prettyOpen ctx ty']

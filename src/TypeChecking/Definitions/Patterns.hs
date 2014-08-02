@@ -53,7 +53,7 @@ typeCheckPattern ctx (Type ty _) (Pattern (PatternCon _ _ (PIdent pos conName) _
             let Apply (Con i _ conds) _ = instantiate params $ fmap (liftBase ctx) con
                 conType' = Type (nf WHNF $ instantiate params $ fmap (liftBase ctx) conType) lvl
             (bf, TermsInCtx ctx' terms (Type ty _), rtpats) <- typeCheckPatterns ctx conType' pats
-            let res = TermInCtx ctx' $ Apply (Con i (PIdent pos conName) conds) terms
+            let res = TermInCtx ctx' $ capps (Con i (PIdent pos conName) conds) terms
             case collect (nf WHNF ty) of
                 (Just DataType{}, _) -> return (bf, Just res, Pattern (PatternCon i n conName conds) rtpats)
                 _                    -> throwError [emsgLC pos "Not enough arguments" enull]
@@ -64,7 +64,7 @@ typeCheckPattern ctx (Type ty _) pat =
 typeCheckPatterns :: (Monad m, Eq a) => Ctx String (Type Syntax) Void a -> Type Syntax a
     -> [PatternP PIdent] -> TCM m (Bool, TermsInCtx a, [PatternC String])
 typeCheckPatterns _ ty [] = return (False, TermsInCtx Nil [] ty, [])
-typeCheckPatterns ctx (Type (Apply (Pi vs l1 l2) [a, b]) _) (pat:pats) = do
+typeCheckPatterns ctx (Type (Apply p@(Pi vs l1 l2) [a, b]) _) (pat:pats) = do
     let a' = Type (nf WHNF a) l1
     (bf1, mte, rtpat) <- typeCheckPattern ctx a' pat
     TermInCtx ctx' te <- case mte of
@@ -72,8 +72,8 @@ typeCheckPatterns ctx (Type (Apply (Pi vs l1 l2) [a, b]) _) (pat:pats) = do
                                         in return $ TermInCtx (Snoc Nil var a') (Var Bound)
                             Just te -> return te
     let b' = case b of
-                Lambda (Scope1 b') -> instantiate1 te $ fmap (fmap $ liftBase ctx') b'
-                _ -> fmap (liftBase ctx') b
+                Lambda{} -> instantiate1 te $ fmap (fmap $ liftBase ctx') $ snd (dropOnePi p a b)
+                _        -> fmap (liftBase ctx') b
     (bf2, TermsInCtx ctx'' tes ty, rtpats) <- typeCheckPatterns (ctx +++ ctx') (Type (nf WHNF b') l2) pats
     return (bf1 || bf2, TermsInCtx (ctx' +++ ctx'') (fmap (liftBase ctx'') te : tes) ty, rtpat:rtpats)
 typeCheckPatterns _ _ (pat:_) = throwError [emsgLC (patternGetAttr getPos pat) "Too many arguments" enull]

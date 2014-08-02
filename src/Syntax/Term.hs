@@ -1,11 +1,9 @@
 module Syntax.Term
     ( Term(..)
-    , EqT(..)
     , cterm
     , module Syntax.Scope
     ) where
 
-import Prelude.Extras
 import Data.Foldable
 import Data.Traversable
 import Data.Bifunctor
@@ -41,17 +39,6 @@ instance Monad (Term p) where
     Var a      >>= k = k a
     Apply p ts >>= k = Apply p $ map (>>= k) ts
     Lambda s   >>= k = Lambda (s >>>= k)
-
-class EqT p where
-    equalsT :: Eq a => p -> [Term p a] -> p -> [Term p a] -> Bool
-
-instance (EqT p, Eq a) => Eq (Term p a) where
-    Var a == Var a' = a == a'
-    Apply p ts == Apply p' ts' = equalsT p ts p' ts'
-    Lambda s == Lambda s' = s == s'
-    _ == _ = False
-
-instance EqT p => Eq1 (Term p) where (==#) = (==)
 
 cterm :: p -> Term p a
 cterm p = Apply p []

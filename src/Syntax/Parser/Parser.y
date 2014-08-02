@@ -103,8 +103,8 @@ PIdents :: { [PIdent] }
     | PIdents PIdent    { $2:$1 }
 
 Expr :: { RawExpr }
-    : Expr1                     { $1                                    }
-    | '\\' PIdents '->' Expr    { Apply ($1, Lam $ map getName $2) [$4] }
+    : Expr1                     { $1                                                }
+    | '\\' PIdents '->' Expr    { Apply ($1, Lam $ reverse $ map getName $2) [$4]   }
 
 Expr1 :: { RawExpr }
     : Expr2                 { $1                                                    }

@@ -18,11 +18,11 @@ lengthCtx :: Ctx s f b a -> Int
 lengthCtx Nil = 0
 lengthCtx (Snoc ctx _ _) = lengthCtx ctx + 1
 
-lookupCtx :: (Monad g, Functor f) => (s -> b -> Bool) -> b -> Ctx s f b a -> Maybe (g a, f a)
-lookupCtx _ _ Nil = Nothing
-lookupCtx cmp b (Snoc ctx s t) = if cmp s b
+lookupCtx :: (Monad g, Functor f, Eq s) => s -> Ctx s f b a -> Maybe (g a, f a)
+lookupCtx _ Nil = Nothing
+lookupCtx b (Snoc ctx s t) = if s == b
     then Just (return Bound, fmap Free t)
-    else fmap (\(te, ty) -> (liftM Free te, fmap Free ty)) (lookupCtx cmp b ctx)
+    else fmap (\(te, ty) -> (liftM Free te, fmap Free ty)) (lookupCtx b ctx)
 
 ctxToVars :: Monad g => Ctx s f b a -> [g a]
 ctxToVars = reverse . go

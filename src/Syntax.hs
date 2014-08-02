@@ -1,9 +1,11 @@
+{-# LANGUAGE FlexibleInstances #-}
+
 module Syntax
     ( Syntax(..), Type(..)
     , Level(..), Explicit(..)
     , PatternC, PatternP
     , lessOrEqual
-    , apps, capps, collect
+    , apps, capps, collect, dropOnePi
     , module Syntax.Term, module Syntax.Pattern
     
     , RawExpr, Posn, PIdent(..)
@@ -12,6 +14,7 @@ module Syntax
     ) where
 
 import Data.Void
+import Prelude.Extras
 
 import Syntax.Term
 import Syntax.Pattern
@@ -91,33 +94,39 @@ level NoLevel = 0
 instance Eq PIdent where
     PIdent _ s == PIdent _ s' = s == s'
 
-instance EqT Syntax where
-    equalsT App ts App ts' = ts == ts'
-    equalsT Lam{} ts Lam{} ts' = ts == ts'
-    equalsT Lam{} [Lambda (Scope1 (Apply App [t, Var Bound]))] t' ts' = t == fmap Free (Apply t' ts')
-    equalsT t ts t'@Lam{} ts' = equalsT t' ts' t ts
-    equalsT t@Pi{} ts t'@Pi{} ts' = pcompare (Apply t ts) (Apply t' ts') == Just EQ
-    equalsT (Con c _ _) ts (Con c' _ _) ts' = c == c' && ts == ts'
-    equalsT (FunCall n _) ts (FunCall n' _) ts' = n == n' && ts == ts'
-    equalsT (FunSyn n _) ts (FunSyn n' _) ts' = n == n' && ts == ts'
-    equalsT (Universe u) ts (Universe u') ts' = u == u' && ts == ts'
-    equalsT (DataType d _) ts (DataType d' _) ts' = d == d' && ts == ts'
-    equalsT Interval ts Interval ts' = ts == ts'
-    equalsT (ICon c) ts (ICon c') ts' = c == c' && ts == ts'
-    equalsT (Path Explicit _) ts (Path Explicit _) ts' = ts == ts'
-    equalsT (Path _ _) ts (Path _ _) ts' =
+instance Eq a => Eq (Term Syntax a) where
+    Var a == Var a' = a == a'
+    Lambda (Scope1 t) == Lambda (Scope1 t') = t == t'
+    Apply App ts == Apply App ts' = ts == ts'
+    Apply (Lam []) [t] == t' = t == t'
+    t == Apply (Lam []) [t'] = t == t'
+    Apply (Lam (_:vs)) [Lambda (Scope1 t)] == Apply (Lam (_:vs')) [Lambda (Scope1 t')] = Apply (Lam vs) [t] == Apply (Lam vs) [t']
+    Apply (Lam (_:vs)) [Lambda (Scope1 t)] == t' = Apply (Lam vs) [t] == Apply App [fmap Free t', Var Bound]
+    t == t'@(Apply Lam{} _) = t' == t
+    t@(Apply Pi{} _) == t'@(Apply Pi{} _) = pcompare t t' == Just EQ
+    Apply (Con c _ _) ts == Apply (Con c' _ _) ts' = c == c' && ts == ts'
+    Apply (FunCall n _) ts == Apply (FunCall n' _) ts' = n == n' && ts == ts'
+    Apply (FunSyn n _) ts == Apply (FunSyn n' _) ts' = n == n' && ts == ts'
+    Apply (Universe u) ts == Apply (Universe u') ts' = u == u' && ts == ts'
+    Apply (DataType d _) ts == Apply (DataType d' _) ts' = d == d' && ts == ts'
+    Apply Interval ts == Apply Interval ts' = ts == ts'
+    Apply (ICon c) ts == Apply (ICon c') ts' = c == c' && ts == ts'
+    Apply (Path Explicit _) ts == Apply (Path Explicit _) ts' = ts == ts'
+    Apply (Path _ _) ts == Apply (Path _ _) ts' =
         if length ts < 3 || length ts' < 3 then ts == ts' else tail ts == tail ts'
-    equalsT PCon ts PCon ts' = ts == ts'
-    equalsT PCon [Apply Lam{} [Lambda (Scope1 (Apply At [_,_,t,Var Bound]))]] t' ts' = t == fmap Free (Apply t' ts')
-    equalsT t ts PCon ts' = equalsT PCon ts' t ts
-    equalsT At (_:_:ts) At (_:_:ts') = ts == ts'
-    equalsT Coe ts Coe ts' = ts == ts'
-    equalsT Iso ts Iso ts' = ts == ts'
-    equalsT Squeeze ts Squeeze ts' = ts == ts'
-    equalsT (Ident v) ts (Ident v') ts' = v == v' && ts == ts'
-    equalsT _ _ _ _ = False
+    Apply PCon ts == Apply PCon ts' = ts == ts'
+    Apply PCon [Apply Lam{} [Lambda (Scope1 (Apply At [_,_,t,Var Bound]))]] == t' = t == fmap Free t'
+    t == t'@(Apply PCon _) = t' == t
+    Apply At (_:_:ts) == Apply At (_:_:ts') = ts == ts'
+    Apply Coe ts == Apply Coe ts' = ts == ts'
+    Apply Iso ts == Apply Iso ts' = ts == ts'
+    Apply Squeeze ts == Apply Squeeze ts' = ts == ts'
+    Apply (Ident v) ts == Apply (Ident v') ts' = v == v' && ts == ts'
+    _ == _ = False
 
-instance (EqT p, Eq a) => Eq (Type p a) where
+instance Eq1 (Term Syntax) where (==#) = (==)
+
+instance Eq a => Eq (Type Syntax a) where
     Type t _ == Type t' _ = t == t'
 
 pcompare :: Eq a => Term Syntax a -> Term Syntax a -> Maybe Ordering
@@ -129,7 +138,7 @@ pcompare (Apply t ts) (Apply t' ts') = go t ts t' ts'
     go p@Pi{} [a, Lambda (Scope1 b)] p'@Pi{} [a', b'] = go p [fmap Free a, b] p' [fmap Free a', fmap Free b']
     go p@Pi{} [a, b] p'@Pi{} [a', b'] = contraCovariant (pcompare a a') (pcompare b b')
     go (Universe u) _ (Universe u') _ = Just $ compare (level u) (level u')
-    go t ts t' ts' = if equalsT t ts t' ts' then Just EQ else Nothing
+    go t ts t' ts' = if Apply t ts == Apply t' ts' then Just EQ else Nothing
 pcompare t t' = if t == t' then Just EQ else Nothing
 
 contraCovariant :: Maybe Ordering -> Maybe Ordering -> Maybe Ordering
@@ -159,3 +168,8 @@ collect = go []
     go as (Apply App [t1, t2]) = go (t2:as) t1
     go as (Apply t _) = (Just t, as)
     go as _ = (Nothing, as)
+
+dropOnePi :: Syntax -> Term Syntax a -> Term Syntax a -> (String, Term Syntax (Scoped a))
+dropOnePi (Pi [v] l1 l2) a (Lambda (Scope1 b)) = (v, b)
+dropOnePi (Pi (v:vs) l1 l2) a (Lambda (Scope1 b)) = (v, Apply (Pi vs l1 l2) [fmap Free a, b])
+dropOnePi _ _ b = ("_", fmap Free b)

@@ -33,12 +33,13 @@ nfSyntax mode t ts = go t ts []
     go At [t1,t2,t3,t4] ts = case (nf WHNF t3, nf WHNF t4) of
         (_, Apply (ICon ILeft) _)  -> goStep t1 ts
         (_, Apply (ICon IRight) _) -> goStep t2 ts
-        (Apply App [Apply PCon _, t3], t4') -> goStep t3 (t4':ts)
+        (Apply PCon [t3'], t4') -> goStep t3' (t4':ts)
         (t3', t4') -> apps (Apply At $ nfs mode [t1, t2, t3', t4']) (nfs mode ts)
     go Coe _ (t1:t2:t3:t4:ts) =
         let t1' = nf WHNF t1
             t2' = nf NF t2
             t4' = nf NF t4
+            r = capps Coe $ if mode == WHNF then t1':t2':t3:t4':ts else nf mode t1' : t2' : nf mode t3 : t4' : map (nf mode) ts
         in case (t2' == t4' || isStationary t1', t2' == cterm (ICon ILeft)  && t4' == cterm (ICon IRight),
                                                  t2' == cterm (ICon IRight) && t4' == cterm (ICon ILeft), collect t1') of
             (True, _, _, _) -> goStep t3 ts
@@ -47,9 +48,9 @@ nfSyntax mode t ts = go t ts []
             (_, b1, b2, _) | b1 || b2 -> case collect $ nfSyntax NF App [fmap Free t1', Var Bound] of
                 (Just Iso, [c1, c2, c3, c4, c5, c6, Var Bound]) -> case map sequenceA [c1,c2,c3,c4,c5,c6] of
                     [Free{}, Free{}, Free c3', Free c4', Free{}, Free{}] -> if b1 then goStep c3' (t3:ts) else goStep c4' (t3:ts)
-                    _ -> capps Coe $ t1':t2':t3:t4':ts
-                _ -> capps Coe $ t1':t2':t3:t4':ts
-            _ -> capps Coe $ t1':t2':t3:t4':ts
+                    _ -> r
+                _ -> r
+            _ -> r
     go Iso _ ts@[t1,t2,_,_,_,_,t7] = case nf WHNF t7 of
         Apply (ICon ILeft)  _ -> goStep t1 []
         Apply (ICon IRight) _ -> goStep t2 []
