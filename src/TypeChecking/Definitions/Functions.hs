@@ -39,7 +39,7 @@ typeCheckFunction p@(PIdent pos name) ety clauses = do
                 warn [emsgLC (termPos expr) msg enull]
                 return Nothing
             (False, Just expr) -> do
-                (term, _) <- typeCheckCtx ctx (fmap (liftBase ctx) expr) (Just ty')
+                (term, _) <- typeCheckCtx ctx expr (Just ty')
                 let scope = closed (abstractTermInCtx ctx term)
                 throwErrors (checkTermination name rtpats scope)
                 return $ Just ((rtpats, scope), (pos, rtpats))

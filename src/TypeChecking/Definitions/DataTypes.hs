@@ -21,13 +21,13 @@ import TypeChecking.Definitions.Conditions
 import TypeChecking.Definitions.Termination
 import Normalization
 
-typeCheckDataType :: MonadFix m => PIdent -> [Tele Void] -> [Con] -> [Clause] -> TCM m ()
+typeCheckDataType :: MonadFix m => PIdent -> [Tele] -> [Con] -> [Clause] -> TCM m ()
 typeCheckDataType p@(PIdent pos dt) params cons conds = mdo
     let lcons = length cons
     (SomeEq ctx, dataType@(Type dtTerm _)) <- checkTele Nil params $ cterm (Universe NoLevel)
     addDataTypeCheck p dataType lcons
     cons' <- forW (zip cons [0..]) $ \(ConDef con@(PIdent pos conName) tele, i) -> do
-        (_, Type conType conLevel) <- checkTele ctx (mapCtxTele ctx tele) $ capps (DataType dt lcons) (ctxToVars ctx)
+        (_, Type conType conLevel) <- checkTele ctx tele $ capps (DataType dt lcons) (ctxToVars ctx)
         checkPositivity p (nf WHNF conType)
         let conTerm = Con i con (map snd $ filter (\(c,_) -> c == conName) conds')
         return $ Just (con, conTerm, Type conType conLevel)
@@ -41,7 +41,7 @@ typeCheckDataType p@(PIdent pos dt) params cons conds = mdo
             Just (_, _, ty) -> do
                 (bf, TermsInCtx ctx' _ ty', rtpats) <- typeCheckPatterns ctx (nfType WHNF ty) pats
                 when bf $ warn [emsgLC pos "Absurd patterns are not allowed in conditions" enull]
-                (term, _) <- typeCheckCtx (ctx +++ ctx') (fmap (liftBase $ ctx +++ ctx') expr) (Just ty')
+                (term, _) <- typeCheckCtx (ctx +++ ctx') expr (Just ty')
                 let scope = closed (abstractTermInCtx ctx' term)
                 throwErrors (checkTermination con rtpats scope)
                 return $ Just (con, (rtpats, scope))
@@ -57,7 +57,7 @@ extendCtx :: (Functor t, Eq a) => [s] -> Ctx s t b a -> t a -> SomeEq (Ctx s t b
 extendCtx [] ctx _ = SomeEq ctx
 extendCtx (x:xs) ctx t = extendCtx xs (Snoc ctx x t) (fmap Free t)
 
-checkTele :: (Monad m, Eq a) => Ctx String (Type Syntax) Void a -> [Tele a] -> Term Syntax a
+checkTele :: (Monad m, Eq a) => Ctx String (Type Syntax) Void a -> [Tele] -> Term Syntax a
     -> TCM m (SomeEq (Ctx String (Type Syntax) Void), Type Syntax a)
 checkTele ctx [] term = return (SomeEq ctx, Type term NoLevel)
 checkTele ctx (VarsTele vars expr : tele) term = do
@@ -65,7 +65,7 @@ checkTele ctx (VarsTele vars expr : tele) term = do
     lvl1 <- checkIsType ctx (termPos expr) (nf WHNF t1)
     case extendCtx (map getName vars) Nil (Type r1 lvl1) of
         SomeEq ctx' -> do
-            (rctx, Type r2 lvl2) <- checkTele (ctx +++ ctx') (mapCtxTele ctx' tele) $ fmap (liftBase ctx') term
+            (rctx, Type r2 lvl2) <- checkTele (ctx +++ ctx') tele $ fmap (liftBase ctx') term
             let (vs,r2') = abstractTerm ctx' r2
             return (rctx, Type (Apply (Pi vs lvl1 lvl2) [r1,r2']) $ max lvl1 lvl2)
 checkTele ctx (TypeTele expr : tele) term = do
@@ -77,11 +77,6 @@ checkTele ctx (TypeTele expr : tele) term = do
 abstractTerm :: Ctx s g b a -> Term p a -> ([s], Term p b)
 abstractTerm Nil term = ([], term)
 abstractTerm (Snoc ctx v _) term = first (v:) $ abstractTerm ctx $ Lambda (Scope1 term)
-
-mapCtxTele :: Eq a => Ctx String f b a -> [Tele b] -> [Tele a]
-mapCtxTele ctx = map $ \tele -> case tele of
-    VarsTele vars expr -> VarsTele vars (fmap (liftBase ctx) expr)
-    TypeTele      expr -> TypeTele      (fmap (liftBase ctx) expr)
 
 replaceLevel :: Term Syntax a -> Level -> Term Syntax a
 replaceLevel (Apply p@Pi{} [a,b]) lvl = Apply p [a, replaceLevel b lvl]

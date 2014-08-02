@@ -20,13 +20,13 @@ type Posn = (Int, Int)
 data PIdent = PIdent { getPos :: Posn, getName :: String }
 data Clause = Clause PIdent [PatternP PIdent] RawExpr
 type Import = [String]
-data Tele a = VarsTele [PIdent] (Term (Posn, Syntax) a) | TypeTele (Term (Posn, Syntax) a)
-data Con = ConDef PIdent [Tele Void]
+data Tele = VarsTele [PIdent] RawExpr | TypeTele RawExpr
+data Con = ConDef PIdent [Tele]
 
 data Def
     = DefType PIdent RawExpr
     | DefFun PIdent [PatternP PIdent] (Maybe RawExpr)
-    | DefData PIdent [Tele Void] [Con] [Clause]
+    | DefData PIdent [Tele] [Con] [Clause]
     | DefImport Import
 
 {-
@@ -59,7 +59,7 @@ data Syntax
 
 type RawExpr = Term (Posn, Syntax) Void
 data Level = Level Int | NoLevel
-data Type p a = Type (Term p a) Level
+data Type p a = Type { getType :: Term p a, getLevel :: Level }
 data Explicit = Explicit | Implicit
 type PatternP = Pattern Posn (Closed (Scope String (Term (Posn, Syntax))))
 type PatternC = Pattern ()   (Closed (Scope String (Term Syntax)))
@@ -105,7 +105,7 @@ instance EqT Syntax where
     equalsT Interval ts Interval ts' = ts == ts'
     equalsT (ICon c) ts (ICon c') ts' = c == c' && ts == ts'
     equalsT (Path Explicit _) ts (Path Explicit _) ts' = ts == ts'
-    equalsT (Path Implicit _) ts (Path Implicit _) ts' =
+    equalsT (Path _ _) ts (Path _ _) ts' =
         if length ts < 3 || length ts' < 3 then ts == ts' else tail ts == tail ts'
     equalsT PCon ts PCon ts' = ts == ts'
     equalsT PCon [Apply Lam{} [Lambda (Scope1 (Apply At [_,_,t,Var Bound]))]] t' ts' = t == fmap Free (Apply t' ts')

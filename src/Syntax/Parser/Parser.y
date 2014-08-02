@@ -83,11 +83,11 @@ Cons :: { [Con] }
     : Con           { [$1]  } 
     | Cons '|' Con  { $3:$1 }
 
-Tele :: { Tele Void }
+Tele :: { Tele }
     : Expr5                 { TypeTele $1                                                   }
     | '(' Expr ':' Expr ')' {% \_ -> exprToVars $2 >>= \vars -> return (VarsTele vars $4)   }
 
-Teles :: { [Tele Void] }
+Teles :: { [Tele] }
     : {- empty -}   { []    }
     | Teles Tele    { $2:$1 }
 
