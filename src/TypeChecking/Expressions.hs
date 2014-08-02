@@ -2,14 +2,14 @@ module TypeChecking.Expressions
     ( typeCheck, typeCheckCtx
     , inferErrorMsg, notInScope
     , prettyOpen, checkIsType
-    , termPos
     ) where
 
 import Control.Monad
 import Data.List
 import Data.Maybe
+import Data.Void
 
-import Syntax.Term
+import Syntax
 import Syntax.ErrorDoc
 import TypeChecking.Monad
 import TypeChecking.Context
@@ -30,29 +30,33 @@ argsErrorMsg pos s = emsgLC pos (s ++ " is applied to arguments") enull
 expectedArgErrorMsg :: Show a => Posn -> a -> EMsg f
 expectedArgErrorMsg lc d = emsgLC lc ("Expected an argument to " ++ show d) enull
 
-type Context = Ctx String (Type ()) PIdent
+type Context = Ctx String (Type Syntax) Void
 
 prettyOpen :: Context a -> Term p a -> EDoc (Term p)
-prettyOpen ctx term = epretty $ fmap (pretty . either id getName) $ close ctx (fmap Right term)
+prettyOpen ctx term = epretty $ fmap (pretty . either id absurd) $ close ctx (fmap Right term)
 
-checkIsType :: Monad m => Context a -> Posn -> Term () a -> EDocM m Level
-checkIsType _ _ (Universe _ lvl) = return lvl
+checkIsType :: Monad m => Context a -> Posn -> Term Syntax a -> EDocM m Level
+checkIsType _ _ (Apply (Universe lvl) _) = return lvl
 checkIsType ctx pos t = throwError [emsgLC pos "" $ pretty "Expected type: Type" $$
                                                     pretty "Actual type:" <+> prettyOpen ctx t]
 
-intType :: Type () a
-intType = Type (Interval ()) NoLevel
+intType :: Type Syntax a
+intType = Type (cterm Interval) NoLevel
 
-termPos :: Context a -> Term Posn a -> Posn
+{-
+termPos :: Context a -> Term (Posn, Syntax) a -> Posn
 termPos ctx = getAttr $ maybe (0,0) getPos . toBase ctx
+-}
 
-typeCheck :: Monad m => Term Posn PIdent -> Maybe (Type () PIdent) -> TCM m (Term () PIdent, Type () PIdent)
+typeCheck :: Monad m => Term (Posn, Syntax) Void -> Maybe (Type Syntax Void) -> TCM m (Term Syntax Void, Type Syntax Void)
 typeCheck = typeCheckCtx Nil
 
-typeCheckCtx :: (Monad m, Eq a) => Context a -> Term Posn a -> Maybe (Type () a) -> TCM m (Term () a, Type () a)
+typeCheckCtx :: (Monad m, Eq a) => Context a -> Term (Posn, Syntax) a -> Maybe (Type Syntax a) -> TCM m (Term Syntax a, Type Syntax a)
+typeCheckCtx = undefined
+{-
 typeCheckCtx ctx term mty = go ctx term [] $ fmap (nfType WHNF) mty
   where
-    go :: (Monad m, Eq a) => Context a -> Term Posn a -> [Term Posn a] -> Maybe (Type () a) -> TCM m (Term () a, Type () a)
+    go :: (Monad m, Eq a) => Context a -> Term (Posn, Syntax) a -> [Term (Posn, Syntax) a] -> Maybe (Type Syntax a) -> TCM m (Term Syntax a, Type Syntax a)
     go ctx (Var v) ts mty = do
         let v'@(PIdent pos var) = fromJust (toBase ctx v)
         when (var == "_") $ throwError [emsgLC pos "Expected an identifier" enull]
@@ -148,9 +152,12 @@ typeCheckCtx ctx term mty = go ctx term [] $ fmap (nfType WHNF) mty
     go _ ICon{} _ _ = error "typeCheck: ICon"
     go _ Interval{} _ _ = error "typeCheck: Interval"
     go _ Universe{} _ _ = error "typeCheck: Universe"
+-}
 
-typeCheckKeyword :: (Monad m, Eq a) => Context a -> Posn -> String -> [Term Posn a]
-    -> Maybe (Type () a) -> TCM m (Term () a, Type () a)
+typeCheckKeyword :: (Monad m, Eq a) => Context a -> Posn -> String -> [Term (Posn, Syntax) a]
+    -> Maybe (Type Syntax a) -> TCM m (Term Syntax a, Type Syntax a)
+typeCheckKeyword = undefined
+{-
 typeCheckKeyword ctx pos u as Nothing | (lvl,""):_ <- reads u = do
     unless (null as) $ warn [argsErrorMsg pos "A type"]
     return (Universe () lvl, Type (Universe () $ succ lvl) $ succ $ succ lvl)
@@ -255,17 +262,23 @@ typeCheckKeyword ctx pos var ts (Just (Type ty _)) = do
     actExpType ctx ty' ty pos
     return (te', Type ty' lvl')
 typeCheckKeyword _ pos var _ _ = throwError [notInScope pos "" var]
+-}
 
-actExpType :: (Monad m, Eq a) => Context a -> Term () a -> Term () a -> Posn -> EDocM m ()
+actExpType :: (Monad m, Eq a) => Context a -> Term Syntax a -> Term Syntax a -> Posn -> EDocM m ()
+actExpType = undefined
+{-
 actExpType ctx act exp pos =
     let act' = nf NF act
         exp' = nf NF exp
     in unless (act' `lessOrEqual` exp') $
         throwError [emsgLC pos "" $ pretty "Expected type:" <+> prettyOpen ctx exp'
                                  $$ pretty "Actual type:"   <+> prettyOpen ctx act']
+-}
 
-typeCheckScope :: (Monad m, Eq a) => Context a -> Type () a
-    -> Scope String (Term Posn) a -> TCM m (Scope String (Term ()) a, Level)
+typeCheckScope :: (Monad m, Eq a) => Context a -> Type Syntax a
+    -> Scope String (Term (Posn, Syntax)) a -> TCM m (Scope String (Term Syntax) a, Level)
+typeCheckScope = undefined
+{-
 typeCheckScope ctx _ (ScopeTerm b) = do
     (te, Type ty _) <- typeCheckCtx ctx b Nothing
     lvl <- checkIsType ctx (termPos ctx b) ty
@@ -273,8 +286,11 @@ typeCheckScope ctx _ (ScopeTerm b) = do
 typeCheckScope ctx a (Scope v b) = do
     (te, ty) <- typeCheckScope (Snoc ctx v a) (fmap Free a) b
     return (Scope v te, ty)
+-}
 
-typeCheckApps :: (Monad m, Eq a) => Posn -> Context a -> [Term Posn a] -> Type () a -> TCM m ([Term () a], Type () a)
+typeCheckApps :: (Monad m, Eq a) => Posn -> Context a -> [Term (Posn, Syntax) a] -> Type Syntax a -> TCM m ([Term Syntax a], Type Syntax a)
+typeCheckApps = undefined
+{-
 typeCheckApps pos ctx terms ty = go terms (nfType WHNF ty)
   where
     go [] ty = return ([], ty)
@@ -284,9 +300,12 @@ typeCheckApps pos ctx terms ty = go terms (nfType WHNF ty)
         return (term:terms, ty)
     go _ (Type ty _) = throwError [emsgLC pos "" $ pretty "Expected pi type"
                                                 $$ pretty "Actual type:" <+> prettyOpen ctx ty]
+-}
 
-typeCheckLambda :: (Monad m, Eq a) => Context a -> Term Posn a -> Type () a
-    -> TCM m (Term () a, Type () a, Scope1 String (Term ()) a)
+typeCheckLambda :: (Monad m, Eq a) => Context a -> Term (Posn, Syntax) a -> Type Syntax a
+    -> TCM m (Term Syntax a, Type Syntax a, String, Term Syntax (Scoped a))
+typeCheckLambda = undefined
+{-
 typeCheckLambda ctx (Lam _ (Scope1 v te)) ty@(Type _ lvl) = do
     (te', Type ty' lvl') <- typeCheckCtx (Snoc ctx v ty) te Nothing
     return (Lam () $ Scope1 v te', Type (Pi () ty (Scope v $ ScopeTerm ty') lvl') $ max lvl lvl', Scope1 v ty')
@@ -303,3 +322,4 @@ typeCheckLambda ctx te ty = do
                         pretty "Actual type:"   <+> prettyOpen ctx (Pi p (Type na  lvla)  b lvlb)]
         _ -> throwError [emsgLC (termPos ctx te) "" $ pretty "Expected pi type"
                                                    $$ pretty "Actual type:" <+> prettyOpen ctx ty']
+-}
