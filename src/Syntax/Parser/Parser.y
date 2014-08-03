@@ -108,12 +108,12 @@ Expr :: { RawExpr }
 
 Expr1 :: { RawExpr }
     : Expr2                 { $1                                                    }
-    | Expr2 '->' Expr1      { Apply (termPos $1, Pi [] NoLevel NoLevel) [$1, $3]    }
+    | Expr2 '->' Expr1      { Apply (termPos $1, Pi []) [$1, $3]    }
     | PiTeles '->' Expr1    {% \_ -> piExpr (reverse $1) $3                         }
 
 Expr2 :: { RawExpr }
     : Expr3             { $1                                                }
-    | Expr3 '=' Expr3   { Apply (termPos $1, Path Implicit NoLevel) [$1,$3] }
+    | Expr3 '=' Expr3   { Apply (termPos $1, PathImp) [$1,$3] }
 
 Expr3 :: { RawExpr }
     : Expr4             { $1                                }
@@ -141,7 +141,7 @@ piExpr [] term = return term
 piExpr (PiTele pos t1 t2 : teles) term = do
     vars <- exprToVars t1
     term' <- piExpr teles term
-    return $ Apply (pos, Pi (map getName vars) NoLevel NoLevel) [t2,term']
+    return $ Apply (pos, Pi $ map getName vars) [t2,term']
 
 termPos :: RawExpr -> Posn
 termPos (Apply (pos, _) _) = pos

@@ -5,6 +5,8 @@ module TypeChecking.Definitions
 import Control.Monad.Fix
 
 import Syntax
+import Semantics
+import Semantics.Value
 import Syntax.ErrorDoc
 import TypeChecking.Expressions
 import TypeChecking.Definitions.DataTypes
@@ -27,7 +29,7 @@ typeCheckDefs (DefType p@(PIdent pos name) ty : defs) =
             typeCheckDefs defs2
 typeCheckDefs (DefFun p@(PIdent pos name) [] (Just expr) : defs) = do
     (term, ty) <- typeCheck expr Nothing
-    addFunctionCheck p (cterm $ FunSyn name $ closed term) ty
+    addFunctionCheck p (cterm $ Semantics (Ident name) $ FunSyn 0 $ closed term) ty
     typeCheckDefs defs
 typeCheckDefs (DefFun (PIdent pos name) [] Nothing : defs) = do
     warn [emsgLC pos "Expected right hand side" enull]

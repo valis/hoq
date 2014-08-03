@@ -9,7 +9,9 @@ import Control.Monad
 import Control.Monad.Trans
 import Text.PrettyPrint
 import qualified Data.ByteString.Char8 as C
+import Data.Bifunctor
 
+import Semantics
 import Syntax.Parser
 import Syntax.PrettyPrinter
 import Syntax.ErrorDoc
@@ -24,7 +26,7 @@ ep mode str = do
         (term',_) <- typeCheck term Nothing
         return term'
     liftIO $ case mres of
-        ([], Just term) -> putStrLn $ render $ ppTerm (nf mode term)
+        ([], Just term) -> putStrLn $ render $ ppTerm $ first syntax (nf mode term)
         (errs, _)       -> mapM_ (hPutStrLn stderr . erender) errs
 
 processCmd :: String -> String -> ScopeM IO ()

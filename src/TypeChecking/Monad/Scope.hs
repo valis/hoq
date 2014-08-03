@@ -15,7 +15,7 @@ import Control.Applicative
 import Data.List
 import Data.Maybe
 
-data Entry a b c d = FunctionE a b | DataTypeE b Int | ConstructorE Int c d
+data Entry a b c d = FunctionE a b | DataTypeE Int b Int | ConstructorE Int c d
 
 data ScopeState a b c d = ScopeState
     { functions    :: [(String, (a, b))]
@@ -56,7 +56,7 @@ getEntry v dt = ScopeT $ do
     cons  <- unScopeT (getConstructor v dt)
     scope <- get
     return $ map (uncurry FunctionE) (maybeToList $ lookup v $ functions scope)
-          ++ (if isNothing dt then map (uncurry DataTypeE) (maybeToList $ lookup v $ dataTypes scope) else [])
+          ++ (if isNothing dt then map (uncurry $ DataTypeE 0) (maybeToList $ lookup v $ dataTypes scope) else [])
           ++ map (\(i,c,d) -> ConstructorE i c d) cons
 
 runScopeT :: Monad m => ScopeT a b c d m a' -> m a'

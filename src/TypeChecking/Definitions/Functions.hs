@@ -7,6 +7,8 @@ import Data.Maybe
 import Data.Void
 
 import Syntax
+import Semantics
+import Semantics.Value
 import Syntax.ErrorDoc
 import TypeChecking.Monad
 import TypeChecking.Context
@@ -22,10 +24,11 @@ typeCheckFunction :: Monad m => PIdent -> Term (Posn, Syntax) Void
 typeCheckFunction p@(PIdent pos name) ety clauses = do
     (ty, Type u _) <- typeCheck ety Nothing
     lvl <- case nf WHNF u of
-            Apply (Universe lvl) _ -> return lvl
-            _                      -> throwError [emsgLC (termPos ety) "" $ pretty "Expected a type"
-                                                                         $$ pretty "Actual type:" <+> prettyOpen Nil ty]
-    addFunctionCheck p (cterm $ FunCall p []) (Type ty lvl)
+            Apply (Semantics _ (Universe lvl)) _ -> return lvl
+            _ -> throwError [emsgLC (termPos ety) "" $ pretty "Expected a type"
+                                                    $$ pretty "Actual type:" <+> prettyOpen Nil ty]
+    let fcid = 0
+    addFunctionCheck p (cterm $ Semantics (Ident name) $ FunCall fcid []) (Type ty lvl)
     clausesAndPats <- forW clauses $ \(pos,pats,mexpr) ->  do
         (bf, TermsInCtx ctx _ ty', rtpats) <- typeCheckPatterns Nil (Type (nf WHNF ty) lvl) pats
         case (bf,mexpr) of
@@ -41,11 +44,12 @@ typeCheckFunction p@(PIdent pos name) ety clauses = do
             (False, Just expr) -> do
                 (term, _) <- typeCheckCtx ctx expr (Just ty')
                 let scope = closed (abstractTermInCtx ctx term)
-                throwErrors (checkTermination name rtpats scope)
+                throwErrors (checkTermination fcid pos rtpats scope)
                 return $ Just ((rtpats, scope), (pos, rtpats))
     lift (deleteFunction name)
     let clauses' = map fst clausesAndPats
-        fc = Closed $ cterm $ FunCall p $ map (fmap $ \(Closed scope) -> Closed $ replaceFunCallsScope name fc scope) clauses'
+        fc = Closed $ cterm $ Semantics (Ident name) $ FunCall fcid $
+            map (fmap $ \(Closed scope) -> Closed $ replaceFunCallsScope fcid fc scope) clauses'
     lift $ addFunction name (open fc) (Type ty lvl)
     case checkCoverage (map snd clausesAndPats) of
         Nothing -> when (length clausesAndPats == length (filter (\(_,_,me) -> isJust me) clauses)) $
@@ -53,12 +57,12 @@ typeCheckFunction p@(PIdent pos name) ety clauses = do
         Just uc -> warn $ map (\pos -> emsgLC pos "Unreachable clause" enull) uc
     warn $ checkConditions pos fc (map fst clausesAndPats)
 
-replaceFunCallsScope :: String -> Closed (Term Syntax) -> Scope s (Term Syntax) a -> Scope s (Term Syntax) a
+replaceFunCallsScope :: ID -> Closed (Term Semantics) -> Scope s (Term Semantics) a -> Scope s (Term Semantics) a
 replaceFunCallsScope name fc (ScopeTerm term) = ScopeTerm (replaceFunCalls name fc term)
 replaceFunCallsScope name fc (Scope v scope)  = Scope v   (replaceFunCallsScope name fc scope)
 
-replaceFunCalls :: String -> Closed (Term Syntax) -> Term Syntax a -> Term Syntax a
+replaceFunCalls :: ID -> Closed (Term Semantics) -> Term Semantics a -> Term Semantics a
 replaceFunCalls name fc t@Var{} = t
-replaceFunCalls name fc (Apply (FunCall (PIdent _ name') _) ts) | name == name' = open fc
+replaceFunCalls name fc (Apply (Semantics _ (FunCall name' _)) ts) | name == name' = open fc
 replaceFunCalls name fc (Apply s ts) = Apply s $ map (replaceFunCalls name fc) ts
 replaceFunCalls name fc (Lambda (Scope1 t)) = Lambda $ Scope1 (replaceFunCalls name fc t)

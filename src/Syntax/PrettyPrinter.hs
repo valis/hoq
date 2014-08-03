@@ -16,11 +16,8 @@ instance E.Pretty1 (Term Syntax) where
 
 freeVars :: Term Syntax a -> [String]
 freeVars = biconcatMap (\t -> case t of
-    Con _ (PIdent _ s) _    -> [s]
-    FunCall (PIdent _ s) _  -> [s]
-    FunSyn s _              -> [s]
-    DataType s _            -> [s]
-    _                       -> []) (const [])
+    Ident s -> [s]
+    _       -> []) (const [])
 
 ppTerm :: Term Syntax Void -> Doc
 ppTerm t = ppTermCtx (freeVars t) (vacuous t)
@@ -31,27 +28,13 @@ ppTermCtx ctx (Apply s ts) = ppSyntax ctx s ts
 ppTermCtx _ _ = error "ppTermCtx"
 
 ppSyntax :: [String] -> Syntax -> [Term Syntax Doc] -> Doc
-ppSyntax _ (Universe NoLevel) _ = text "Type"
-ppSyntax _ (Universe l) _ = text $ "Type" ++ show l
 ppSyntax ctx App [t1, t2] = ppTermPrec (prec App) ctx t1 <+> ppTermPrec (prec App + 1) ctx t2
-ppSyntax ctx p@(Pi vs _ _) [t1, t2] = (if null vs
+ppSyntax ctx p@(Pi vs) [t1, t2] = (if null vs
     then ppTermPrec (prec p + 1) ctx t1
     else parens $ hsep (map text vs) <+> colon <+> ppTermCtx ctx t1) <+> arrow <+> ppBound (prec p) ctx vs t2
 ppSyntax ctx l@(Lam vs) [t] = text "\\" <> hsep (map text vs) <+> arrow <+> ppBound (prec l) ctx vs t
-ppSyntax ctx (Con _ (PIdent _ n) _) ts = text n <+> ppList ctx ts
-ppSyntax ctx (FunSyn n _) ts = text n <+> ppList ctx ts
-ppSyntax ctx (FunCall (PIdent _ n) _) ts = text n <+> ppList ctx ts
-ppSyntax ctx (DataType d _) ts = text d <+> ppList ctx ts
-ppSyntax _ Interval _ = text "I"
-ppSyntax _ (ICon ILeft) _ = text "left"
-ppSyntax _ (ICon IRight) _ = text "right"
-ppSyntax ctx t@(Path Implicit _) [_,t2,t3] = ppTermPrec (prec t + 1) ctx t2 <+> equals <+> ppTermPrec (prec t + 1) ctx t3
-ppSyntax ctx (Path Explicit _) ts = text "Path" <+> ppList ctx ts
-ppSyntax ctx PCon ts = text "path" <+> ppList ctx ts
+ppSyntax ctx t@PathImp [_,t2,t3] = ppTermPrec (prec t + 1) ctx t2 <+> equals <+> ppTermPrec (prec t + 1) ctx t3
 ppSyntax ctx t@At [_,_,t3,t4] = ppTermPrec (prec t) ctx t3 <+> text "@" <+> ppTermPrec (prec t + 1) ctx t4
-ppSyntax ctx Coe ts = text "coe" <+> ppList ctx ts
-ppSyntax ctx Iso ts = text "iso" <+> ppList ctx ts
-ppSyntax ctx Squeeze ts = text "squeeze" <+> ppList ctx ts
 ppSyntax ctx (Ident n) ts = text n <+> ppList ctx ts
 ppSyntax _ _ _ = error "ppSyntax"
 
@@ -80,20 +63,9 @@ renameName2 var ctx ctx' = if var `elem` ctx && var `elem` ctx'
 
 prec :: Syntax -> Int
 prec Ident{}    = 10
-prec Universe{} = 10
-prec FunSyn{}   = 10
-prec FunCall{}  = 10
-prec Con{}      = 10
-prec DataType{} = 10
-prec Interval   = 10
-prec ICon{}     = 10
-prec Coe        = 10
-prec Iso        = 10
-prec Squeeze    = 10
-prec PCon       = 9
 prec App        = 9
 prec At         = 8
-prec Path{}     = 7
+prec PathImp{}  = 7
 prec Pi{}       = 6
 prec Lam{}      = 5
 

@@ -33,6 +33,7 @@ executable hoq
                        Syntax.PrettyPrinter,
                        Syntax.ErrorDoc, Syntax.Pattern,
                        Syntax.Parser.Lexer, Syntax.Parser.Parser,
+                       Semantics, Semantics.Value,
                        TypeChecking.Definitions.Patterns,
                        TypeChecking.Definitions.Coverage,
                        TypeChecking.Definitions.DataTypes,
