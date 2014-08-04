@@ -25,12 +25,11 @@ nfSemantics mode t ts = go t ts []
     go (Semantics (S.Lam (_:vs)) Lam) [Lambda (Scope1 a@Lambda{})] (t:ts) =
         goStep (Apply (Semantics (S.Lam $ tail vs) Lam) [instantiate1 t a]) ts
     go (Semantics _ Lam) [Lambda (Scope1 s)] (t:ts) = goStep (instantiate1 t s) ts
-    go (Semantics _ (FunSyn _ (Closed t))) _ ts = goStep t ts
-    go t@(Semantics _ (Con c conds)) _ ts = case instantiateClauses conds ts of
+    go t@(Semantics _ (Con c (PatEval conds))) _ ts = case instantiateClauses conds ts of
         Just (t', ts')  -> goStep t' ts'
         _               -> capps t (nfs mode ts)
-    go t@(Semantics _ (FunCall _ [])) _ ts = capps t (nfs mode ts)
-    go t@(Semantics _ (FunCall _ clauses)) _ ts = case instantiateClauses clauses ts of
+    go (Semantics _ (FunCall _ (SynEval (Closed t)))) _ ts = goStep t ts
+    go t@(Semantics _ (FunCall _ (PatEval clauses))) _ ts = case instantiateClauses clauses ts of
         Just (t', ts')  -> goStep t' ts'
         _               -> capps t (nfs mode ts)
     go t@(Semantics _ At) [t1,t2,t3,t4] ts = case (nf WHNF t3, nf WHNF t4) of

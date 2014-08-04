@@ -19,6 +19,9 @@ import Normalization
 data TermInCtx b  = forall a. Eq a => TermInCtx  (Ctx String (Type Semantics) b a) (Term Semantics a)
 data TermsInCtx b = forall a. Eq a => TermsInCtx (Ctx String (Type Semantics) b a) [Term Semantics a] (Type Semantics a)
 
+notEnoughArgs :: Show a => Posn -> a -> EMsg f
+notEnoughArgs pos a = emsgLC pos ("Not enough arguments to " ++ show a) enull
+
 typeCheckPattern :: (Monad m, Eq a) => Ctx String (Type Semantics) Void a -> Type Semantics a
     -> PatternP PIdent -> TCM m (Bool, Maybe (TermInCtx a), PatternC String)
 typeCheckPattern _ _ PatternI{} = error "typeCheckPattern: PatternI"
@@ -32,34 +35,31 @@ typeCheckPattern ctx (Type ty _) (PatternEmpty pos) =
     throwError [emsgLC pos "" $ pretty "Expected non-empty type:" <+> prettyOpen ctx ty]
 typeCheckPattern ctx _ (PatternVar (PIdent _ "_")) = return (False, Nothing, PatternVar "_")
 typeCheckPattern ctx (Type ty lvl) (PatternVar (PIdent pos var)) = case collect ty of
-    (Just (Semantics (Ident dtn) (DataType dt _)), params) -> do
-        cons <- lift $ getConstructor var (Just dtn)
+    (Just (Semantics _ (DataType dt _)), params) -> do
+        cons <- lift $ getConstructor var (Just dt)
         case cons of
             [] -> return (False, Just $ TermInCtx (Snoc Nil var $ Type ty lvl) $ Var Bound, PatternVar var)
-            (n,con,(conType,_)):_ -> if isDataType conType
-                then let con'@(Apply (Semantics (Ident conName) (Con i conds)) _) = instantiate params $ fmap (liftBase ctx) con
-                     in return (False, Just $ TermInCtx Nil con', Pattern (PatternCon i n conName conds) [])
-                else throwError [emsgLC pos ("Not enough arguments to " ++ show var) enull]
+            (n, con@(Semantics (Ident conName) (Con i (PatEval conds))), Type conType _):_ -> if isDataType conType
+                then return (False, Just $ TermInCtx Nil $ cterm con, Pattern (PatternCon i n conName conds) [])
+                else throwError [notEnoughArgs pos var]
     _ -> return (False, Just $ TermInCtx (Snoc Nil var $ Type ty lvl) $ Var Bound, PatternVar var)
   where
-    isDataType :: Scope a (Term Semantics) b -> Bool
-    isDataType (ScopeTerm ty) = case collect ty of
+    isDataType :: Term Semantics a -> Bool
+    isDataType (Lambda (Scope1 t)) = isDataType t
+    isDataType ty = case collect ty of
         (Just (Semantics _ DataType{}), _)  -> True
         _                                   -> False
-    isDataType (Scope _ t) = isDataType t
 typeCheckPattern ctx (Type ty _) (Pattern (PatternCon _ _ (PIdent pos conName) _) pats)
-  | (Just (Semantics (Ident dtn) (DataType dt _)), params) <- collect ty = do
-    cons <- lift $ getConstructor conName (Just dtn)
+  | (Just (Semantics _ (DataType dt _)), params) <- collect ty = do
+    cons <- lift $ getConstructor conName (Just dt)
     case cons of
         []        -> throwError [notInScope pos "data constructor" conName]
-        (n,con,(conType,lvl)):_ -> do
-            let Apply (Semantics _ (Con i conds)) _ = instantiate params $ fmap (liftBase ctx) con
-                conType' = Type (nf WHNF $ instantiate params $ fmap (liftBase ctx) conType) lvl
-            (bf, TermsInCtx ctx' terms (Type ty _), rtpats) <- typeCheckPatterns ctx conType' pats
-            let res = TermInCtx ctx' $ capps (Semantics (Ident conName) $ Con i conds) terms
-            case collect (nf WHNF ty) of
-                (Just (Semantics _ DataType{}), _) -> return (bf, Just res, Pattern (PatternCon i n conName conds) rtpats)
-                _ -> throwError [emsgLC pos "Not enough arguments" enull]
+        (n, con@(Semantics _ (Con i (PatEval conds))), Type conType lvl):_ -> do
+            let conType' = Type (nf WHNF $ bapps (vacuous conType) params) lvl
+            (bf, TermsInCtx ctx' terms (Type ty' _), rtpats) <- typeCheckPatterns ctx conType' pats
+            case collect (nf WHNF ty') of
+                (Just (Semantics _ DataType{}), _) -> return (bf, Just $ TermInCtx ctx' (capps con terms), Pattern (PatternCon i n conName conds) rtpats)
+                _ -> throwError [notEnoughArgs pos conName]
 typeCheckPattern ctx (Type ty _) pat =
     throwError [emsgLC (patternGetAttr getPos pat) "" $ pretty "Unexpected pattern"
                                                      $$ pretty "Expected type:" <+> prettyOpen ctx ty]

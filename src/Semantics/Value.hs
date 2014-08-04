@@ -1,5 +1,5 @@
 module Semantics.Value
-    ( Value(..)
+    ( Value(..), Eval(..)
     , Level(..), level
     , ID, PatternV
     ) where
@@ -11,9 +11,8 @@ data Value t
     = Lam
     | App
     | Pi Level Level
-    | Con Int    [([PatternV t String], Closed (Scope String t))]
-    | FunCall ID [([PatternV t String], Closed (Scope String t))]
-    | FunSyn  ID (Closed t)
+    | Con Int (Eval t)
+    | FunCall ID (Eval t)
     | Universe Level
     | DataType ID Int
     | Interval
@@ -26,6 +25,7 @@ data Value t
     | Squeeze
 
 type PatternV t = Pattern () (Closed (Scope String t))
+data Eval t = SynEval (Closed t) | PatEval [([PatternV t String], Closed (Scope String t))]
 
 type ID = Int
 data Level = Level Int | NoLevel
@@ -36,7 +36,6 @@ instance Eq (Value t) where
     Pi{} == Pi{} = True
     Con i _ == Con i' _ = i == i'
     FunCall n _ == FunCall n' _ = n == n'
-    FunSyn n _ == FunSyn n' _ = n == n'
     Universe l == Universe l' = l == l'
     DataType n _ == DataType n' _ = n == n'
     Interval == Interval = True

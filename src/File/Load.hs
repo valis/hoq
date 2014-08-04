@@ -17,7 +17,7 @@ import Syntax.PrettyPrinter()
 import TypeChecking.Definitions
 import TypeChecking.Monad
 
-loadFile :: (MonadIO m, MonadFix m) => String -> ScopeM m ()
+loadFile :: (MonadIO m, MonadFix m) => String -> ScopeT m ()
 loadFile filename = do
     (errs, _) <- runWarnT $ do
         mcnt <- liftIO $ fmap Right (B.readFile filename)

@@ -6,8 +6,6 @@ module TypeChecking.Expressions
     ) where
 
 import Control.Monad
-import Data.List
-import Data.Maybe
 import Data.Void
 import Data.Bifunctor
 
@@ -69,34 +67,14 @@ typeCheckCtx ctx term mty = go ctx term [] $ fmap (nfType WHNF) mty
     go :: (Monad m, Eq a) => Context a -> Term (Posn, Syntax) Void -> [Term (Posn, Syntax) Void] -> Maybe (Type Semantics a) -> TCM m (Term Semantics a, Type Semantics a)
     go ctx (Apply (pos, Ident var) _) ts mty = do
         when (var == "_") $ throwError [emsgLC pos "Expected an identifier" enull]
-        let mdt = case mty >>= fst . collect . getType of
-                    Just (Semantics (Ident dtn) (DataType dti _)) -> Just (dtn,dti)
+        let mdt = case fmap (collect . getType) mty of
+                    Just (Just (Semantics (Ident dtn) (DataType dti _)), params) -> Just (dtn,(dti,params))
                     _ -> Nothing
-        mt <- lift $ getEntry var (fmap fst mdt)
+        mt <- lift $ getEntry var (fmap snd mdt)
         eres <- case mt of
-            [FunctionE (Apply (Semantics _ (FunCall n clauses)) _) ty]  -> return $ Left (cterm $ Semantics (Ident var) $ FunCall n clauses, fmap (liftBase ctx) ty)
-            [FunctionE (Apply (Semantics _ (FunSyn n expr)) _) ty]      -> return $ Left (cterm $ Semantics (Ident var) $ FunSyn  n expr   , fmap (liftBase ctx) ty)
-            DataTypeE n ty e : _                                        -> return $ Left (cterm $ Semantics (Ident var) $ DataType n e     , fmap (liftBase ctx) ty)
-            [ConstructorE _ (ScopeTerm con) (ScopeTerm ty, lvl)] ->
-                return $ Left (fmap (liftBase ctx) con, Type (fmap (liftBase ctx) ty) lvl)
-            [ConstructorE _ con (ty, lvl)] -> case (fmap (collect . getType) mty, mty) of
-                (Just (Just (Semantics _ DataType{}), params), _) ->
-                    let liftTerm = instantiate params . fmap (liftBase ctx)
-                    in  return $ Left (liftTerm con, Type (liftTerm ty) lvl)
-                (_, Just (Type ty' _)) -> throwError [emsgLC pos "" $ pretty "Expected type:" <+> prettyOpen ctx ty'
-                                                                   $$ pretty ("But given data constructor " ++ show var)]
-                _ -> throwError [inferParamsErrorMsg pos var]
-            [] -> do
-                cons <- lift (getConstructorDataTypes var)
-                case cons of
-                    []    -> liftM Right (typeCheckKeyword ctx pos var ts mty)
-                    [act] -> throwError [emsgLC pos "" $
-                        pretty ("Expected data type: " ++ fst (fromJust mdt)) $$
-                        pretty ("Actual data type: " ++ act)]
-                    acts -> throwError [emsgLC pos "" $
-                        pretty ("Expected data type: " ++ fst (fromJust mdt)) $$
-                        pretty ("Posible data types: " ++ intercalate ", " acts)]
-            _  -> throwError [inferErrorMsg pos $ show var]
+            [] -> liftM Right (typeCheckKeyword ctx pos var ts mty)
+            [(s,ty)] -> return $ Left (cterm s, ty)
+            _ -> throwError [emsgLC pos ("Ambiguous identifier: " ++ show var) enull]
         case eres of
             Left (te, ty) -> do
                 (tes, Type ty' lvl') <- typeCheckApps pos ctx ts ty

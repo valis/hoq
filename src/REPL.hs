@@ -19,7 +19,7 @@ import TypeChecking.Monad
 import TypeChecking.Expressions
 import Normalization
 
-ep :: NF -> String -> ScopeM IO ()
+ep :: NF -> String -> ScopeT IO ()
 ep mode str = do
     mres <- runWarnT $ do
         term <- pExpr (C.pack str)
@@ -29,14 +29,14 @@ ep mode str = do
         ([], Just term) -> putStrLn $ render $ ppTerm $ first syntax (nf mode term)
         (errs, _)       -> mapM_ (hPutStrLn stderr . erender) errs
 
-processCmd :: String -> String -> ScopeM IO ()
+processCmd :: String -> String -> ScopeT IO ()
 processCmd "quit" _   = liftIO exitSuccess
 processCmd "nf"   str = ep NF str
 processCmd "step" str = ep Step str
 processCmd "whnf" str = ep WHNF str
 processCmd cmd _ = liftIO $ hPutStrLn stderr $ "Unknown command " ++ cmd
 
-repl :: ScopeM IO ()
+repl :: ScopeT IO ()
 repl = go ""
   where
     go last = do

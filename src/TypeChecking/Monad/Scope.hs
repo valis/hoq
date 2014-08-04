@@ -3,61 +3,95 @@
 module TypeChecking.Monad.Scope
     ( ScopeT, runScopeT
     , addFunction, addConstructor, addDataType
-    , deleteDataType, deleteFunction
-    , getConstructor, getConstructorDataTypes
-    , Entry(..), getEntry
+    , replaceDataType, replaceFunction
+    , getDataType, getFunction
+    , getConstructor, getEntry
     ) where
 
 import Control.Monad
 import Control.Monad.Fix
 import Control.Monad.State
 import Control.Applicative
-import Data.List
 import Data.Maybe
+import Data.Void
 
-data Entry a b c d = FunctionE a b | DataTypeE Int b Int | ConstructorE Int c d
+import Syntax
+import Semantics
+import Semantics.Value
 
-data ScopeState a b c d = ScopeState
-    { functions    :: [(String, (a, b))]
-    , dataTypes    :: [(String, (b, Int))]
-    , constructors :: [((String, String), (Int, c, d))]
+data ScopeState = ScopeState
+    { functions    :: [(String, (Semantics, Type Semantics Void))]
+    , dataTypes    :: [(String, (Semantics, Type Semantics Void))]
+    , constructors :: [((String, ID), (Int, Semantics, Type Semantics Void))]
+    , counter      :: ID
     }
 
-newtype ScopeT a b c d m a' = ScopeT { unScopeT :: StateT (ScopeState a b c d) m a' }
+newtype ScopeT m a = ScopeT { unScopeT :: StateT ScopeState m a }
     deriving (Functor,Monad,MonadTrans,MonadIO,MonadFix,Applicative)
 
-addFunction :: Monad m => String -> a -> b -> ScopeT a b c d m ()
-addFunction v te ty = ScopeT $ modify $ \scope -> scope { functions = (v, (te, ty)) : functions scope }
+addFunction :: Monad m => String -> SEval -> Type Semantics Void -> ScopeT m ID
+addFunction v e ty = ScopeT $ do
+    scope <- get
+    let (fc,scope') = updScopeFunction v e ty scope
+    put scope'
+    return fc
 
-addDataType :: Monad m => String -> b -> Int -> ScopeT a b c d m ()
-addDataType v ty b = ScopeT $ modify $ \scope -> scope { dataTypes = (v, (ty, b)) : dataTypes scope }
+replaceFunction :: Monad m => String -> SEval -> Type Semantics Void -> ScopeT m ()
+replaceFunction v e ty = ScopeT $ modify $ \scope -> case lookupDelete v (functions scope) of
+    Just ((Semantics s (FunCall i _),_), functions') -> scope { functions = (v, (Semantics s (FunCall i e), ty)) : functions' }
+    _ -> snd (updScopeFunction v e ty scope)
 
-addConstructor :: Monad m => String -> String -> Int -> c -> d -> ScopeT a b c d m ()
-addConstructor con dt n te ty = ScopeT $ modify $ \scope ->
-    scope { constructors = ((con, dt), (n, te, ty)) : constructors scope }
+updScopeFunction :: String -> SEval -> Type Semantics Void -> ScopeState -> (ID, ScopeState)
+updScopeFunction v e ty scope = (counter scope, scope
+    { functions = (v, (Semantics (Ident v) (FunCall (counter scope) e), ty)) : functions scope
+    , counter = counter scope + 1
+    })
 
-deleteDataType :: Monad m => String -> ScopeT a b c d m ()
-deleteDataType dt = ScopeT $ modify $ \scope ->
-    scope { dataTypes = deleteBy (\(v1,_) (v2,_) -> v1 == v2) (dt, error "") (dataTypes scope) }
+getFunction :: Monad m => String -> ScopeT m [(Semantics, Type Semantics Void)]
+getFunction v = ScopeT $ liftM (map snd . filter (\(v',_) -> v == v') . functions) get
 
-deleteFunction :: Monad m => String -> ScopeT a b c d m ()
-deleteFunction name = ScopeT $ modify $ \scope ->
-    scope { functions = deleteBy (\(v1,_) (v2,_) -> v1 == v2) (name, error "") (functions scope) }
+addDataType :: Monad m => String -> Int -> Type Semantics Void -> ScopeT m ID
+addDataType v n ty = ScopeT $ do
+    scope <- get
+    let (dt,scope') = updScopeDataType v n ty scope
+    put scope'
+    return dt
 
-getConstructor :: Monad m => String -> Maybe String -> ScopeT a b c d m [(Int, c, d)]
+replaceDataType :: Monad m => String -> Int -> Type Semantics Void -> ScopeT m ()
+replaceDataType v n ty = ScopeT $ modify $ \scope -> case lookupDelete v (dataTypes scope) of
+    Just ((Semantics s (DataType i _), _), dataTypes') -> scope { dataTypes = (v, (Semantics s (DataType i n), ty)) : dataTypes' }
+    _ -> snd (updScopeDataType v n ty scope)
+
+updScopeDataType :: String -> Int -> Type Semantics Void -> ScopeState -> (ID, ScopeState)
+updScopeDataType v n ty scope = (counter scope, scope
+    { dataTypes = (v, (Semantics (Ident v) (DataType (counter scope) n), ty)) : dataTypes scope
+    , counter = counter scope + 1
+    })
+
+getDataType :: Monad m => String -> ScopeT m [(Semantics, Type Semantics Void)]
+getDataType v = ScopeT $ liftM (map snd . filter (\(v',_) -> v == v') . dataTypes) get
+
+lookupDelete :: Eq a => a -> [(a,b)] -> Maybe (b, [(a,b)])
+lookupDelete _ [] = Nothing
+lookupDelete a' ((a,b):xs) | a == a' = Just (b, xs)
+                           | otherwise = fmap (\(b',xs') -> (b', (a,b):xs')) (lookupDelete a' xs)
+
+addConstructor :: Monad m => String -> ID -> Int -> Int -> SEval -> Type Semantics Void -> ScopeT m ()
+addConstructor con dt i n e ty = ScopeT $ modify $ \scope -> scope
+    { constructors = ((con, dt), (n, Semantics (Ident con) (Con i e), ty)) : constructors scope
+    }
+
+getConstructor :: Monad m => String -> Maybe ID -> ScopeT m [(Int, Semantics, Type Semantics Void)]
 getConstructor con (Just dt) = ScopeT $ liftM (maybeToList . lookup (con, dt) . constructors) get
 getConstructor con Nothing   = ScopeT $ liftM (map snd . filter (\((c,_),_) -> con == c) . constructors) get
 
-getConstructorDataTypes :: Monad m => String -> ScopeT a b c d m [String]
-getConstructorDataTypes con = ScopeT $ liftM (map (snd . fst) . filter (\((c,_),_) -> con == c) . constructors) get
-
-getEntry :: Monad m => String -> Maybe String -> ScopeT a b c d m [Entry a b c d]
+getEntry :: Monad m => String -> Maybe (ID, [Term Semantics a]) -> ScopeT m [(Semantics, Type Semantics a)]
 getEntry v dt = ScopeT $ do
-    cons  <- unScopeT (getConstructor v dt)
+    cons  <- unScopeT $ getConstructor v (fmap fst dt)
     scope <- get
-    return $ map (uncurry FunctionE) (maybeToList $ lookup v $ functions scope)
-          ++ (if isNothing dt then map (uncurry $ DataTypeE 0) (maybeToList $ lookup v $ dataTypes scope) else [])
-          ++ map (\(i,c,d) -> ConstructorE i c d) cons
+    return $ map (\(s,t) -> (s, vacuous t)) (maybeToList (lookup v $ functions scope) ++
+                if isNothing dt then maybeToList $ lookup v $ dataTypes scope else [])
+            ++ (map (\(_, s, Type t l) -> (s, Type (bapps (vacuous t) (maybe [] snd dt)) l)) cons)
 
-runScopeT :: Monad m => ScopeT a b c d m a' -> m a'
-runScopeT (ScopeT f) = evalStateT f $ ScopeState [] [] []
+runScopeT :: Monad m => ScopeT m a -> m a
+runScopeT (ScopeT f) = evalStateT f $ ScopeState [] [] [] 0

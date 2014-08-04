@@ -27,18 +27,18 @@ typeCheckDataType :: MonadFix m => PIdent -> [Tele] -> [Con] -> [Clause] -> TCM 
 typeCheckDataType p@(PIdent pos dt) params cons conds = mdo
     let lcons = length cons
     (SomeEq ctx, dataType@(Type dtTerm _)) <- checkTele Nil params (universe NoLevel)
-    addDataTypeCheck p dataType lcons
+    dtid <- addDataTypeCheck p lcons dataType
     cons' <- forW (zip cons [0..]) $ \(ConDef con@(PIdent pos conName) tele, i) -> do
-        let dtid = 0
-        (_, Type conType conLevel) <- checkTele ctx tele $ capps (Semantics (Ident dt) (DataType dtid lcons)) (ctxToVars ctx)
+        (_, Type conType conLevel) <- checkTele ctx tele $ capps (Semantics (Ident dt) $ DataType dtid lcons) (ctxToVars ctx)
         checkPositivity pos dtid (nf WHNF conType)
-        let conTerm = Semantics (Ident conName) $ Con i (map snd $ filter (\(c,_) -> c == conName) conds')
-        return $ Just (con, conTerm, Type conType conLevel)
-    forM_ cons' $ \(con, te, Type ty lvl) ->
-        addConstructorCheck con dt lcons (abstractTermInCtx ctx $ cterm te) (abstractTermInCtx ctx ty) lvl
+        let conds'' = map snd $ filter (\(c,_) -> c == conName) conds'
+            conTerm = Semantics (Ident conName) $ Con i (PatEval conds'')
+        return $ Just (con, (i, conds'', conTerm), Type conType conLevel)
+    forM_ cons' $ \(con, (i, cs, _), Type ty lvl) ->
+        addConstructorCheck con dtid i lcons (PatEval cs) $ Type (snd $ abstractTerm ctx ty) lvl
     conds' <- forW conds $ \(Clause (PIdent pos con) pats expr) ->
         case find (\(PIdent _ c, _, _) -> c == con) cons' of
-            Just (_, Semantics _ (Con i _), ty) -> do
+            Just (_, (i, _, _), ty) -> do
                 (bf, TermsInCtx ctx' _ ty', rtpats) <- typeCheckPatterns ctx (nfType WHNF ty) pats
                 when bf $ warn [emsgLC pos "Absurd patterns are not allowed in conditions" enull]
                 (term, _) <- typeCheckCtx (ctx +++ ctx') expr (Just ty')
@@ -48,11 +48,10 @@ typeCheckDataType p@(PIdent pos dt) params cons conds = mdo
             _ -> do
                 warn [notInScope pos "data constructor" con]
                 return Nothing
-    lift $ deleteDataType dt
     let lvls = map (\(_, _, Type _ lvl) -> lvl) cons'
         lvl = if null lvls then NoLevel else maximum lvls
-    lift $ addDataType dt (Type (replaceLevel dtTerm lvl) lvl) lcons
-    forM_ cons' $ \(PIdent pos _, con@(Semantics _ (Con _ conds)), _) -> warn $ checkConditions pos (Closed $ cterm con) conds
+    lift $ replaceDataType dt lcons $ Type (replaceLevel dtTerm lvl) lvl
+    forM_ cons' $ \(PIdent pos _, (_, conds, con), _) -> warn $ checkConditions pos (Closed $ cterm con) conds
 
 data SomeEq f = forall a. Eq a => SomeEq (f a)
 

@@ -2,7 +2,7 @@
     
 module Semantics
     ( Semantics(..), Type(..)
-    , SValue, PatternC
+    , SValue, SEval, PatternC
     , lessOrEqual, pcompare
     , apps, capps, collect
     , dropOnePi, iCon, universe
@@ -22,6 +22,7 @@ data Semantics = Semantics
     }
 
 type SValue = Value (Term Semantics)
+type SEval = Eval (Term Semantics)
 type PatternC = PatternV (Term Semantics)
 
 instance Eq Semantics where

@@ -1,6 +1,6 @@
 module Syntax.Term
     ( Term(..)
-    , cterm
+    , cterm, bapps
     , module Syntax.Scope
     ) where
 
@@ -42,3 +42,7 @@ instance Monad (Term p) where
 
 cterm :: p -> Term p a
 cterm p = Apply p []
+
+bapps :: Term s a -> [Term s a] -> Term s a
+bapps (Lambda (Scope1 t)) (t1:ts) = bapps (instantiate1 t1 t) ts
+bapps t _ = t

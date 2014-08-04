@@ -27,8 +27,7 @@ typeCheckFunction p@(PIdent pos name) ety clauses = do
             Apply (Semantics _ (Universe lvl)) _ -> return lvl
             _ -> throwError [emsgLC (termPos ety) "" $ pretty "Expected a type"
                                                     $$ pretty "Actual type:" <+> prettyOpen Nil ty]
-    let fcid = 0
-    addFunctionCheck p (cterm $ Semantics (Ident name) $ FunCall fcid []) (Type ty lvl)
+    fcid <- addFunctionCheck p (PatEval []) (Type ty lvl)
     clausesAndPats <- forW clauses $ \(pos,pats,mexpr) ->  do
         (bf, TermsInCtx ctx _ ty', rtpats) <- typeCheckPatterns Nil (Type (nf WHNF ty) lvl) pats
         case (bf,mexpr) of
@@ -46,11 +45,10 @@ typeCheckFunction p@(PIdent pos name) ety clauses = do
                 let scope = closed (abstractTermInCtx ctx term)
                 throwErrors (checkTermination fcid pos rtpats scope)
                 return $ Just ((rtpats, scope), (pos, rtpats))
-    lift (deleteFunction name)
     let clauses' = map fst clausesAndPats
-        fc = Closed $ cterm $ Semantics (Ident name) $ FunCall fcid $
-            map (fmap $ \(Closed scope) -> Closed $ replaceFunCallsScope fcid fc scope) clauses'
-    lift $ addFunction name (open fc) (Type ty lvl)
+        eval = PatEval $ map (fmap $ \(Closed scope) -> Closed $ replaceFunCallsScope fcid fc scope) clauses'
+        fc = Closed $ cterm $ Semantics (Ident name) (FunCall fcid eval)
+    lift $ replaceFunction name eval (Type ty lvl)
     case checkCoverage (map snd clausesAndPats) of
         Nothing -> when (length clausesAndPats == length (filter (\(_,_,me) -> isJust me) clauses)) $
                 warn [emsgLC pos "Incomplete pattern matching" enull]
