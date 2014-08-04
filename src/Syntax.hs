@@ -17,7 +17,7 @@ data Clause = Clause PIdent [PatternP PIdent] RawExpr
 type Import = [String]
 data Tele = VarsTele [PIdent] RawExpr | TypeTele RawExpr
 data Con = ConDef PIdent [Tele]
-type PatternP = Pattern Posn (Closed (Scope String (Term (Posn, Syntax))))
+type PatternP = Pattern Posn (Closed (Term (Posn, Syntax)))
 
 data Def
     = DefType PIdent RawExpr

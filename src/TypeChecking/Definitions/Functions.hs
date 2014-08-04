@@ -25,8 +25,8 @@ typeCheckFunction p@(PIdent pos name) ety clauses = do
     (ty, Type u _) <- typeCheck ety Nothing
     lvl <- case nf WHNF u of
             Apply (Semantics _ (Universe lvl)) _ -> return lvl
-            _ -> throwError [emsgLC (termPos ety) "" $ pretty "Expected a type"
-                                                    $$ pretty "Actual type:" <+> prettyOpen Nil ty]
+            u' -> throwError [emsgLC (termPos ety) "" $ pretty "Expected a type"
+                                                     $$ pretty "Actual type:" <+> prettyOpen Nil u']
     fcid <- addFunctionCheck p (PatEval []) (Type ty lvl)
     clausesAndPats <- forW clauses $ \(pos,pats,mexpr) ->  do
         (bf, TermsInCtx ctx _ ty', rtpats) <- typeCheckPatterns Nil (Type (nf WHNF ty) lvl) pats
@@ -42,11 +42,11 @@ typeCheckFunction p@(PIdent pos name) ety clauses = do
                 return Nothing
             (False, Just expr) -> do
                 (term, _) <- typeCheckCtx ctx expr (Just ty')
-                let scope = closed (abstractTermInCtx ctx term)
+                let scope = closed (abstractTerm ctx term)
                 throwErrors (checkTermination (Right fcid) pos rtpats scope)
                 return $ Just ((rtpats, scope), (pos, rtpats))
     let clauses' = map fst clausesAndPats
-        eval = PatEval $ map (fmap $ \(Closed scope) -> Closed $ replaceFunCallsScope fcid fc scope) clauses'
+        eval = PatEval $ map (fmap $ \(Closed scope) -> Closed $ replaceFunCalls fcid fc scope) clauses'
         fc = Closed $ cterm $ Semantics (Ident name) (FunCall fcid eval)
     lift $ replaceFunction name eval (Type ty lvl)
     case checkCoverage (map snd clausesAndPats) of
@@ -55,12 +55,8 @@ typeCheckFunction p@(PIdent pos name) ety clauses = do
         Just uc -> warn $ map (\pos -> emsgLC pos "Unreachable clause" enull) uc
     warn $ checkConditions pos fc (map fst clausesAndPats)
 
-replaceFunCallsScope :: ID -> Closed (Term Semantics) -> Scope s (Term Semantics) a -> Scope s (Term Semantics) a
-replaceFunCallsScope name fc (ScopeTerm term) = ScopeTerm (replaceFunCalls name fc term)
-replaceFunCallsScope name fc (Scope v scope)  = Scope v   (replaceFunCallsScope name fc scope)
-
 replaceFunCalls :: ID -> Closed (Term Semantics) -> Term Semantics a -> Term Semantics a
 replaceFunCalls name fc t@Var{} = t
 replaceFunCalls name fc (Apply (Semantics _ (FunCall name' _)) ts) | name == name' = open fc
 replaceFunCalls name fc (Apply s ts) = Apply s $ map (replaceFunCalls name fc) ts
-replaceFunCalls name fc (Lambda (Scope1 t)) = Lambda $ Scope1 (replaceFunCalls name fc t)
+replaceFunCalls name fc (Lambda t) = Lambda (replaceFunCalls name fc t)

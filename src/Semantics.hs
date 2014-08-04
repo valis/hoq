@@ -18,12 +18,12 @@ import Syntax.Pattern
 
 data Semantics = Semantics
     { syntax :: S.Syntax
-    , value :: Value (Term Semantics)
+    , value :: SValue
     }
 
-type SValue = Value (Term Semantics)
-type SEval = Eval (Term Semantics)
-type PatternC = PatternV (Term Semantics)
+type SValue = Value (Closed (Term Semantics))
+type SEval = Eval (Closed (Term Semantics))
+type PatternC = Pattern () (Closed (Term Semantics))
 
 instance Eq Semantics where
     s1 == s2 = value s1 == value s2
@@ -35,15 +35,15 @@ instance Functor (Type p) where
 
 instance Eq a => Eq (Term Semantics a) where
     Var a == Var a' = a == a'
-    Lambda (Scope1 t) == Lambda (Scope1 t') = t == t'
+    Lambda t == Lambda t' = t == t'
     Apply (Semantics _ App) ts == Apply (Semantics _ App) ts' = ts == ts'
-    Apply s@(Semantics _ Lam) [Lambda (Scope1 t)] == Apply s'@(Semantics _ Lam) [Lambda (Scope1 t')] = Apply s [t] == Apply s' [t']
-    Apply s@(Semantics _ Lam) [Lambda (Scope1 t)] == t' = Apply s [t] == Apply (Semantics S.App App) [fmap Free t', Var Bound]
+    Apply s@(Semantics _ Lam) [Lambda t] == Apply s'@(Semantics _ Lam) [Lambda t'] = Apply s [t] == Apply s' [t']
+    Apply s@(Semantics _ Lam) [Lambda t] == t' = Apply s [t] == Apply (Semantics S.App App) [fmap Free t', Var Bound]
     Apply (Semantics _ Lam) [t] == t' = t == t'
     t == t'@(Apply (Semantics _ Lam) _) = t' == t
     t@(Apply (Semantics _ Pi{}) _) == t'@(Apply (Semantics _ Pi{}) _) = pcompare t t' == Just EQ
     Apply (Semantics _ PCon) ts == Apply (Semantics _ PCon) ts' = ts == ts'
-    Apply (Semantics _ PCon) [Apply (Semantics _ Lam) [Lambda (Scope1 (Apply (Semantics _ At) [_,_,t,Var Bound]))]] == t' = t == fmap Free t'
+    Apply (Semantics _ PCon) [Apply (Semantics _ Lam) [Lambda (Apply (Semantics _ At) [_,_,t,Var Bound])]] == t' = t == fmap Free t'
     t == t'@(Apply (Semantics _ PCon) _) = t' == t
     Apply (Semantics _ At) (_:_:ts) == Apply (Semantics _ At) (_:_:ts') = ts == ts'
     Apply s ts == Apply s' ts' = s == s' && ts == ts'
@@ -58,11 +58,11 @@ pcompare :: Eq a => Term Semantics a -> Term Semantics a -> Maybe Ordering
 pcompare (Apply t ts) (Apply t' ts') = go t ts t' ts'
   where
     go :: Eq a => Semantics -> [Term Semantics a] -> Semantics -> [Term Semantics a] -> Maybe Ordering
-    go p@(Semantics _ Pi{}) [a, Lambda (Scope1 b)] p'@(Semantics _ Pi{}) [a', Lambda (Scope1 b')] =
+    go p@(Semantics _ Pi{}) [a, Lambda b] p'@(Semantics _ Pi{}) [a', Lambda b'] =
         go p [fmap Free a, b] p' [fmap Free a', b']
-    go p@(Semantics _ Pi{}) [a, b] p'@(Semantics _ Pi{}) [a', Lambda (Scope1 b')] =
+    go p@(Semantics _ Pi{}) [a, b] p'@(Semantics _ Pi{}) [a', Lambda b'] =
         go p [fmap Free a, fmap Free b] p' [fmap Free a', b']
-    go p@(Semantics _ Pi{}) [a, Lambda (Scope1 b)] p'@(Semantics _ Pi{}) [a', b'] =
+    go p@(Semantics _ Pi{}) [a, Lambda b] p'@(Semantics _ Pi{}) [a', b'] =
         go p [fmap Free a, b] p' [fmap Free a', fmap Free b']
     go p@(Semantics _ Pi{}) [a, b] p'@(Semantics _ Pi{}) [a', b'] = contraCovariant (pcompare a a') (pcompare b b')
     go (Semantics _ (Universe u)) _ (Semantics _ (Universe u')) _ = Just $ compare (level u) (level u')
@@ -95,8 +95,8 @@ collect = go []
     go as _ = (Nothing, as)
 
 dropOnePi :: Semantics -> Term Semantics a -> Term Semantics a -> (String, Term Semantics (Scoped a))
-dropOnePi (Semantics (S.Pi [v]) _) a (Lambda (Scope1 b)) = (v, b)
-dropOnePi (Semantics (S.Pi (v:vs)) s) a (Lambda (Scope1 b)) = (v, Apply (Semantics (S.Pi vs) s) [fmap Free a, b])
+dropOnePi (Semantics (S.Pi [v]) _) a (Lambda b) = (v, b)
+dropOnePi (Semantics (S.Pi (v:vs)) s) a (Lambda b) = (v, Apply (Semantics (S.Pi vs) s) [fmap Free a, b])
 dropOnePi _ _ b = ("_", fmap Free b)
 
 iCon :: ICon -> Term Semantics a

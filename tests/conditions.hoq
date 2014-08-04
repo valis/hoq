@@ -41,3 +41,11 @@ test7 (Foo' (suc zero)) = suc zero
 test7 (Foo' (suc (suc x))) = suc (suc x)
 test7 (Bar' zero) = suc zero
 test7 (Bar' (suc x)) = suc x
+
+test8 : Z -> Nat -> Nat -> Nat
+test8 (positive x) y z = y
+test8 (negative x) y z = y
+
+test9 : Z -> Nat -> Nat -> Nat
+test9 (positive x) y z = x
+test9 (negative x) y z = z

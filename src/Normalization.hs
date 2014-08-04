@@ -14,7 +14,7 @@ data NF = NF | Step | WHNF deriving Eq
 
 nf :: Eq a => NF -> Term Semantics a -> Term Semantics a
 nf mode (Apply t ts) = nfSemantics mode t ts
-nf mode (Lambda (Scope1 t)) | mode /= WHNF = Lambda $ Scope1 (nf mode t)
+nf mode (Lambda t) | mode /= WHNF = Lambda (nf mode t)
 nf _ t = t
 
 nfSemantics :: Eq a => NF -> Semantics -> [Term Semantics a] -> Term Semantics a
@@ -22,9 +22,9 @@ nfSemantics mode t ts = go t ts []
   where
     go (Semantics _ App) [a@Var{}, t] ts = apps a $ nfs mode (t:ts)
     go (Semantics _ App) [Apply a as, t] ts = go a as (t:ts)
-    go (Semantics (S.Lam (_:vs)) Lam) [Lambda (Scope1 a@Lambda{})] (t:ts) =
+    go (Semantics (S.Lam (_:vs)) Lam) [Lambda a@Lambda{}] (t:ts) =
         goStep (Apply (Semantics (S.Lam $ tail vs) Lam) [instantiate1 t a]) ts
-    go (Semantics _ Lam) [Lambda (Scope1 s)] (t:ts) = goStep (instantiate1 t s) ts
+    go (Semantics _ Lam) [Lambda s] (t:ts) = goStep (instantiate1 t s) ts
     go t@(Semantics _ (Con c (PatEval conds))) _ ts = case instantiateClauses conds ts of
         Just (t', ts')  -> goStep t' ts'
         _               -> capps t (nfs mode ts)
@@ -84,18 +84,18 @@ nfs :: Eq a => NF -> [Term Semantics a] -> [Term Semantics a]
 nfs WHNF terms = terms
 nfs mode terms = map (nf mode) terms
 
-instantiatePat :: Eq a => [PatternC s] -> Scope b (Term Semantics) a
-    -> [Term Semantics a] -> Maybe (Term Semantics a, [Term Semantics a])
-instantiatePat [] (ScopeTerm term) terms = Just (term, terms)
-instantiatePat (PatternVar _ : pats) (Scope _ scope) (term:terms) = instantiatePat pats (instantiateScope term scope) terms
-instantiatePat (PatternI _ con : pats) scope (term:terms) = case nf WHNF term of
-    Apply (Semantics _ (ICon i)) _ | i == con -> instantiatePat pats scope terms
+instantiatePat :: Eq a => [PatternC s] -> Term Semantics a -> [Term Semantics a] -> Maybe (Term Semantics a, [Term Semantics a])
+instantiatePat [] Lambda{} _ = Nothing
+instantiatePat [] term terms = Just (term, terms)
+instantiatePat (PatternVar _ : pats) (Lambda s) (term:terms) = instantiatePat pats (instantiate1 term s) terms
+instantiatePat (PatternI _ con : pats) s (term:terms) = case nf WHNF term of
+    Apply (Semantics _ (ICon i)) _ | i == con -> instantiatePat pats s terms
     _ -> Nothing
-instantiatePat (Pattern (PatternCon con _ _ _) pats1 : pats) scope (term:terms) = case collect (nf WHNF term) of
-    (Just (Semantics _ (Con i _)), terms1) | i == con -> instantiatePat (pats1 ++ pats) scope (terms1 ++ terms)
+instantiatePat (Pattern (PatternCon con _ _ _) pats1 : pats) s (term:terms) = case collect (nf WHNF term) of
+    (Just (Semantics _ (Con i _)), terms1) | i == con -> instantiatePat (pats1 ++ pats) s (terms1 ++ terms)
     _ -> Nothing
 instantiatePat _ _ _ = Nothing
 
-instantiateClauses :: Eq a => [([PatternC s], Closed (Scope b (Term Semantics)))]
+instantiateClauses :: Eq a => [([PatternC s], Closed (Term Semantics))]
     -> [Term Semantics a] -> Maybe (Term Semantics a, [Term Semantics a])
-instantiateClauses clauses terms = msum $ map (\(pats, Closed scope) -> instantiatePat pats scope terms) clauses
+instantiateClauses clauses terms = msum $ map (\(pats, Closed s) -> instantiatePat pats s terms) clauses

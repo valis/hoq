@@ -7,7 +7,6 @@ module TypeChecking.Definitions.DataTypes
 import Control.Monad
 import Control.Monad.Fix
 import Data.List
-import Data.Bifunctor
 import Data.Bifoldable
 import Data.Void
 
@@ -35,14 +34,14 @@ typeCheckDataType p@(PIdent pos dt) params cons conds = mdo
             conTerm = Semantics (Ident conName) $ Con i (PatEval conds'')
         return $ Just (con, (i, conds'', conTerm), Type conType conLevel)
     forM_ cons' $ \(con, (i, cs, _), Type ty lvl) ->
-        addConstructorCheck con dtid i lcons (PatEval cs) $ Type (snd $ abstractTerm ctx ty) lvl
+        addConstructorCheck con dtid i lcons (PatEval cs) $ Type (abstractTerm ctx ty) lvl
     conds' <- forW conds $ \(Clause (PIdent pos con) pats expr) ->
         case find (\(PIdent _ c, _, _) -> c == con) cons' of
             Just (_, (i, _, _), ty) -> do
                 (bf, TermsInCtx ctx' _ ty', rtpats) <- typeCheckPatterns ctx (nfType WHNF ty) pats
                 when bf $ warn [emsgLC pos "Absurd patterns are not allowed in conditions" enull]
                 (term, _) <- typeCheckCtx (ctx +++ ctx') expr (Just ty')
-                let scope = closed (abstractTermInCtx ctx' term)
+                let scope = closed (abstractTerm ctx' term)
                 throwErrors (checkTermination (Left i) pos rtpats scope)
                 return $ Just (con, (rtpats, scope))
             _ -> do
@@ -68,31 +67,26 @@ checkTele ctx (VarsTele vars expr : tele) term = do
     case extendCtx (map getName vars) Nil (Type r1 lvl1) of
         SomeEq ctx' -> do
             (rctx, Type r2 lvl2) <- checkTele (ctx +++ ctx') tele $ fmap (liftBase ctx') term
-            let (vs,r2') = abstractTerm ctx' r2
-            return (rctx, Type (Apply (Semantics (S.Pi vs) $ V.Pi lvl1 lvl2) [r1,r2']) $ max lvl1 lvl2)
+            return (rctx, Type (Apply (Semantics (S.Pi $ reverse $ ctxVars ctx') $ V.Pi lvl1 lvl2) [r1, abstractTerm ctx' r2]) $ max lvl1 lvl2)
 checkTele ctx (TypeTele expr : tele) term = do
     (r1, Type t1 _) <- typeCheckCtx ctx expr Nothing
     lvl1 <- checkIsType ctx (termPos expr) (nf WHNF t1)
     (rctx, Type r2 lvl2) <- checkTele ctx tele term
     return (rctx, Type (Apply (Semantics (S.Pi []) $ V.Pi lvl1 lvl2) [r1,r2]) $ max lvl1 lvl2)
 
-abstractTerm :: Ctx s g b a -> Term p a -> ([s], Term p b)
-abstractTerm Nil term = ([], term)
-abstractTerm (Snoc ctx v _) term = first (v:) $ abstractTerm ctx $ Lambda (Scope1 term)
-
 replaceLevel :: Term Semantics a -> Level -> Term Semantics a
 replaceLevel (Apply p@(Semantics _ V.Pi{}) [a,b]) lvl = Apply p [a, replaceLevel b lvl]
-replaceLevel (Lambda (Scope1 t)) lvl = Lambda $ Scope1 (replaceLevel t lvl)
+replaceLevel (Lambda t) lvl = Lambda (replaceLevel t lvl)
 replaceLevel _ lvl = universe lvl
 
 checkPositivity :: (Eq a, Monad m) => Posn -> ID -> Term Semantics a -> EDocM m ()
 checkPositivity pos dt (Apply (Semantics _ V.Pi{}) [a,b]) = checkNoNegative pos dt (nf WHNF a) >> checkPositivity pos dt (nf WHNF b)
-checkPositivity pos dt (Lambda (Scope1 t)) = checkPositivity pos dt (nf WHNF t)
+checkPositivity pos dt (Lambda t) = checkPositivity pos dt (nf WHNF t)
 checkPositivity _ _ _ = return ()
 
 checkNoNegative :: (Eq a, Monad m) => Posn -> ID -> Term Semantics a -> EDocM m ()
 checkNoNegative pos dt (Apply (Semantics _ V.Pi{}) [a,b]) = checkNoDataType pos dt a >> checkNoNegative pos dt (nf WHNF b)
-checkNoNegative pos dt (Lambda (Scope1 t)) = checkNoNegative pos dt (nf WHNF t)
+checkNoNegative pos dt (Lambda t) = checkNoNegative pos dt (nf WHNF t)
 checkNoNegative _ _ _ = return ()
 
 checkNoDataType :: Monad m => Posn -> ID -> Term Semantics a -> EDocM m ()

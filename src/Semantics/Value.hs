@@ -1,11 +1,10 @@
 module Semantics.Value
     ( Value(..), Eval(..)
     , Level(..), level
-    , ID, PatternV
+    , ID
     ) where
 
 import Syntax.Pattern
-import Syntax.Scope
 
 data Value t
     = Lam
@@ -24,8 +23,7 @@ data Value t
     | Iso
     | Squeeze
 
-type PatternV t = Pattern () (Closed (Scope String t))
-data Eval t = SynEval (Closed t) | PatEval [([PatternV t String], Closed (Scope String t))]
+data Eval t = SynEval t | PatEval [([Pattern () t String], t)]
 
 type ID = Int
 data Level = Level Int | NoLevel

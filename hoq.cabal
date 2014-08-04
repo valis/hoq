@@ -29,7 +29,7 @@ executable hoq
   other-modules:       REPL,
                        Normalization, 
                        File.Load,
-                       Syntax, Syntax.Scope, Syntax.Term,
+                       Syntax, Syntax.Term,
                        Syntax.PrettyPrinter,
                        Syntax.ErrorDoc, Syntax.Pattern,
                        Syntax.Parser.Lexer, Syntax.Parser.Parser,

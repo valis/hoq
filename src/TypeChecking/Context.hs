@@ -4,7 +4,7 @@ module TypeChecking.Context where
 
 import Control.Monad
 
-import Syntax.Scope
+import Syntax.Term
 
 data Ctx s f b a where
     Nil  :: Ctx s f b b
@@ -47,9 +47,10 @@ toBase Nil b = Just b
 toBase Snoc{} Bound = Nothing
 toBase (Snoc ctx _ _) (Free a) = toBase ctx a
 
-abstractTermInCtx :: Ctx s g b a -> f a -> Scope s f b
-abstractTermInCtx ctx term = go ctx (ScopeTerm term)
-  where
-    go :: Ctx s g b a -> Scope s f a -> Scope s f b
-    go Nil t = t
-    go (Snoc ctx s _) t = go ctx (Scope s t)
+ctxVars :: Ctx s f b a -> [s]
+ctxVars Nil = []
+ctxVars (Snoc ctx v _) = v : ctxVars ctx
+
+abstractTerm :: Ctx s f b a -> Term p a -> Term p b
+abstractTerm Nil term = term
+abstractTerm (Snoc ctx v _) term = abstractTerm ctx (Lambda term)

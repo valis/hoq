@@ -38,14 +38,14 @@ typeCheckPattern ctx (Type ty lvl) (PatternVar (PIdent pos var)) = case collect 
     (Just (Semantics _ (DataType dt _)), params) -> do
         cons <- lift $ getConstructor var (Just dt)
         case cons of
-            [] -> return (False, Just $ TermInCtx (Snoc Nil var $ Type ty lvl) $ Var Bound, PatternVar var)
             (n, con@(Semantics (Ident conName) (Con i (PatEval conds))), Type conType _):_ -> if isDataType conType
                 then return (False, Just $ TermInCtx Nil $ cterm con, Pattern (PatternCon i n conName conds) [])
                 else throwError [notEnoughArgs pos var]
+            _ -> return (False, Just $ TermInCtx (Snoc Nil var $ Type ty lvl) $ Var Bound, PatternVar var)
     _ -> return (False, Just $ TermInCtx (Snoc Nil var $ Type ty lvl) $ Var Bound, PatternVar var)
   where
     isDataType :: Term Semantics a -> Bool
-    isDataType (Lambda (Scope1 t)) = isDataType t
+    isDataType (Lambda t) = isDataType t
     isDataType ty = case collect ty of
         (Just (Semantics _ DataType{}), _)  -> True
         _                                   -> False
@@ -53,13 +53,13 @@ typeCheckPattern ctx (Type ty _) (Pattern (PatternCon _ _ (PIdent pos conName) _
   | (Just (Semantics _ (DataType dt _)), params) <- collect ty = do
     cons <- lift $ getConstructor conName (Just dt)
     case cons of
-        []        -> throwError [notInScope pos "data constructor" conName]
         (n, con@(Semantics _ (Con i (PatEval conds))), Type conType lvl):_ -> do
             let conType' = Type (nf WHNF $ bapps (vacuous conType) params) lvl
             (bf, TermsInCtx ctx' terms (Type ty' _), rtpats) <- typeCheckPatterns ctx conType' pats
             case collect (nf WHNF ty') of
                 (Just (Semantics _ DataType{}), _) -> return (bf, Just $ TermInCtx ctx' (capps con terms), Pattern (PatternCon i n conName conds) rtpats)
                 _ -> throwError [notEnoughArgs pos conName]
+        _ -> throwError [notInScope pos "data constructor" conName]
 typeCheckPattern ctx (Type ty _) pat =
     throwError [emsgLC (patternGetAttr getPos pat) "" $ pretty "Unexpected pattern"
                                                      $$ pretty "Expected type:" <+> prettyOpen ctx ty]

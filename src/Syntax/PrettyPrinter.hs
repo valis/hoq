@@ -42,7 +42,7 @@ ppList :: [String] -> [Term Syntax Doc] -> Doc
 ppList ctx ts = hsep $ map (ppTermPrec (prec App + 1) ctx) ts
 
 ppBound :: Int -> [String] -> [String] -> Term Syntax Doc -> Doc
-ppBound p ctx (v:vs) (Lambda (Scope1 t)) =
+ppBound p ctx (v:vs) (Lambda t) =
     let (ctx',v') = renameName2 v ctx (freeVars t)
     in ppBound p ctx' vs $ instantiate1 (cterm $ Ident v') t
 ppBound p ctx _ t = ppTermPrec p ctx t
@@ -72,4 +72,4 @@ prec Lam{}      = 5
 precTerm :: Term Syntax a -> Int
 precTerm Var{} = 10
 precTerm (Apply s _) = prec s
-precTerm (Lambda (Scope1 t)) = precTerm t
+precTerm (Lambda t) = precTerm t

@@ -16,43 +16,32 @@ import Syntax.ErrorDoc
 import TypeChecking.Context
 import Normalization
 
-checkConditions :: S.Posn -> Closed (Term Semantics) -> [([PatternC String], Closed (Scope String (Term Semantics)))] -> [EMsg (Term S.Syntax)]
+checkConditions :: S.Posn -> Closed (Term Semantics) -> [([PatternC String], Closed (Term Semantics))] -> [EMsg (Term S.Syntax)]
 checkConditions lc func cs =
-    maybeToList $ msum $ map (\(p, scope) -> fmap (uncurry msg) $ checkPatterns func (map fst cs) p scope) cs
+    maybeToList $ msum $ map (\(p, scope) -> fmap msg $ checkPatterns func (map fst cs) p scope) cs
   where
-    msg :: Scope String (Term Semantics) String -> Scope String (Term Semantics) String -> EMsg (Term S.Syntax)
-    msg t1 t2 = emsgLC lc "Conditions check failed:" $ scopeToEDoc t1 <+> pretty "is not equal to" <+> scopeToEDoc t2
+    msg :: ([String], Term Semantics String, Term Semantics String) -> EMsg (Term S.Syntax)
+    msg (vs, t1, t2) = emsgLC lc "Conditions check failed:" $ scopeToEDoc vs t1 <+> pretty "is not equal to" <+> scopeToEDoc vs t2
     
-    scopeToEDoc :: Scope String (Term Semantics) String -> EDoc (Term S.Syntax)
-    scopeToEDoc t = epretty $ bimap syntax pretty (scopeToTerm t)
-
-scopeToTerm :: Scope String (Term p) String -> Term p String
-scopeToTerm (ScopeTerm t) = t
-scopeToTerm (Scope v s) = scopeToTerm $ instantiateScope (Var v) s
+    scopeToEDoc :: [String] -> Term Semantics String -> EDoc (Term S.Syntax)
+    scopeToEDoc vs t = epretty $ bimap syntax pretty $ bapps t (map Var vs)
 
 data TermInCtx  f b = forall a. TermInCtx  (Ctx String f b a) (f a)
 data TermsInCtx f b = forall a. TermsInCtx (Ctx String f b a) [f a]
 data TermsInCtx2 f b = forall a. TermsInCtx2 (Ctx String f b a) [f a] [f a]
 
-nfScope :: Eq a => Scope s (Term Semantics) a -> Scope s (Term Semantics) a
-nfScope (ScopeTerm t) = ScopeTerm (nf NF t)
-nfScope (Scope v s) = Scope v (nfScope s)
-
-checkPatterns :: Closed (Term Semantics) -> [[PatternC String]] -> [PatternC String] -> Closed (Scope String (Term Semantics))
-    -> Maybe (Scope String (Term Semantics) String, Scope String (Term Semantics) String)
+checkPatterns :: Closed (Term Semantics) -> [[PatternC String]] -> [PatternC String]
+    -> Closed (Term Semantics) -> Maybe ([String], Term Semantics String, Term Semantics String)
 checkPatterns (Closed func) cs pats (Closed scope) =
     listToMaybe $ findSuspiciousPairs cs pats >>= \(TermsInCtx2 ctx terms terms') ->
-        let nscope1 = nfAppsScope $ abstractTermInCtx ctx (apps func terms)
-            nscope2 = abstractTermInCtx ctx (instantiate terms' scope)
-        in if nfScope nscope1 == nfScope nscope2 then [] else [(nscope1,nscope2)]
+        let nscope1 = nfApps $ abstractTerm ctx (apps func terms)
+            nscope2 = abstractTerm ctx (bapps scope terms')
+        in if nf NF nscope1 == nf NF nscope2 then [] else [(reverse $ ctxVars ctx, nscope1, nscope2)]
   where
     nfApps :: Eq a => Term Semantics a -> Term Semantics a
     nfApps (Apply t@(Semantics _ App) [a, b]) = Apply t [nfApps a, nf WHNF b]
+    nfApps (Lambda t) = Lambda (nfApps t)
     nfApps t = t
-    
-    nfAppsScope :: Eq a => Scope String (Term Semantics) a -> Scope String (Term Semantics) a
-    nfAppsScope (ScopeTerm t) = ScopeTerm (nfApps t)
-    nfAppsScope (Scope v t) = Scope v (nfAppsScope t)
 
 findSuspiciousPairs :: [[PatternC String]] -> [PatternC String] -> [TermsInCtx2 (Term Semantics) b]
 findSuspiciousPairs _ [] = []

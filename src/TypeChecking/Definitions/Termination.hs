@@ -12,7 +12,7 @@ import Semantics
 import Syntax.ErrorDoc
 import TypeChecking.Context
 
-checkTermination :: Either Int ID -> S.Posn -> [PatternC String] -> Closed (Scope String (Term Semantics)) -> [EMsg (Term S.Syntax)]
+checkTermination :: Either Int ID -> S.Posn -> [PatternC String] -> Closed (Term Semantics) -> [EMsg (Term S.Syntax)]
 checkTermination name pos pats (Closed scope) = map msg $ case scopeToCtx Nil scope of
     TermInCtx ctx term -> collectFunCalls ctx name [] term >>= \mts -> case mts of
         TermsInCtx ctx' terms -> if evalState (checkTerms ctx' pats terms) 0 == LT then [] else [pos]
@@ -53,9 +53,9 @@ checkTerms ctx (pat:pats) (term:terms) = do
 data TermInCtx  s f b = forall a. TermInCtx  (Ctx s f b a) (f a)
 data TermsInCtx s f b = forall a. TermsInCtx (Ctx s f b a) [f a]
 
-scopeToCtx :: Ctx s f b a -> Scope s f a -> TermInCtx s f b
-scopeToCtx ctx (ScopeTerm t) = TermInCtx ctx t
-scopeToCtx ctx (Scope s t) = scopeToCtx (Snoc ctx s $ error "") t
+scopeToCtx :: Ctx s (Term Semantics) b a -> Term Semantics a -> TermInCtx s (Term Semantics) b
+scopeToCtx ctx (Lambda t) = scopeToCtx (Snoc ctx (error "") $ error "") t
+scopeToCtx ctx t = TermInCtx ctx t
 
 collectFunCalls :: Ctx String (Term Semantics) b a -> Either Int ID -> [Term Semantics a]
     -> Term Semantics a -> [TermsInCtx String (Term Semantics) b]
@@ -64,9 +64,9 @@ collectFunCalls ctx name ps (Apply a as) = go ctx ps a as
     go :: Ctx String (Term Semantics) b a -> [Term Semantics a]
         -> Semantics -> [Term Semantics a] -> [TermsInCtx String (Term Semantics) b]
     go ctx ps (Semantics _ App) [t1,t2] = collectFunCalls ctx name (t2:ps) t1 ++ collectFunCalls ctx name [] t2
-    go ctx _ s@(Semantics _ Lam) [Lambda (Scope1 t)] = go (Snoc ctx (error "") $ error "") [] s [t]
+    go ctx _ s@(Semantics _ Lam) [Lambda t] = go (Snoc ctx (error "") $ error "") [] s [t]
     go ctx ps (Semantics _ Lam) [t] = collectFunCalls ctx name ps t
-    go ctx _ s@(Semantics _ Pi{}) [t1, Lambda (Scope1 t2)] = go (Snoc ctx (error "") $ error "") [] s [fmap Free t1, t2]
+    go ctx _ s@(Semantics _ Pi{}) [t1, Lambda t2] = go (Snoc ctx (error "") $ error "") [] s [fmap Free t1, t2]
     go ctx _ (Semantics _ Pi{}) [t1,t2] = collectFunCalls ctx name [] t1 ++ collectFunCalls ctx name [] t2
     go ctx ps (Semantics _ (Con name' _)) [] = if name == Left name' then [TermsInCtx ctx ps] else []
     go ctx ps (Semantics _ (FunCall name' _)) [] = if name == Right name' then [TermsInCtx ctx ps] else []
