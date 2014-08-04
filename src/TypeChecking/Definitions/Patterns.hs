@@ -29,35 +29,33 @@ typeCheckPattern ctx (Type (Apply (Semantics _ Interval) _) _) (PatternVar (PIde
     return (False, Just $ TermInCtx Nil $ iCon ILeft, PatternI () ILeft)
 typeCheckPattern ctx (Type (Apply (Semantics _ Interval) _) _) (PatternVar (PIdent _ "right")) =
     return (False, Just $ TermInCtx Nil $ iCon IRight, PatternI () IRight)
-typeCheckPattern ctx (Type ty _) (PatternEmpty _) | (Just (Semantics _ (DataType _ 0)), _) <- collect ty =
+typeCheckPattern ctx (Type (Apply (Semantics _ (DataType _ 0)) _) _) (PatternEmpty _) =
     return (True, Nothing, PatternVar "_")
 typeCheckPattern ctx (Type ty _) (PatternEmpty pos) =
     throwError [emsgLC pos "" $ pretty "Expected non-empty type:" <+> prettyOpen ctx ty]
 typeCheckPattern ctx _ (PatternVar (PIdent _ "_")) = return (False, Nothing, PatternVar "_")
-typeCheckPattern ctx (Type ty lvl) (PatternVar (PIdent pos var)) = case collect ty of
-    (Just (Semantics _ (DataType dt _)), params) -> do
-        cons <- lift $ getConstructor var (Just dt)
-        case cons of
-            (n, con@(Semantics (Ident conName) (Con i (PatEval conds))), Type conType _):_ -> if isDataType conType
-                then return (False, Just $ TermInCtx Nil $ cterm con, Pattern (PatternCon i n conName conds) [])
-                else throwError [notEnoughArgs pos var]
-            _ -> return (False, Just $ TermInCtx (Snoc Nil var $ Type ty lvl) $ Var Bound, PatternVar var)
-    _ -> return (False, Just $ TermInCtx (Snoc Nil var $ Type ty lvl) $ Var Bound, PatternVar var)
+typeCheckPattern ctx (Type ty@(Apply (Semantics _ (DataType dt _)) _) lvl) (PatternVar (PIdent pos var)) = do
+    cons <- lift $ getConstructor var (Just dt)
+    case cons of
+        (n, con@(Semantics (Ident conName) (Con i (PatEval conds))), Type conType _):_ -> if isDataType conType
+            then return (False, Just $ TermInCtx Nil $ capply con, Pattern (PatternCon i n conName conds) [])
+            else throwError [notEnoughArgs pos var]
+        _ -> return (False, Just $ TermInCtx (Snoc Nil var $ Type ty lvl) $ cvar Bound, PatternVar var)
   where
     isDataType :: Term Semantics a -> Bool
     isDataType (Lambda t) = isDataType t
-    isDataType ty = case collect ty of
-        (Just (Semantics _ DataType{}), _)  -> True
-        _                                   -> False
-typeCheckPattern ctx (Type ty _) (Pattern (PatternCon _ _ (PIdent pos conName) _) pats)
-  | (Just (Semantics _ (DataType dt _)), params) <- collect ty = do
+    isDataType (Apply (Semantics _ DataType{}) _) = True
+    isDataType _ = False
+typeCheckPattern ctx (Type ty lvl) (PatternVar (PIdent pos var)) =
+    return (False, Just $ TermInCtx (Snoc Nil var $ Type ty lvl) $ cvar Bound, PatternVar var)
+typeCheckPattern ctx (Type (Apply (Semantics _ (DataType dt _)) params) _) (Pattern (PatternCon _ _ (PIdent pos conName) _) pats) = do
     cons <- lift $ getConstructor conName (Just dt)
     case cons of
         (n, con@(Semantics _ (Con i (PatEval conds))), Type conType lvl):_ -> do
-            let conType' = Type (nf WHNF $ bapps (vacuous conType) params) lvl
+            let conType' = Type (nf WHNF $ apps (vacuous conType) params) lvl
             (bf, TermsInCtx ctx' terms (Type ty' _), rtpats) <- typeCheckPatterns ctx conType' pats
-            case collect (nf WHNF ty') of
-                (Just (Semantics _ DataType{}), _) -> return (bf, Just $ TermInCtx ctx' (capps con terms), Pattern (PatternCon i n conName conds) rtpats)
+            case nf WHNF ty' of
+                Apply (Semantics _ DataType{}) _ -> return (bf, Just $ TermInCtx ctx' (Apply con terms), Pattern (PatternCon i n conName conds) rtpats)
                 _ -> throwError [notEnoughArgs pos conName]
         _ -> throwError [notInScope pos "data constructor" conName]
 typeCheckPattern ctx (Type ty _) pat =
@@ -72,7 +70,7 @@ typeCheckPatterns ctx (Type (Apply p@(Semantics (S.Pi vs) (V.Pi l1 l2)) [a, b]) 
     (bf1, mte, rtpat) <- typeCheckPattern ctx a' pat
     TermInCtx ctx' te <- case mte of
                             Nothing ->  let var = if null vs then "_" else head vs
-                                        in return $ TermInCtx (Snoc Nil var a') (Var Bound)
+                                        in return $ TermInCtx (Snoc Nil var a') (cvar Bound)
                             Just te -> return te
     let b' = case b of
                 Lambda{} -> instantiate1 te $ fmap (fmap $ liftBase ctx') $ snd (dropOnePi p a b)

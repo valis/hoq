@@ -23,32 +23,35 @@ ppTerm :: Term Syntax Void -> Doc
 ppTerm t = ppTermCtx (freeVars t) (vacuous t)
 
 ppTermCtx :: [String] -> Term Syntax Doc -> Doc
-ppTermCtx _ (Var d) = d
+ppTermCtx ctx (Var d ts) = d <+> ppList ctx ts
 ppTermCtx ctx (Apply s ts) = ppSyntax ctx s ts
 ppTermCtx _ _ = error "ppTermCtx"
 
 ppSyntax :: [String] -> Syntax -> [Term Syntax Doc] -> Doc
-ppSyntax ctx App [t1, t2] = ppTermPrec (prec App) ctx t1 <+> ppTermPrec (prec App + 1) ctx t2
 ppSyntax ctx p@(Pi vs) [t1, t2] = (if null vs
     then ppTermPrec (prec p + 1) ctx t1
     else parens $ hsep (map text vs) <+> colon <+> ppTermCtx ctx t1) <+> arrow <+> ppBound (prec p) ctx vs t2
-ppSyntax ctx l@(Lam vs) [t] = text "\\" <> hsep (map text vs) <+> arrow <+> ppBound (prec l) ctx vs t
+ppSyntax ctx l@(Lam vs) (t:ts) = bparens (not $ null ts) (text "\\" <> hsep (map text vs) <+> arrow <+> ppBound (prec l) ctx vs t) <+> ppList ctx ts
 ppSyntax ctx t@PathImp [_,t2,t3] = ppTermPrec (prec t + 1) ctx t2 <+> equals <+> ppTermPrec (prec t + 1) ctx t3
-ppSyntax ctx t@At [_,_,t3,t4] = ppTermPrec (prec t) ctx t3 <+> text "@" <+> ppTermPrec (prec t + 1) ctx t4
+ppSyntax ctx t@At (_:_:t3:t4:ts) = ppTermPrec (prec t) ctx t3 <+> text "@" <+> ppTermPrec (prec t + 1) ctx t4 <+> ppList ctx ts
 ppSyntax ctx (Ident n) ts = text n <+> ppList ctx ts
 ppSyntax _ _ _ = error "ppSyntax"
 
 ppList :: [String] -> [Term Syntax Doc] -> Doc
-ppList ctx ts = hsep $ map (ppTermPrec (prec App + 1) ctx) ts
+ppList ctx ts = hsep $ map (ppTermPrec 10 ctx) ts
 
 ppBound :: Int -> [String] -> [String] -> Term Syntax Doc -> Doc
 ppBound p ctx (v:vs) (Lambda t) =
     let (ctx',v') = renameName2 v ctx (freeVars t)
-    in ppBound p ctx' vs $ instantiate1 (cterm $ Ident v') t
+    in ppBound p ctx' vs $ instantiate1 (capply $ Ident v') t
 ppBound p ctx _ t = ppTermPrec p ctx t
 
 ppTermPrec :: Int -> [String] -> Term Syntax Doc -> Doc
-ppTermPrec p ctx t = if p > precTerm t then parens (ppTermCtx ctx t) else ppTermCtx ctx t
+ppTermPrec p ctx t = bparens (p > precTerm t) (ppTermCtx ctx t)
+
+bparens :: Bool -> Doc -> Doc
+bparens True d = parens d
+bparens False d = d
 
 arrow :: Doc
 arrow = text "->"
@@ -63,7 +66,6 @@ renameName2 var ctx ctx' = if var `elem` ctx && var `elem` ctx'
 
 prec :: Syntax -> Int
 prec Ident{}    = 10
-prec App        = 9
 prec At         = 8
 prec PathImp{}  = 7
 prec Pi{}       = 6
@@ -71,5 +73,6 @@ prec Lam{}      = 5
 
 precTerm :: Term Syntax a -> Int
 precTerm Var{} = 10
+precTerm (Apply Ident{} (_:_)) = 9
 precTerm (Apply s _) = prec s
 precTerm (Lambda t) = precTerm t

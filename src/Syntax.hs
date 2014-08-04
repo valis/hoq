@@ -26,8 +26,7 @@ data Def
     | DefImport Import
 
 data Syntax
-    = App
-    | Lam [String]
+    = Lam [String]
     | Pi [String]
     | PathImp
     | At

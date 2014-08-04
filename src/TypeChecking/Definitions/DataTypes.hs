@@ -28,7 +28,7 @@ typeCheckDataType p@(PIdent pos dt) params cons conds = mdo
     (SomeEq ctx, dataType@(Type dtTerm _)) <- checkTele Nil params (universe NoLevel)
     dtid <- addDataTypeCheck p lcons dataType
     cons' <- forW (zip cons [0..]) $ \(ConDef con@(PIdent pos conName) tele, i) -> do
-        (_, Type conType conLevel) <- checkTele ctx tele $ capps (Semantics (Ident dt) $ DataType dtid lcons) (ctxToVars ctx)
+        (_, Type conType conLevel) <- checkTele ctx tele $ Apply (Semantics (Ident dt) $ DataType dtid lcons) (ctxToVars ctx)
         checkPositivity pos dtid (nf WHNF conType)
         let conds'' = map snd $ filter (\(c,_) -> c == conName) conds'
             conTerm = Semantics (Ident conName) $ Con i (PatEval conds'')
@@ -40,7 +40,7 @@ typeCheckDataType p@(PIdent pos dt) params cons conds = mdo
             Just (_, (i, _, _), ty) -> do
                 (bf, TermsInCtx ctx' _ ty', rtpats) <- typeCheckPatterns ctx (nfType WHNF ty) pats
                 when bf $ warn [emsgLC pos "Absurd patterns are not allowed in conditions" enull]
-                (term, _) <- typeCheckCtx (ctx +++ ctx') expr (Just ty')
+                (term, _) <- typeCheckCtx (ctx +++ ctx') expr $ Just (nfType WHNF ty')
                 let scope = closed (abstractTerm ctx' term)
                 throwErrors (checkTermination (Left i) pos rtpats scope)
                 return $ Just (con, (rtpats, scope))
@@ -50,7 +50,7 @@ typeCheckDataType p@(PIdent pos dt) params cons conds = mdo
     let lvls = map (\(_, _, Type _ lvl) -> lvl) cons'
         lvl = if null lvls then NoLevel else maximum lvls
     lift $ replaceDataType dt lcons $ Type (replaceLevel dtTerm lvl) lvl
-    forM_ cons' $ \(PIdent pos _, (_, conds, con), _) -> warn $ checkConditions pos (Closed $ cterm con) conds
+    forM_ cons' $ \(PIdent pos _, (_, conds, con), _) -> warn $ checkConditions pos (Closed $ capply con) conds
 
 data SomeEq f = forall a. Eq a => SomeEq (f a)
 

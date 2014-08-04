@@ -8,7 +8,6 @@ import Syntax.Pattern
 
 data Value t
     = Lam
-    | App
     | Pi Level Level
     | Con Int (Eval t)
     | FunCall ID (Eval t)
@@ -30,7 +29,6 @@ data Level = Level Int | NoLevel
 
 instance Eq (Value t) where
     Lam == Lam = True
-    App == App = True
     Pi{} == Pi{} = True
     Con i _ == Con i' _ = i == i'
     FunCall n _ == FunCall n' _ = n == n'

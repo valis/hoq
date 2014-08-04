@@ -91,7 +91,7 @@ getEntry v dt = ScopeT $ do
     scope <- get
     let dts = if isNothing dt then maybeToList $ lookup v $ dataTypes scope else []
     return $ map (\(s,t) -> (s, vacuous t)) (maybeToList (lookup v $ functions scope) ++ dts)
-            ++ if null dts then (map (\(_, s, Type t l) -> (s, Type (bapps (vacuous t) (maybe [] snd dt)) l)) cons) else []
+            ++ if null dts then (map (\(_, s, Type t l) -> (s, Type (apps (vacuous t) (maybe [] snd dt)) l)) cons) else []
 
 runScopeT :: Monad m => ScopeT m a -> m a
 runScopeT (ScopeT f) = evalStateT f $ ScopeState [] [] [] 0

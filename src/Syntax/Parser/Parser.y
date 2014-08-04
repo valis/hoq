@@ -84,15 +84,15 @@ Cons :: { [Con] }
     | Cons '|' Con  { $3:$1 }
 
 Tele :: { Tele }
-    : Expr5                 { TypeTele $1                                                   }
-    | '(' Expr ':' Expr ')' {% \_ -> exprToVars $2 >>= \vars -> return (VarsTele vars $4)   }
+    : Expr5                     { TypeTele $1                                                               }
+    | '(' Exprs ':' Expr ')'    {% \_ -> mapM exprToVar $2 >>= \vars -> return (VarsTele (reverse vars) $4) }
 
 Teles :: { [Tele] }
     : {- empty -}   { []    }
     | Teles Tele    { $2:$1 }
 
 PiTele :: { PiTele }
-    : '(' Expr ':' Expr ')' { PiTele $1 $2 $4 }
+    : '(' Exprs ':' Expr ')' { PiTele $1 (reverse $2) $4 }
 
 PiTeles :: { [PiTele] }
     : PiTele            { [$1]  }
@@ -108,20 +108,23 @@ Expr :: { RawExpr }
 
 Expr1 :: { RawExpr }
     : Expr2                 { $1                                                    }
-    | Expr2 '->' Expr1      { Apply (termPos $1, Pi []) [$1, $3]    }
+    | Expr2 '->' Expr1      { Apply (termPos $1, Pi []) [$1, $3]                    }
     | PiTeles '->' Expr1    {% \_ -> piExpr (reverse $1) $3                         }
 
 Expr2 :: { RawExpr }
-    : Expr3             { $1                                                }
-    | Expr3 '=' Expr3   { Apply (termPos $1, PathImp) [$1,$3] }
+    : Expr3             { $1                                    }
+    | Expr3 '=' Expr3   { Apply (termPos $1, PathImp) [$1,$3]   }
 
 Expr3 :: { RawExpr }
     : Expr4             { $1                                }
     | Expr3 '@' Expr4   { Apply (termPos $1, At) [$1, $3]   }
 
 Expr4 :: { RawExpr }
-    : Expr5         { $1                                }
-    | Expr4 Expr5   { Apply (termPos $1, App) [$1, $2]  }
+    : Exprs { let e:es = reverse $1 in apps e es }
+
+Exprs :: { [RawExpr] }
+    : Expr5         { [$1]  }
+    | Exprs Expr5   { $2:$1 }
 
 Expr5 :: { RawExpr }
     : TIdent        { Apply (fst $1, Ident $ snd $1) [] }
@@ -134,12 +137,12 @@ return' a _ = return a
 bind :: Parser a -> (a -> Parser b) -> Parser b
 bind p k e = p e >>= \a -> k a e
 
-data PiTele = PiTele Posn RawExpr RawExpr
+data PiTele = PiTele Posn [RawExpr] RawExpr
 
 piExpr :: [PiTele] -> RawExpr -> ParserErr RawExpr
 piExpr [] term = return term
 piExpr (PiTele pos t1 t2 : teles) term = do
-    vars <- exprToVars t1
+    vars <- mapM exprToVar t1
     term' <- piExpr teles term
     return $ Apply (pos, Pi $ map getName vars) [t2,term']
 
@@ -147,12 +150,9 @@ termPos :: RawExpr -> Posn
 termPos (Apply (pos, _) _) = pos
 termPos _ = error "termPos"
 
-exprToVars :: RawExpr -> ParserErr [PIdent]
-exprToVars term = fmap reverse (go term)
-  where
-    go (Apply (pos, Ident v) []) = return [PIdent pos v]
-    go (Apply (_, App) [as, Apply (pos, Ident v) []]) = fmap (PIdent pos v :) (go as)
-    go _ = throwError [(termPos term, "Expected a list of identifiers")]
+exprToVar :: RawExpr -> ParserErr PIdent
+exprToVar (Apply (pos, Ident v) []) = return (PIdent pos v)
+exprToVar term = throwError [(termPos term, "Expected a list of identifiers")]
 
 parseError :: Token -> Parser a
 parseError tok (pos,_) = throwError [(maybe pos id (tokGetPos tok), "Syntax error")]

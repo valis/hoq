@@ -4,7 +4,6 @@ module Semantics
     ( Semantics(..), Type(..)
     , SValue, SEval, PatternC
     , lessOrEqual, pcompare
-    , apps, capps, collect
     , dropOnePi, iCon, universe
     , module Syntax.Term, module Syntax.Pattern
     ) where
@@ -34,16 +33,15 @@ instance Functor (Type p) where
     fmap f (Type t l) = Type (fmap f t) l
 
 instance Eq a => Eq (Term Semantics a) where
-    Var a == Var a' = a == a'
+    Var a as == Var a' as' = a == a' && as == as'
     Lambda t == Lambda t' = t == t'
-    Apply (Semantics _ App) ts == Apply (Semantics _ App) ts' = ts == ts'
     Apply s@(Semantics _ Lam) [Lambda t] == Apply s'@(Semantics _ Lam) [Lambda t'] = Apply s [t] == Apply s' [t']
-    Apply s@(Semantics _ Lam) [Lambda t] == t' = Apply s [t] == Apply (Semantics S.App App) [fmap Free t', Var Bound]
+    Apply s@(Semantics _ Lam) [Lambda t] == t' = Apply s [t] == apps (fmap Free t') [cvar Bound]
     Apply (Semantics _ Lam) [t] == t' = t == t'
     t == t'@(Apply (Semantics _ Lam) _) = t' == t
     t@(Apply (Semantics _ Pi{}) _) == t'@(Apply (Semantics _ Pi{}) _) = pcompare t t' == Just EQ
     Apply (Semantics _ PCon) ts == Apply (Semantics _ PCon) ts' = ts == ts'
-    Apply (Semantics _ PCon) [Apply (Semantics _ Lam) [Lambda (Apply (Semantics _ At) [_,_,t,Var Bound])]] == t' = t == fmap Free t'
+    Apply (Semantics _ PCon) [Apply (Semantics _ Lam) [Lambda (Apply (Semantics _ At) [_, _, t, Var Bound []])]] == t' = t == fmap Free t'
     t == t'@(Apply (Semantics _ PCon) _) = t' == t
     Apply (Semantics _ At) (_:_:ts) == Apply (Semantics _ At) (_:_:ts') = ts == ts'
     Apply s ts == Apply s' ts' = s == s' && ts == ts'
@@ -80,28 +78,14 @@ lessOrEqual t t' = case pcompare t t' of
     Just r | r == EQ || r == LT -> True
     _                           -> False
 
-apps :: Term Semantics a -> [Term Semantics a] -> Term Semantics a
-apps t [] = t
-apps t (t':ts) = apps (Apply (Semantics S.App App) [t,t']) ts
-
-capps :: Semantics -> [Term Semantics a] -> Term Semantics a
-capps = apps . cterm
-
-collect :: Term Semantics a -> (Maybe Semantics, [Term Semantics a])
-collect = go []
-  where
-    go as (Apply (Semantics S.App App) [t1, t2]) = go (t2:as) t1
-    go as (Apply s _) = (Just s, as)
-    go as _ = (Nothing, as)
-
 dropOnePi :: Semantics -> Term Semantics a -> Term Semantics a -> (String, Term Semantics (Scoped a))
 dropOnePi (Semantics (S.Pi [v]) _) a (Lambda b) = (v, b)
 dropOnePi (Semantics (S.Pi (v:vs)) s) a (Lambda b) = (v, Apply (Semantics (S.Pi vs) s) [fmap Free a, b])
 dropOnePi _ _ b = ("_", fmap Free b)
 
 iCon :: ICon -> Term Semantics a
-iCon ILeft  = cterm $ Semantics (S.Ident "left")  (ICon ILeft)
-iCon IRight = cterm $ Semantics (S.Ident "right") (ICon IRight)
+iCon ILeft  = capply $ Semantics (S.Ident "left")  (ICon ILeft)
+iCon IRight = capply $ Semantics (S.Ident "right") (ICon IRight)
 
 universe :: Level -> Term Semantics a
-universe lvl = cterm $ Semantics (S.Ident $ show lvl) (Universe lvl)
+universe lvl = capply $ Semantics (S.Ident $ show lvl) (Universe lvl)

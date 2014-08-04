@@ -41,13 +41,13 @@ typeCheckFunction p@(PIdent pos name) ety clauses = do
                 warn [emsgLC (termPos expr) msg enull]
                 return Nothing
             (False, Just expr) -> do
-                (term, _) <- typeCheckCtx ctx expr (Just ty')
+                (term, _) <- typeCheckCtx ctx expr $ Just (nfType WHNF ty')
                 let scope = closed (abstractTerm ctx term)
                 throwErrors (checkTermination (Right fcid) pos rtpats scope)
                 return $ Just ((rtpats, scope), (pos, rtpats))
     let clauses' = map fst clausesAndPats
         eval = PatEval $ map (fmap $ \(Closed scope) -> Closed $ replaceFunCalls fcid fc scope) clauses'
-        fc = Closed $ cterm $ Semantics (Ident name) (FunCall fcid eval)
+        fc = Closed $ capply $ Semantics (Ident name) (FunCall fcid eval)
     lift $ replaceFunction name eval (Type ty lvl)
     case checkCoverage (map snd clausesAndPats) of
         Nothing -> when (length clausesAndPats == length (filter (\(_,_,me) -> isJust me) clauses)) $
@@ -56,7 +56,7 @@ typeCheckFunction p@(PIdent pos name) ety clauses = do
     warn $ checkConditions pos fc (map fst clausesAndPats)
 
 replaceFunCalls :: ID -> Closed (Term Semantics) -> Term Semantics a -> Term Semantics a
-replaceFunCalls name fc t@Var{} = t
-replaceFunCalls name fc (Apply (Semantics _ (FunCall name' _)) ts) | name == name' = open fc
+replaceFunCalls name fc (Var a ts) = Var a $ map (replaceFunCalls name fc) ts
+replaceFunCalls name fc (Apply (Semantics _ (FunCall name' _)) ts) | name == name' = apps (open fc) ts
 replaceFunCalls name fc (Apply s ts) = Apply s $ map (replaceFunCalls name fc) ts
 replaceFunCalls name fc (Lambda t) = Lambda (replaceFunCalls name fc t)

@@ -46,7 +46,7 @@ intType :: Type Semantics a
 intType = Type interval NoLevel
 
 interval :: Term Semantics a
-interval = cterm $ Semantics (S.Ident "I") Interval
+interval = capply $ Semantics (S.Ident "I") Interval
 
 pathExp :: Level -> Semantics
 pathExp lvl = Semantics (S.Ident "Path") (Path lvl)
@@ -61,76 +61,73 @@ termPos _ = error "termPos"
 typeCheck :: Monad m => Term (Posn, Syntax) Void -> Maybe (Type Semantics Void) -> TCM m (Term Semantics Void, Type Semantics Void)
 typeCheck = typeCheckCtx Nil
 
-typeCheckCtx :: (Monad m, Eq a) => Context a -> Term (Posn, Syntax) Void -> Maybe (Type Semantics a) -> TCM m (Term Semantics a, Type Semantics a)
-typeCheckCtx ctx term mty = go ctx term [] $ fmap (nfType WHNF) mty
+typeCheckCtx :: (Monad m, Eq a) => Context a -> Term (Posn, Syntax) Void
+    -> Maybe (Type Semantics a) -> TCM m (Term Semantics a, Type Semantics a)
+typeCheckCtx ctx (Apply (pos, Ident var) ts) mty = do
+    when (var == "_") $ throwError [emsgLC pos "Expected an identifier" enull]
+    let mdt = case mty of
+                Just (Type (Apply (Semantics _ (DataType dti _)) params) _) -> Just (dti,params)
+                _ -> Nothing
+    mt <- lift $ getEntry var mdt
+    eres <- case mt of
+        [] -> liftM Right (typeCheckKeyword ctx pos var ts mty)
+        [(s,ty)] -> return $ Left (capply s, ty)
+        _ -> throwError [emsgLC pos ("Ambiguous identifier: " ++ show var) enull]
+    case eres of
+        Left (te, ty) -> do
+            (tes, Type ty' lvl') <- typeCheckApps pos ctx ts ty
+            case (mty, ty') of
+                (Nothing, _)            -> return ()
+                (Just (Type ety _), _)  -> actExpType ctx ty' ety pos
+            return (apps te tes, Type ty' lvl')
+        Right res -> return res
+typeCheckCtx ctx (Apply (_, S.Lam []) [te]) mty = typeCheckCtx ctx te mty
+typeCheckCtx ctx (Apply (pos, S.Lam (v:vs)) [te]) (Just ty@(Type (Apply p@(Semantics _ (V.Pi lvl1 lvl2)) [a,b]) _)) = do
+    (te', _) <- typeCheckCtx (Snoc ctx v $ Type a lvl1) (Apply (pos, S.Lam vs) [te]) $ Just $ Type (nf WHNF $ snd $ dropOnePi p a b) lvl2
+    let te'' = case te' of
+            Apply (Semantics (S.Lam vs') _) [t] -> Apply (Semantics (S.Lam $ v:vs') V.Lam) [Lambda t]
+            _                                   -> Apply (Semantics (S.Lam [v]) V.Lam) [Lambda te']
+    return (te'', ty)
+typeCheckCtx ctx (Apply (pos, S.Lam{}) [_]) (Just (Type ty _)) =
+    throwError [emsgLC pos "" $ pretty "Expected type:" <+> prettyOpen ctx ty
+                             $$ pretty "But lambda expression has pi type"]
+typeCheckCtx ctx (Apply (pos, S.Lam{}) _) _ = throwError [inferErrorMsg pos "the argument"]
+typeCheckCtx ctx (Apply (pos, S.Pi vs) (a:b:ts)) Nothing = do
+    (a', Type ty1 _) <- typeCheckCtx ctx a Nothing
+    lvl1 <- checkIsType ctx (termPos a) ty1
+    (b', lvl2) <- extend ctx vs (Type a' lvl1)
+    unless (null ts) $ warn [argsErrorMsg pos "A type"]
+    let lvl = max lvl1 lvl2
+    return (Apply (Semantics (S.Pi vs) (V.Pi lvl1 lvl2)) [a', b'], Type (universe lvl) $ succ lvl)
   where
-    go :: (Monad m, Eq a) => Context a -> Term (Posn, Syntax) Void -> [Term (Posn, Syntax) Void] -> Maybe (Type Semantics a) -> TCM m (Term Semantics a, Type Semantics a)
-    go ctx (Apply (pos, Ident var) _) ts mty = do
-        when (var == "_") $ throwError [emsgLC pos "Expected an identifier" enull]
-        let mdt = case fmap (collect . getType) mty of
-                    Just (Just (Semantics (Ident dtn) (DataType dti _)), params) -> Just (dtn,(dti,params))
-                    _ -> Nothing
-        mt <- lift $ getEntry var (fmap snd mdt)
-        eres <- case mt of
-            [] -> liftM Right (typeCheckKeyword ctx pos var ts mty)
-            [(s,ty)] -> return $ Left (cterm s, ty)
-            _ -> throwError [emsgLC pos ("Ambiguous identifier: " ++ show var) enull]
-        case eres of
-            Left (te, ty) -> do
-                (tes, Type ty' lvl') <- typeCheckApps pos ctx ts ty
-                case (mty, ty') of
-                    (Nothing, _)            -> return ()
-                    (Just (Type ety _), _)  -> actExpType ctx ty' ety pos
-                return (apps te tes, Type ty' lvl')
-            Right res -> return res
-    go ctx (Apply (_, S.App) [t1,t2]) ts mty = go ctx t1 (t2:ts) mty
-    go ctx (Apply (_, S.Lam []) [te]) [] mty = go ctx te [] mty
-    go ctx (Apply (pos, S.Lam (v:vs)) te) [] (Just ty@(Type (Apply p@(Semantics _ (V.Pi lvl1 lvl2)) [a,b]) _)) = do
-        (te', _) <- go (Snoc ctx v $ Type a lvl1) (Apply (pos, S.Lam vs) te) [] $ Just $ Type (nf WHNF $ snd $ dropOnePi p a b) lvl2
-        let te'' = case te' of
-                Apply (Semantics (S.Lam vs') _) [t] -> Apply (Semantics (S.Lam $ v:vs') V.Lam) [Lambda t]
-                _                                   -> Apply (Semantics (S.Lam [v]) V.Lam) [Lambda te']
-        return (te'', ty)
-    go ctx (Apply (pos, S.Lam{}) _) [] (Just (Type ty _)) =
-        throwError [emsgLC pos "" $ pretty "Expected type:" <+> prettyOpen ctx ty
-                                 $$ pretty "But lambda expression has pi type"]
-    go ctx (Apply (pos, S.Lam{}) _) _ _ = throwError [inferErrorMsg pos "the argument"]
-    go ctx (Apply (pos, S.Pi vs) [a,b]) ts Nothing = do
-        (a', Type ty1 _) <- go ctx a [] Nothing
-        lvl1 <- checkIsType ctx (termPos a) ty1
-        (b', lvl2) <- extend ctx vs (Type a' lvl1)
-        unless (null ts) $ warn [argsErrorMsg pos "A type"]
-        let lvl = max lvl1 lvl2
-        return (Apply (Semantics (S.Pi vs) (V.Pi lvl1 lvl2)) [a', b'], Type (universe lvl) $ succ lvl)
-      where
-        extend :: (Monad m, Eq a) => Context a -> [String] -> Type Semantics a -> TCM m (Term Semantics a, Level)
-        extend ctx [] _ = do
-            (te, Type ty _) <- go ctx b [] Nothing
-            lvl <- checkIsType ctx (termPos b) ty
-            return (te, lvl)
-        extend ctx (v:vs) a = do
-            (te, lvl) <- extend (Snoc ctx v a) vs (fmap Free a)
-            return (Lambda te, lvl)
-    go ctx (Apply (pos, PathImp) [a1,a2]) ts Nothing = do
-        unless (null ts) $ warn [argsErrorMsg pos "A type"]
-        (r1, Type t1 lvl) <- go ctx a1 [] Nothing
-        (r2, _) <- go ctx a2 [] $ Just $ Type (nf WHNF t1) lvl
-        return (Apply (Semantics PathImp (Path lvl)) [Apply (Semantics (S.Lam ["_"]) V.Lam)
-                [Lambda $ fmap Free t1], r1, r2], Type (universe lvl) $ succ lvl)
-    go ctx (Apply (pos, S.At) [b,c]) ts Nothing = do
-        (r1, Type t1 lvl) <- go ctx b [] Nothing
-        (r2, _) <- go ctx c [] (Just intType)
-        case nf WHNF t1 of
-            Apply (Semantics _ Path{}) [a,b',c'] -> do
-                (tes, ty) <- typeCheckApps pos ctx ts $ Type (Apply (Semantics S.App V.App) [a,r2]) lvl
-                return (apps (Apply (Semantics S.At V.At) [b',c',r1,r2]) tes, ty)
-            t1' -> throwError [emsgLC pos "" $ pretty "Expected type: Path"
-                                            $$ pretty "Actual type:" <+> prettyOpen ctx t1']
-    go ctx te ts (Just (Type ty _)) = do
-        (te', Type ty' lvl') <- go ctx te ts Nothing
-        actExpType ctx ty' ty (termPos te)
-        return (te', Type ty' lvl')
-    go _ _ _ _ = error "typeCheckCtx"
+    extend :: (Monad m, Eq a) => Context a -> [String] -> Type Semantics a -> TCM m (Term Semantics a, Level)
+    extend ctx [] _ = do
+        (te, Type ty _) <- typeCheckCtx ctx b Nothing
+        lvl <- checkIsType ctx (termPos b) ty
+        return (te, lvl)
+    extend ctx (v:vs) a = do
+        (te, lvl) <- extend (Snoc ctx v a) vs (fmap Free a)
+        return (Lambda te, lvl)
+typeCheckCtx ctx (Apply (pos, PathImp) (a1:a2:ts)) Nothing = do
+    unless (null ts) $ warn [argsErrorMsg pos "A type"]
+    (r1, Type t1 lvl) <- typeCheckCtx ctx a1 Nothing
+    (r2, _) <- typeCheckCtx ctx a2 $ Just $ Type (nf WHNF t1) lvl
+    return (Apply (Semantics PathImp (Path lvl)) [Apply (Semantics (S.Lam ["_"]) V.Lam)
+            [Lambda $ fmap Free t1], r1, r2], Type (universe lvl) $ succ lvl)
+typeCheckCtx ctx (Apply (pos, S.At) (b:c:ts)) Nothing = do
+    (r1, Type t1 lvl) <- typeCheckCtx ctx b Nothing
+    (r2, _) <- typeCheckCtx ctx c (Just intType)
+    case nf WHNF t1 of
+        Apply (Semantics _ Path{}) [a,b',c'] -> do
+            (tes, ty) <- typeCheckApps pos ctx ts $ Type (apps a [r2]) lvl
+            return (Apply (Semantics S.At V.At) (b':c':r1:r2:tes), ty)
+        t1' -> throwError [emsgLC pos "" $ pretty "Expected type: Path"
+                                        $$ pretty "Actual type:" <+> prettyOpen ctx t1']
+typeCheckCtx ctx te (Just (Type ty _)) = do
+    (te', Type ty' lvl') <- typeCheckCtx ctx te Nothing
+    actExpType ctx ty' ty (termPos te)
+    return (te', Type ty' lvl')
+typeCheckCtx _ _ _ = error "typeCheckCtx"
 
 typeCheckKeyword :: (Monad m, Eq a) => Context a -> Posn -> String -> [Term (Posn, Syntax) Void]
     -> Maybe (Type Semantics a) -> TCM m (Term Semantics a, Type Semantics a)
@@ -150,7 +147,7 @@ typeCheckKeyword ctx pos "Path" [] _ = throwError [expectedArgErrorMsg pos "Path
 typeCheckKeyword ctx pos "Path" (a:as) Nothing = do
     (r1, _, (v, t1)) <- typeCheckLambda ctx a intType
     lvl <- checkIsType (Snoc ctx v $ error "") (termPos a) t1
-    let r1' c = Apply (Semantics S.App V.App) [r1, iCon c]
+    let r1' c = apps r1 [iCon c]
         mkType t = Type t (succ lvl)
     case as of
         [] -> return (Apply (pathExp lvl) [r1], mkType $
@@ -169,13 +166,12 @@ typeCheckKeyword ctx pos "path" (a:as) mty = do
     case mty of
         Nothing -> do
             (te, Type ty lvl, _) <- typeCheckLambda ctx a intType
-            let te' c = Apply (Semantics S.App V.App) [te, iCon c]
+            let te' c = apps te [iCon c]
             return (te, Type (Apply (pathImp lvl) [ty, te' ILeft, te' IRight]) lvl)
         Just (Type ty@(Apply (Semantics _ (Path l1)) [t1,_,_]) lvl) -> do
             (r,t) <- typeCheckCtx ctx a $ Just $
-                Type (Apply (Semantics (S.Pi ["i"]) $ V.Pi NoLevel l1) [interval, Lambda $ Apply (Semantics S.App V.App) [fmap Free t1, Var Bound]]) l1
-            actExpType ctx (Apply (pathImp l1)
-                [t1, Apply (Semantics S.App V.App) [r, iCon ILeft], Apply (Semantics S.App V.App) [r, iCon IRight]]) ty pos
+                Type (Apply (Semantics (S.Pi ["i"]) $ V.Pi NoLevel l1) [interval, Lambda $ apps (fmap Free t1) [cvar Bound]]) l1
+            actExpType ctx (Apply (pathImp l1) [t1, apps r [iCon ILeft], apps r [iCon IRight]]) ty pos
             return (Apply (Semantics (S.Ident "path") PCon) [r], Type ty lvl)
         Just (Type ty _) -> throwError [emsgLC pos "" $ pretty "Expected type:" <+> prettyOpen ctx ty
                                                      $$ pretty "Actual type: Path"]
@@ -183,23 +179,23 @@ typeCheckKeyword ctx pos "coe" [] _ = throwError [expectedArgErrorMsg pos "coe"]
 typeCheckKeyword ctx pos "coe" (a1:as) Nothing = do
     (r1, _, (v, t1)) <- typeCheckLambda ctx a1 intType
     lvl <- checkIsType (Snoc ctx v $ error "") (termPos a1) t1
-    let res = Apply (Semantics (S.Pi ["r"]) $ V.Pi NoLevel lvl) [interval, Lambda $ Apply (Semantics S.App V.App) [fmap Free r1, Var Bound]]
+    let res = Apply (Semantics (S.Pi ["r"]) $ V.Pi NoLevel lvl) [interval, Lambda $ apps (fmap Free r1) [cvar Bound]]
         coe = Semantics (Ident "coe") Coe
     case as of
-        [] -> return (capps coe [r1], Type (Apply (Semantics (S.Pi ["l"]) $ V.Pi NoLevel lvl) [interval, Lambda $
-            Apply (Semantics (S.Pi []) $ V.Pi lvl lvl) [Apply (Semantics S.App V.App) [fmap Free r1, Var Bound], fmap Free res]]) lvl)
+        [] -> return (Apply coe [r1], Type (Apply (Semantics (S.Pi ["l"]) $ V.Pi NoLevel lvl) [interval, Lambda $
+            Apply (Semantics (S.Pi []) $ V.Pi lvl lvl) [apps (fmap Free r1) [cvar Bound], fmap Free res]]) lvl)
         a2:as1 -> do
             (r2, _) <- typeCheckCtx ctx a2 (Just intType)
             case as1 of
-                [] -> return (capps coe [r1,r2], Type (Apply (Semantics (S.Pi []) $ V.Pi lvl lvl) [Apply (Semantics S.App V.App) [r1,r2], res]) lvl)
+                [] -> return (Apply coe [r1,r2], Type (Apply (Semantics (S.Pi []) $ V.Pi lvl lvl) [apps r1 [r2], res]) lvl)
                 a3:as2 -> do
-                    (r3, _) <- typeCheckCtx ctx a3 $ Just $ Type (nf WHNF $ Apply (Semantics S.App V.App) [r1,r2]) lvl
+                    (r3, _) <- typeCheckCtx ctx a3 $ Just $ Type (nf WHNF $ apps r1 [r2]) lvl
                     case as2 of
-                        [] -> return (capps coe [r1,r2,r3], Type res lvl)
+                        [] -> return (Apply coe [r1,r2,r3], Type res lvl)
                         a4:as3 -> do
                             (r4, _) <- typeCheckCtx ctx a4 (Just intType)
-                            (tes, ty) <- typeCheckApps pos ctx as3 $ Type (Apply (Semantics S.App V.App) [r1,r4]) lvl
-                            return (capps coe $ [r1,r2,r3,r4] ++ tes, ty)
+                            (tes, ty) <- typeCheckApps pos ctx as3 $ Type (apps r1 [r4]) lvl
+                            return (Apply coe $ [r1,r2,r3,r4] ++ tes, ty)
 typeCheckKeyword ctx pos "iso" (a1:a2:a3:a4:a5:a6:as) Nothing = do
     (r1, Type t1 _) <- typeCheckCtx ctx a1 Nothing
     (r2, Type t2 _) <- typeCheckCtx ctx a2 Nothing
@@ -212,30 +208,30 @@ typeCheckKeyword ctx pos "iso" (a1:a2:a3:a4:a5:a6:as) Nothing = do
     (r4, _) <- typeCheckCtx ctx a4 $ Just $ Type (Apply (Semantics (S.Pi []) $ V.Pi lvl2 lvl1) [r2,r1]) lvl
     let h e s1 s3 s4 tlvl = typeCheckCtx ctx e $ Just $ Type (Apply (Semantics (S.Pi ["x"]) $ V.Pi tlvl tlvl) [s1, Lambda $
             Apply (pathImp tlvl) [Apply (Semantics (S.Lam ["_"]) V.Lam) [Lambda $ fmap (Free . Free) s1],
-                Apply (Semantics S.App V.App) [fmap Free s4, Apply (Semantics S.App V.App) [fmap Free s3, Var Bound]], Var Bound]]) tlvl
+                apps (fmap Free s4) [apps (fmap Free s3) [cvar Bound]], cvar Bound]]) tlvl
         iso = Semantics (S.Ident "iso") Iso
     (r5, _) <- h a5 r1 r3 r4 lvl1
     (r6, _) <- h a6 r2 r4 r3 lvl2
     case as of
-        [] -> return (capps iso [r1,r2,r3,r4,r5,r6],
+        [] -> return (Apply iso [r1,r2,r3,r4,r5,r6],
             Type (Apply (Semantics (S.Pi []) $ V.Pi NoLevel $ succ lvl) [interval, universe lvl]) $ succ lvl)
         a7:as' -> do
             unless (null as') $ warn [argsErrorMsg pos "A type"]
             (r7, _) <- typeCheckCtx ctx a7 (Just intType)
-            return (capps iso [r1,r2,r3,r4,r5,r6,r7], Type (universe lvl) $ succ lvl)
+            return (Apply iso [r1,r2,r3,r4,r5,r6,r7], Type (universe lvl) $ succ lvl)
 typeCheckKeyword ctx pos "iso" _ Nothing = throwError [emsgLC pos "Expected at least 6 arguments to \"iso\"" enull]
 typeCheckKeyword ctx pos "squeeze" as Nothing =
     let mkType t = Apply (Semantics (S.Pi []) $ V.Pi NoLevel NoLevel) [interval, t]
         squeeze = Semantics (Ident "squeeze") Squeeze
     in case as of
-        [] -> return (cterm squeeze, Type (mkType $ mkType interval) NoLevel)
+        [] -> return (capply squeeze, Type (mkType $ mkType interval) NoLevel)
         [a1] -> do
             (r1, _) <- typeCheckCtx ctx a1 (Just intType)
-            return (capps squeeze [r1], Type (mkType interval) NoLevel)
+            return (Apply squeeze [r1], Type (mkType interval) NoLevel)
         [a1,a2] -> do
             (r1, _) <- typeCheckCtx ctx a1 (Just intType)
             (r2, _) <- typeCheckCtx ctx a2 (Just intType)
-            return (capps squeeze [r1,r2], intType)
+            return (Apply squeeze [r1,r2], intType)
         _ -> throwError [argsErrorMsg pos "squeeze _ _"]
 typeCheckKeyword ctx pos var ts (Just (Type ty _)) = do
     (te', Type ty' lvl') <- typeCheckKeyword ctx pos var ts Nothing
@@ -263,7 +259,7 @@ typeCheckApps pos ctx terms ty = go terms (nfType WHNF ty)
   where
     go [] ty = return ([], ty)
     go (term:terms) (Type (Apply p@(Semantics _ (V.Pi lvl1 lvl2)) [a,b]) _) = do
-        (term, _)   <- typeCheckCtx ctx term $ Just (Type a lvl1)
+        (term, _)   <- typeCheckCtx ctx term $ Just (Type (nf WHNF a) lvl1)
         (terms, ty) <- go terms $ Type (nf WHNF $ case b of
             Lambda{} -> instantiate1 term $ snd (dropOnePi p a b)
             _        -> b) lvl2

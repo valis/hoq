@@ -2,8 +2,8 @@
 
 module Syntax.Term
     ( Term(..), Scoped(..)
-    , cterm, bapps
-    , abstract1, instantiate1
+    , capply, cvar, apps
+    , instantiate1
     , Closed(..), closed
     ) where
 
@@ -18,7 +18,7 @@ import Control.Applicative
 import Control.Monad
 
 data Term p a
-    = Var a
+    = Var a [Term p a]
     | Apply p [Term p a]
     | Lambda (Term p (Scoped a))
 
@@ -29,28 +29,33 @@ instance Bifoldable Term where bifoldMap = bifoldMapDefault
 instance Traversable (Term p) where traverse = bitraverse pure
 
 instance Bitraversable Term where
-    bitraverse _ g (Var a) = Var <$> g a
+    bitraverse f g (Var a ts) = Var <$> g a <*> traverse (bitraverse f g) ts
     bitraverse f g (Apply p ts) = Apply <$> f p <*> traverse (bitraverse f g) ts
     bitraverse f g (Lambda t) = Lambda <$> bitraverse f (traverse g) t
 
 instance Applicative (Term p) where
-    pure  = Var
-    (<*>) = ap
+    pure    = cvar
+    (<*>)   = ap
 
 instance Monad (Term p) where
-    return           = Var
-    Var a      >>= k = k a
+    return           = cvar
+    Var a ts   >>= k = apps (k a) $ map (>>= k) ts
     Apply p ts >>= k = Apply p $ map (>>= k) ts
     Lambda s   >>= k = Lambda $ s >>= \v -> case v of
         Free a -> fmap Free (k a)
         Bound  -> return Bound
 
-cterm :: p -> Term p a
-cterm p = Apply p []
+capply :: p -> Term p a
+capply p = Apply p []
 
-bapps :: Term s a -> [Term s a] -> Term s a
-bapps (Lambda t) (t1:ts) = bapps (instantiate1 t1 t) ts
-bapps t _ = t
+cvar :: a -> Term p a
+cvar a = Var a []
+
+apps :: Term s a -> [Term s a] -> Term s a
+apps t [] = t
+apps (Lambda t) (t1:ts) = apps (instantiate1 t1 t) ts
+apps (Apply a as) ts = Apply a (as ++ ts)
+apps (Var a as) ts = Var a (as ++ ts)
 
 newtype Closed f = Closed { open :: forall a. f a }
 
@@ -78,9 +83,6 @@ instance Applicative Scoped where
     Bound <*> _ = Bound
     _ <*> Bound = Bound
     Free f <*> Free a = Free (f a)
-
-abstract1 :: (Functor f, Eq a) => a -> f a -> f (Scoped a)
-abstract1 a = fmap $ \a' -> if a == a' then Bound else Free a'
 
 instantiate1 :: Monad f => f a -> f (Scoped a) -> f a
 instantiate1 s t = t >>= \v -> case v of

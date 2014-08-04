@@ -14,7 +14,7 @@ import TypeChecking.Context
 
 checkTermination :: Either Int ID -> S.Posn -> [PatternC String] -> Closed (Term Semantics) -> [EMsg (Term S.Syntax)]
 checkTermination name pos pats (Closed scope) = map msg $ case scopeToCtx Nil scope of
-    TermInCtx ctx term -> collectFunCalls ctx name [] term >>= \mts -> case mts of
+    TermInCtx ctx term -> collectFunCalls ctx name term >>= \mts -> case mts of
         TermsInCtx ctx' terms -> if evalState (checkTerms ctx' pats terms) 0 == LT then [] else [pos]
   where
     msg :: S.Posn -> EMsg (Term S.Syntax)
@@ -22,7 +22,7 @@ checkTermination name pos pats (Closed scope) = map msg $ case scopeToCtx Nil sc
 
 checkTerm :: Ctx String (Term Semantics) String a -> PatternC String -> Term Semantics a -> State Int Ordering
 checkTerm _ (PatternI _ con) (Apply (Semantics _ (ICon con')) []) | con == con' = return EQ
-checkTerm ctx (PatternVar _) (Var v) = do
+checkTerm ctx (PatternVar _) (Var v []) = do
     s <- get
     put (s + 1)
     return $ if s == lengthCtx ctx - 1 - index ctx v then EQ else GT
@@ -34,8 +34,8 @@ checkTerm ctx (PatternVar _) (Var v) = do
 checkTerm ctx (Pattern (PatternCon i _ _ _) pats) term = do
     s <- get
     results <- mapM (\pat -> checkTerm ctx pat term) pats
-    if minimum (GT:results) /= GT then return LT else case collect term of
-        (Just (Semantics _ (Con i' _)), terms) | i == i' -> do
+    if minimum (GT:results) /= GT then return LT else case term of
+        Apply (Semantics _ (Con i' _)) terms | i == i' -> do
             put s
             checkTerms ctx pats terms
         _ -> return GT
@@ -57,18 +57,11 @@ scopeToCtx :: Ctx s (Term Semantics) b a -> Term Semantics a -> TermInCtx s (Ter
 scopeToCtx ctx (Lambda t) = scopeToCtx (Snoc ctx (error "") $ error "") t
 scopeToCtx ctx t = TermInCtx ctx t
 
-collectFunCalls :: Ctx String (Term Semantics) b a -> Either Int ID -> [Term Semantics a]
+collectFunCalls :: Ctx String (Term Semantics) b a -> Either Int ID
     -> Term Semantics a -> [TermsInCtx String (Term Semantics) b]
-collectFunCalls ctx name ps (Apply a as) = go ctx ps a as
-  where
-    go :: Ctx String (Term Semantics) b a -> [Term Semantics a]
-        -> Semantics -> [Term Semantics a] -> [TermsInCtx String (Term Semantics) b]
-    go ctx ps (Semantics _ App) [t1,t2] = collectFunCalls ctx name (t2:ps) t1 ++ collectFunCalls ctx name [] t2
-    go ctx _ s@(Semantics _ Lam) [Lambda t] = go (Snoc ctx (error "") $ error "") [] s [t]
-    go ctx ps (Semantics _ Lam) [t] = collectFunCalls ctx name ps t
-    go ctx _ s@(Semantics _ Pi{}) [t1, Lambda t2] = go (Snoc ctx (error "") $ error "") [] s [fmap Free t1, t2]
-    go ctx _ (Semantics _ Pi{}) [t1,t2] = collectFunCalls ctx name [] t1 ++ collectFunCalls ctx name [] t2
-    go ctx ps (Semantics _ (Con name' _)) [] = if name == Left name' then [TermsInCtx ctx ps] else []
-    go ctx ps (Semantics _ (FunCall name' _)) [] = if name == Right name' then [TermsInCtx ctx ps] else []
-    go ctx _ _ as = as >>= collectFunCalls ctx name []
-collectFunCalls _ _ _ _ = []
+collectFunCalls ctx name (Lambda t) = collectFunCalls (Snoc ctx (error "") $ error "") name t
+collectFunCalls ctx name (Var _ as) = as >>= collectFunCalls ctx name
+collectFunCalls ctx name (Apply a as) = (case a of
+    Semantics _ (Con name' _) | name == Left name' -> [TermsInCtx ctx as]
+    Semantics _ (FunCall name' _) | name == Right name' -> [TermsInCtx ctx as]
+    _ -> []) ++ (as >>= collectFunCalls ctx name)
