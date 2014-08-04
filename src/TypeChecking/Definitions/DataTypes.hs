@@ -43,7 +43,7 @@ typeCheckDataType p@(PIdent pos dt) params cons conds = mdo
                 when bf $ warn [emsgLC pos "Absurd patterns are not allowed in conditions" enull]
                 (term, _) <- typeCheckCtx (ctx +++ ctx') expr (Just ty')
                 let scope = closed (abstractTermInCtx ctx' term)
-                throwErrors (checkTermination i pos rtpats scope)
+                throwErrors (checkTermination (Left i) pos rtpats scope)
                 return $ Just (con, (rtpats, scope))
             _ -> do
                 warn [notInScope pos "data constructor" con]

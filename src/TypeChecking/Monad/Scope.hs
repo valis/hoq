@@ -89,9 +89,9 @@ getEntry :: Monad m => String -> Maybe (ID, [Term Semantics a]) -> ScopeT m [(Se
 getEntry v dt = ScopeT $ do
     cons  <- unScopeT $ getConstructor v (fmap fst dt)
     scope <- get
-    return $ map (\(s,t) -> (s, vacuous t)) (maybeToList (lookup v $ functions scope) ++
-                if isNothing dt then maybeToList $ lookup v $ dataTypes scope else [])
-            ++ (map (\(_, s, Type t l) -> (s, Type (bapps (vacuous t) (maybe [] snd dt)) l)) cons)
+    let dts = if isNothing dt then maybeToList $ lookup v $ dataTypes scope else []
+    return $ map (\(s,t) -> (s, vacuous t)) (maybeToList (lookup v $ functions scope) ++ dts)
+            ++ if null dts then (map (\(_, s, Type t l) -> (s, Type (bapps (vacuous t) (maybe [] snd dt)) l)) cons) else []
 
 runScopeT :: Monad m => ScopeT m a -> m a
 runScopeT (ScopeT f) = evalStateT f $ ScopeState [] [] [] 0

@@ -12,7 +12,7 @@ import Semantics
 import Syntax.ErrorDoc
 import TypeChecking.Context
 
-checkTermination :: ID -> S.Posn -> [PatternC String] -> Closed (Scope String (Term Semantics)) -> [EMsg (Term S.Syntax)]
+checkTermination :: Either Int ID -> S.Posn -> [PatternC String] -> Closed (Scope String (Term Semantics)) -> [EMsg (Term S.Syntax)]
 checkTermination name pos pats (Closed scope) = map msg $ case scopeToCtx Nil scope of
     TermInCtx ctx term -> collectFunCalls ctx name [] term >>= \mts -> case mts of
         TermsInCtx ctx' terms -> if evalState (checkTerms ctx' pats terms) 0 == LT then [] else [pos]
@@ -57,7 +57,7 @@ scopeToCtx :: Ctx s f b a -> Scope s f a -> TermInCtx s f b
 scopeToCtx ctx (ScopeTerm t) = TermInCtx ctx t
 scopeToCtx ctx (Scope s t) = scopeToCtx (Snoc ctx s $ error "") t
 
-collectFunCalls :: Ctx String (Term Semantics) b a -> ID -> [Term Semantics a]
+collectFunCalls :: Ctx String (Term Semantics) b a -> Either Int ID -> [Term Semantics a]
     -> Term Semantics a -> [TermsInCtx String (Term Semantics) b]
 collectFunCalls ctx name ps (Apply a as) = go ctx ps a as
   where
@@ -68,7 +68,7 @@ collectFunCalls ctx name ps (Apply a as) = go ctx ps a as
     go ctx ps (Semantics _ Lam) [t] = collectFunCalls ctx name ps t
     go ctx _ s@(Semantics _ Pi{}) [t1, Lambda (Scope1 t2)] = go (Snoc ctx (error "") $ error "") [] s [fmap Free t1, t2]
     go ctx _ (Semantics _ Pi{}) [t1,t2] = collectFunCalls ctx name [] t1 ++ collectFunCalls ctx name [] t2
-    go ctx ps (Semantics _ (Con name' _)) [] = if name == name' then [TermsInCtx ctx ps] else []
-    go ctx ps (Semantics _ (FunCall name' _)) [] = if name == name' then [TermsInCtx ctx ps] else []
+    go ctx ps (Semantics _ (Con name' _)) [] = if name == Left name' then [TermsInCtx ctx ps] else []
+    go ctx ps (Semantics _ (FunCall name' _)) [] = if name == Right name' then [TermsInCtx ctx ps] else []
     go ctx _ _ as = as >>= collectFunCalls ctx name []
 collectFunCalls _ _ _ _ = []

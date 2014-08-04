@@ -43,7 +43,7 @@ typeCheckFunction p@(PIdent pos name) ety clauses = do
             (False, Just expr) -> do
                 (term, _) <- typeCheckCtx ctx expr (Just ty')
                 let scope = closed (abstractTermInCtx ctx term)
-                throwErrors (checkTermination fcid pos rtpats scope)
+                throwErrors (checkTermination (Right fcid) pos rtpats scope)
                 return $ Just ((rtpats, scope), (pos, rtpats))
     let clauses' = map fst clausesAndPats
         eval = PatEval $ map (fmap $ \(Closed scope) -> Closed $ replaceFunCallsScope fcid fc scope) clauses'
