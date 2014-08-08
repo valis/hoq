@@ -84,8 +84,8 @@ dropOnePi (Semantics (S.Pi (v:vs)) s) a (Lambda b) = (v, Apply (Semantics (S.Pi 
 dropOnePi _ _ b = ("_", fmap Free b)
 
 iCon :: ICon -> Term Semantics a
-iCon ILeft  = capply $ Semantics (S.Ident "left")  (ICon ILeft)
-iCon IRight = capply $ Semantics (S.Ident "right") (ICon IRight)
+iCon ILeft  = capply $ Semantics (S.Name $ S.Ident "left")  (ICon ILeft)
+iCon IRight = capply $ Semantics (S.Name $ S.Ident "right") (ICon IRight)
 
 universe :: Level -> Term Semantics a
-universe lvl = capply $ Semantics (S.Ident $ show lvl) (Universe lvl)
+universe lvl = capply $ Semantics (S.Name $ S.Ident $ show lvl) (Universe lvl)

@@ -19,9 +19,9 @@ import TypeChecking.Definitions.Conditions
 import TypeChecking.Definitions.Termination
 import Normalization
 
-typeCheckFunction :: Monad m => PIdent -> Term (Posn, Syntax) Void
-    -> [(Posn, [PatternP PIdent], Maybe (Term (Posn, Syntax) Void))] -> TCM m ()
-typeCheckFunction p@(PIdent pos name) ety clauses = do
+typeCheckFunction :: Monad m => PName -> Term (Posn, Syntax) Void
+    -> [(Posn, [PatternP], Maybe (Term (Posn, Syntax) Void))] -> TCM m ()
+typeCheckFunction p@(pos, name) ety clauses = do
     (ty, Type u _) <- typeCheck ety Nothing
     lvl <- case nf WHNF u of
             Apply (Semantics _ (Universe lvl)) _ -> return lvl
@@ -47,7 +47,7 @@ typeCheckFunction p@(PIdent pos name) ety clauses = do
                 return $ Just ((rtpats, scope), (pos, rtpats))
     let clauses' = map fst clausesAndPats
         eval = PatEval $ map (fmap $ \(Closed scope) -> Closed $ replaceFunCalls fcid fc scope) clauses'
-        fc = Closed $ capply $ Semantics (Ident name) (FunCall fcid eval)
+        fc = Closed $ capply $ Semantics (Name name) (FunCall fcid eval)
     lift $ replaceFunction name eval (Type ty lvl)
     case checkCoverage (map snd clausesAndPats) of
         Nothing -> when (length clausesAndPats == length (filter (\(_,_,me) -> isJust me) clauses)) $

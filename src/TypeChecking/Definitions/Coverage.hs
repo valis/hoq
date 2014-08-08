@@ -25,7 +25,8 @@ checkClauses clauses =
         (Just i, Result Incomplete u) -> Result OK (i:u)
         (_, r) -> r
 
-checkNull :: Int -> PatternType c p a -> [[Pattern c p a]] -> (PatternType c p a, [(Pattern c p a, [Pattern c p a])], Maybe Int)
+checkNull :: Int -> PatternType c p a -> [[Pattern c p a]]
+    -> (PatternType c p a, [(Pattern c p a, [Pattern c p a])], Maybe Int)
 checkNull _ t [] = (t, [], Nothing)
 checkNull i t ([] : cs) = (t, [], Just i)
 checkNull i t ((pat:pats) : cs) =

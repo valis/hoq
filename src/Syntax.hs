@@ -1,6 +1,6 @@
 module Syntax
     ( Syntax(..), PatternP
-    , RawExpr, Posn, PIdent(..)
+    , RawExpr, PIdent(..)
     , Clause(..), Con(..)
     , Import, Def(..), Tele(..)
     , module Syntax.Term, module Syntax.Pattern
@@ -11,18 +11,17 @@ import Data.Void
 import Syntax.Term
 import Syntax.Pattern
 
-type Posn = (Int, Int)
 data PIdent = PIdent { getPos :: Posn, getName :: String }
-data Clause = Clause PIdent [PatternP PIdent] RawExpr
+data Clause = Clause PName [PatternP] RawExpr
 type Import = [String]
 data Tele = VarsTele [PIdent] RawExpr | TypeTele RawExpr
 data Con = ConDef PIdent [Tele]
-type PatternP = Pattern Posn (Closed (Term (Posn, Syntax)))
+type PatternP = Pattern Posn (Closed (Term (Posn, Syntax))) PIdent
 
 data Def
-    = DefType PIdent RawExpr
-    | DefFun PIdent [PatternP PIdent] (Maybe RawExpr)
-    | DefData PIdent [Tele] [Con] [Clause]
+    = DefType PName RawExpr
+    | DefFun PName [PatternP] (Maybe RawExpr)
+    | DefData PName [Tele] [Con] [Clause]
     | DefImport Import
 
 data Syntax
@@ -30,7 +29,7 @@ data Syntax
     | Pi [String]
     | PathImp
     | At
-    | Ident String
+    | Name Name
 
 type RawExpr = Term (Posn, Syntax) Void
 

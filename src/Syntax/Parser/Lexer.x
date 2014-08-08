@@ -18,6 +18,7 @@ import TypeChecking.Monad.Warn
 $alpha      = [a-zA-Z]
 $digit      = [0-9]
 $any        = [\x00-\x10ffff]
+$operator   = [\~\!\@\#\$\%\^\&\*\-\+\=\|\?\<\>\,\.\/\:\;\[\]\{\}]
 @ident      = ($alpha | \_) ($alpha | $digit | \' | \- | \_)*
 @lcomm      = "--".*
 @mcomm      = "{-" ([$any # \-] | \- [$any # \}])* "-}"
@@ -44,16 +45,17 @@ $any        = [\x00-\x10ffff]
 \{              { \_ _ -> TokLBrace                                                 }
 \}              { \_ _ -> TokRBrace                                                 }
 \;              { \_ _ -> TokSemicolon                                              }
-\.              { \_ _ -> TokDot                                                    }
 \)              { \_ _ -> TokRParen                                                 }
 \|              { \_ _ -> TokPipe                                                   }
 \@              { \_ _ -> TokAt                                                     }
 "->"            { \_ _ -> TokArrow                                                  }
+$operator+      { \p s -> TokOperator (p, s)                                        }
 @newline        { \_ _ -> TokNewLine                                                }
 
 {
 data Token
     = TokIdent !(Posn, String)
+    | TokOperator !(Posn, String)
     | TokLam !Posn
     | TokLParen !Posn
     | TokImport ![String]
@@ -78,6 +80,7 @@ tokGetPos :: Token -> Maybe Posn
 tokGetPos (TokIdent (pos, _)) = Just pos
 tokGetPos (TokLam pos) = Just pos
 tokGetPos (TokLParen pos) = Just pos
+tokGetPos (TokOperator (pos, _)) = Just pos
 tokGetPos _ = Nothing
 
 breaks :: Eq a => a -> [a] -> [[a]]
@@ -126,7 +129,7 @@ alexScanTokens cont = go
 
 findAGoodSymbol :: AlexInput -> AlexInput
 findAGoodSymbol ((l, c), str) =
-    let (f,s) = C.break (\c -> isAlpha c || isSpace c || c `elem` "\\(_:={};.)|@") str
+    let (f,s) = C.break (\c -> isAlpha c || isSpace c || c `elem` "~!@#$%^&*-+=|?<>,./:l[]{}()\\_") str
     in ((l, c + B.length f), s)
 
 skippingTheBadOne :: AlexInput -> AlexInput

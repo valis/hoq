@@ -23,3 +23,11 @@ instance Eq (Pattern p c a) where
     Pattern c _    == Pattern c' _   = c == c'
     PatternEmpty _ == PatternEmpty _ = True
     _              == _              = False
+
+type Posn = (Int, Int)
+data Name = Ident String | Operator String deriving Eq
+type PName = (Posn, Name)
+
+getStr :: Name -> String
+getStr (Ident s) = s
+getStr (Operator s) = s

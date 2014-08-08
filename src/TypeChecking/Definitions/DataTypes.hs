@@ -22,30 +22,30 @@ import TypeChecking.Definitions.Conditions
 import TypeChecking.Definitions.Termination
 import Normalization
 
-typeCheckDataType :: MonadFix m => PIdent -> [Tele] -> [Con] -> [Clause] -> TCM m ()
-typeCheckDataType p@(PIdent pos dt) params cons conds = mdo
+typeCheckDataType :: MonadFix m => PName -> [Tele] -> [Con] -> [Clause] -> TCM m ()
+typeCheckDataType p@(pos, dt) params cons conds = mdo
     let lcons = length cons
     (SomeEq ctx, dataType@(Type dtTerm _)) <- checkTele Nil params (universe NoLevel)
     dtid <- addDataTypeCheck p lcons dataType
     cons' <- forW (zip cons [0..]) $ \(ConDef con@(PIdent pos conName) tele, i) -> do
-        (_, Type conType conLevel) <- checkTele ctx tele $ Apply (Semantics (Ident dt) $ DataType dtid lcons) (ctxToVars ctx)
+        (_, Type conType conLevel) <- checkTele ctx tele $ Apply (Semantics (Name dt) $ DataType dtid lcons) (ctxToVars ctx)
         checkPositivity pos dtid (nf WHNF conType)
         let conds'' = map snd $ filter (\(c,_) -> c == conName) conds'
-            conTerm = Semantics (Ident conName) $ Con i (PatEval conds'')
+            conTerm = Semantics (Name $ Ident conName) $ Con i (PatEval conds'')
         return $ Just (con, (i, conds'', conTerm), Type conType conLevel)
-    forM_ cons' $ \(con, (i, cs, _), Type ty lvl) ->
-        addConstructorCheck con dtid i lcons (PatEval cs) $ Type (abstractTerm ctx ty) lvl
-    conds' <- forW conds $ \(Clause (PIdent pos con) pats expr) ->
-        case find (\(PIdent _ c, _, _) -> c == con) cons' of
-            Just (_, (i, _, _), ty) -> do
+    forM_ cons' $ \(PIdent pcon con, (i, cs, _), Type ty lvl) ->
+        addConstructorCheck (pcon, Ident con) dtid i lcons (PatEval cs) $ Type (abstractTerm ctx ty) lvl
+    conds' <- forW conds $ \(Clause (pos, con) pats expr) ->
+        case find (\((PIdent _ c), _, _) -> Ident c == con) cons' of
+            Just (PIdent _ conName, (i, _, _), ty) -> do
                 (bf, TermsInCtx ctx' _ ty', rtpats) <- typeCheckPatterns ctx (nfType WHNF ty) pats
                 when bf $ warn [emsgLC pos "Absurd patterns are not allowed in conditions" enull]
                 (term, _) <- typeCheckCtx (ctx +++ ctx') expr $ Just (nfType WHNF ty')
                 let scope = closed (abstractTerm ctx' term)
                 throwErrors (checkTermination (Left i) pos rtpats scope)
-                return $ Just (con, (rtpats, scope))
+                return $ Just (conName, (rtpats, scope))
             _ -> do
-                warn [notInScope pos "data constructor" con]
+                warn [notInScope pos "data constructor" (getStr con)]
                 return Nothing
     let lvls = map (\(_, _, Type _ lvl) -> lvl) cons'
         lvl = if null lvls then NoLevel else maximum lvls

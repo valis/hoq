@@ -2,17 +2,17 @@ data Nat = zero | suc Nat
 
 data List (A : Type) = nil | cons A (List A)
 
-plus : Nat -> Nat -> Nat
-plus zero y = y
-plus (suc x) y = suc (plus x y)
+(+) : Nat -> Nat -> Nat
+(+) zero y = y
+(+) (suc x) y = suc ((+) x y)
 
-mul : Nat -> Nat -> Nat
-mul zero _ = zero
-mul (suc x) y = plus y (mul x y)
+(*) : Nat -> Nat -> Nat
+(*) zero _ = zero
+(*) (suc x) y = (+) y ((*) x y)
 
 fac : Nat -> Nat
 fac zero = suc zero
-fac (suc x) = mul (suc x) (fac x)
+fac (suc x) = (*) (suc x) (fac x)
 
 append : (A : Type) -> List A -> List A -> List A
 append A nil ys = ys

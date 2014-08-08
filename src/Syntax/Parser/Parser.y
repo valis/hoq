@@ -23,6 +23,7 @@ import Syntax
 %token
     TIdent      { TokIdent    $$    }
     Import      { TokImport   $$    }
+    Operator    { TokOperator $$    }
     '\\'        { TokLam      $$    }
     '('         { TokLParen   $$    }
     'data'      { TokData           }
@@ -31,7 +32,6 @@ import Syntax
     '{'         { TokLBrace         }
     '}'         { TokRBrace         }
     ';'         { TokSemicolon      }
-    '.'         { TokDot            }
     ')'         { TokRParen         }
     '|'         { TokPipe           }
     '@'         { TokAt             }
@@ -43,17 +43,21 @@ import Syntax
 PIdent :: { PIdent }
     : TIdent    { uncurry PIdent $1 }
 
+Name :: { PName }
+    : TIdent            { (fst $1, Ident (snd $1))      }
+    | '(' Operator ')'  { (fst $2, Operator (snd $2))   }
+
 with :: { () }
     : 'with' '{'   {% \_ -> lift $ modify (NoLayout  :) }
     | 'with' error {% \_ -> lift $ modify (Layout $1 :) }
 
 Def :: { Def }
-    : PIdent ':' Expr                                   { DefType $1 $3                                     }
-    | PIdent Patterns '=' Expr                          { DefFun $1 (reverse $2) (Just $4)                  }
-    | PIdent Patterns                                   { DefFun $1 (reverse $2) Nothing                    }
-    | 'data' PIdent Teles                               { DefData $2 (reverse $3) [] []                     }
-    | 'data' PIdent Teles '=' Cons                      { DefData $2 (reverse $3) (reverse $5) []           }
-    | 'data' PIdent Teles '=' Cons with FunClauses '}'  { DefData $2 (reverse $3) (reverse $5) (reverse $7) }
+    : Name ':' Expr                                     { DefType $1 $3                                     }
+    | Name Patterns '=' Expr                            { DefFun $1 (reverse $2) (Just $4)                  }
+    | Name Patterns                                     { DefFun $1 (reverse $2) Nothing                    }
+    | 'data' Name Teles                                 { DefData $2 (reverse $3) [] []                     }
+    | 'data' Name Teles '=' Cons                        { DefData $2 (reverse $3) (reverse $5) []           }
+    | 'data' Name Teles '=' Cons with FunClauses '}'    { DefData $2 (reverse $3) (reverse $5) (reverse $7) }
     | Import                                            { DefImport $1                                      }
 
 Defs :: { [Def] }
@@ -63,16 +67,16 @@ Defs :: { [Def] }
     | Defs ';' Def  { $3:$1 }
 
 FunClauses :: { [Clause] }
-    : PIdent Patterns '=' Expr                  { [Clause $1 (reverse $2) $4]       }
-    | FunClauses ';'                            { $1                                }
-    | FunClauses ';' PIdent Patterns '=' Expr   { Clause $3 (reverse $4) $6 : $1    }
+    : Name Patterns '=' Expr                { [Clause $1 (reverse $2) $4]       }
+    | FunClauses ';'                        { $1                                }
+    | FunClauses ';' Name Patterns '=' Expr { Clause $3 (reverse $4) $6 : $1    }
 
-Pattern :: { PatternP PIdent }
+Pattern :: { PatternP }
     : PIdent                    { PatternVar $1                                 }
     | '(' ')'                   { PatternEmpty $1                               }
     | '(' PIdent Patterns ')'   { Pattern (PatternCon 0 0 $2 []) (reverse $3)   }
 
-Patterns :: { [PatternP PIdent] }
+Patterns :: { [PatternP] }
     : {- empty -}       { []    }
     | Patterns Pattern  { $2:$1 }
 
@@ -127,7 +131,7 @@ Exprs :: { [RawExpr] }
     | Exprs Expr5   { $2:$1 }
 
 Expr5 :: { RawExpr }
-    : TIdent        { Apply (fst $1, Ident $ snd $1) [] }
+    : Name          { Apply (fst $1, Name $ snd $1) []  }
     | '(' Expr ')'  { $2                                }
 
 {
@@ -151,7 +155,7 @@ termPos (Apply (pos, _) _) = pos
 termPos _ = error "termPos"
 
 exprToVar :: RawExpr -> ParserErr PIdent
-exprToVar (Apply (pos, Ident v) []) = return (PIdent pos v)
+exprToVar (Apply (pos, Name (Ident v)) []) = return (PIdent pos v)
 exprToVar term = throwError [(termPos term, "Expected a list of identifiers")]
 
 parseError :: Token -> Parser a
