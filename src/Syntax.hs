@@ -3,6 +3,7 @@ module Syntax
     , RawExpr, PIdent(..)
     , Clause(..), Con(..)
     , Import, Def(..), Tele(..)
+    , Infix(..), Fixity(..)
     , module Syntax.Term, module Syntax.Pattern
     ) where
 
@@ -17,6 +18,8 @@ type Import = [String]
 data Tele = VarsTele [PIdent] RawExpr | TypeTele RawExpr
 data Con = ConDef PIdent [Tele]
 type PatternP = Pattern Posn (Closed (Term (Posn, Syntax))) PIdent
+data Infix = InfixL | InfixR | InfixNA deriving Eq
+data Fixity = Infix Infix Int | Prefix
 
 data Def
     = DefType PName RawExpr
@@ -29,9 +32,18 @@ data Syntax
     | Pi [String]
     | PathImp
     | At
-    | Name Name
+    | Name Fixity Name
 
 type RawExpr = Term (Posn, Syntax) Void
 
 instance Eq PIdent where
     PIdent _ s == PIdent _ s' = s == s'
+
+instance Show Infix where
+    show InfixL = "infixl"
+    show InfixR = "infixr"
+    show InfixNA = "infix"
+
+instance Show Fixity where
+    show (Infix ia p) = show ia ++ " " ++ show p
+    show Prefix = "prefix"

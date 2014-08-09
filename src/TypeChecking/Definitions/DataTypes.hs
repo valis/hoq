@@ -28,10 +28,10 @@ typeCheckDataType p@(pos, dt) params cons conds = mdo
     (SomeEq ctx, dataType@(Type dtTerm _)) <- checkTele Nil params (universe NoLevel)
     dtid <- addDataTypeCheck p lcons dataType
     cons' <- forW (zip cons [0..]) $ \(ConDef con@(PIdent pos conName) tele, i) -> do
-        (_, Type conType conLevel) <- checkTele ctx tele $ Apply (Semantics (Name dt) $ DataType dtid lcons) (ctxToVars ctx)
+        (_, Type conType conLevel) <- checkTele ctx tele $ Apply (Semantics (Name Prefix dt) $ DataType dtid lcons) (ctxToVars ctx)
         checkPositivity pos dtid (nf WHNF conType)
         let conds'' = map snd $ filter (\(c,_) -> c == conName) conds'
-            conTerm = Semantics (Name $ Ident conName) $ Con i (PatEval conds'')
+            conTerm = Semantics (Name Prefix $ Ident conName) $ Con i (PatEval conds'')
         return $ Just (con, (i, conds'', conTerm), Type conType conLevel)
     forM_ cons' $ \(PIdent pcon con, (i, cs, _), Type ty lvl) ->
         addConstructorCheck (pcon, Ident con) dtid i lcons (PatEval cs) $ Type (abstractTerm ctx ty) lvl

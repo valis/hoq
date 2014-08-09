@@ -71,17 +71,17 @@ findSuspiciousPairs cs (pat@(Pattern con@(PatternCon i _ name conds) args) : pat
     ext0 :: [PatternC String] -> TermsInCtx (Term Semantics) b -> TermsInCtx2 (Term Semantics) b
     ext0 args (TermsInCtx ctx terms) = case patternsToTerms pats of
         TermsInCtx ctx' terms' -> TermsInCtx2 (ctx +++ ctx')
-            (fmap (liftBase ctx') (Apply (Semantics (S.Name $ S.Ident name) (Con i $ PatEval conds)) $ substPatterns args terms) : terms')
+            (fmap (liftBase ctx') (Apply (Semantics (S.Name S.Prefix $ S.Ident name) (Con i $ PatEval conds)) $ substPatterns args terms) : terms')
             (map (fmap $ liftBase ctx') terms ++ ctxToVars ctx')
     
     ext1 :: TermsInCtx2 (Term Semantics) b -> TermsInCtx2 (Term Semantics) b
     ext1 (TermsInCtx2 ctx terms1 terms2) = case patternsToTerms pats of
-        TermsInCtx ctx' terms' -> TermsInCtx2 (ctx +++ ctx') (fmap (liftBase ctx') (Apply (Semantics (S.Name $ S.Ident name) (Con i $ PatEval conds)) terms1) : terms')
+        TermsInCtx ctx' terms' -> TermsInCtx2 (ctx +++ ctx') (fmap (liftBase ctx') (Apply (Semantics (S.Name S.Prefix $ S.Ident name) (Con i $ PatEval conds)) terms1) : terms')
                                                              (map (fmap $ liftBase ctx') terms2 ++ ctxToVars ctx')
     
     ext2 :: Ctx String (Term Semantics) a b -> [Term Semantics b] -> TermsInCtx2 (Term Semantics) b -> TermsInCtx2 (Term Semantics) a
     ext2 ctx terms (TermsInCtx2 ctx' terms1 terms2) =
-        TermsInCtx2 (ctx +++ ctx') (fmap (liftBase ctx') (Apply (Semantics (S.Name $ S.Ident name) (Con i $ PatEval conds)) terms) : terms1)
+        TermsInCtx2 (ctx +++ ctx') (fmap (liftBase ctx') (Apply (Semantics (S.Name S.Prefix $ S.Ident name) (Con i $ PatEval conds)) terms) : terms1)
                                    (map (fmap $ liftBase ctx') (ctxToVars ctx) ++ terms2)
 
 unifyPatterns :: PatternC String -> PatternC String -> Maybe [PatternC String]
@@ -115,14 +115,14 @@ substPatterns pats terms = evalState (mapM substPattern pats) terms
         return term
     substPattern (Pattern (PatternCon i _ name conds) pats) = do
         terms <- mapM substPattern pats
-        return $ Apply (Semantics (S.Name $ S.Ident name) (Con i $ PatEval conds)) terms
+        return $ Apply (Semantics (S.Name S.Prefix $ S.Ident name) (Con i $ PatEval conds)) terms
 
 patternToTerm :: PatternC String -> TermInCtx (Term Semantics) a
 patternToTerm (PatternI _ con) = TermInCtx Nil (iCon con)
 patternToTerm (PatternEmpty _) = TermInCtx (Snoc Nil "_" $ error "") (cvar Bound)
 patternToTerm (PatternVar var) = TermInCtx (Snoc Nil var $ error "") (cvar Bound)
 patternToTerm (Pattern (PatternCon i _ name conds) pats) = case patternsToTerms pats of
-    TermsInCtx ctx' terms -> TermInCtx ctx' $ Apply (Semantics (S.Name $ S.Ident name) (Con i $ PatEval conds)) terms
+    TermsInCtx ctx' terms -> TermInCtx ctx' $ Apply (Semantics (S.Name S.Prefix $ S.Ident name) (Con i $ PatEval conds)) terms
 
 patternsToTerms :: [PatternC String] -> TermsInCtx (Term Semantics) a
 patternsToTerms [] = TermsInCtx Nil []

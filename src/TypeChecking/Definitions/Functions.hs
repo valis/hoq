@@ -47,7 +47,7 @@ typeCheckFunction p@(pos, name) ety clauses = do
                 return $ Just ((rtpats, scope), (pos, rtpats))
     let clauses' = map fst clausesAndPats
         eval = PatEval $ map (fmap $ \(Closed scope) -> Closed $ replaceFunCalls fcid fc scope) clauses'
-        fc = Closed $ capply $ Semantics (Name name) (FunCall fcid eval)
+        fc = Closed $ capply $ Semantics (Name Prefix name) (FunCall fcid eval)
     lift $ replaceFunction name eval (Type ty lvl)
     case checkCoverage (map snd clausesAndPats) of
         Nothing -> when (length clausesAndPats == length (filter (\(_,_,me) -> isJust me) clauses)) $

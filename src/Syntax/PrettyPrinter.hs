@@ -16,8 +16,8 @@ instance E.Pretty1 (Term Syntax) where
 
 freeVars :: Term Syntax a -> [String]
 freeVars = biconcatMap (\t -> case t of
-    Name s  -> [getStr s]
-    _       -> []) (const [])
+    Name _ (Ident s)    -> [s]
+    _                   -> []) (const [])
 
 ppTerm :: Term Syntax Void -> Doc
 ppTerm t = ppTermCtx (freeVars t) (vacuous t)
@@ -33,11 +33,19 @@ ppSyntax ctx p@(Pi vs) [t1, t2] = (if null vs
     else parens $ hsep (map text vs) <+> colon <+> ppTermCtx ctx t1) <+> arrow <+> ppBound (prec p) ctx vs t2
 ppSyntax ctx l@(Lam vs) (t:ts) = bparens (not $ null ts) (text "\\" <> hsep (map text vs) <+> arrow <+> ppBound (prec l) ctx vs t) <+> ppList ctx ts
 ppSyntax ctx t@PathImp [_,t2,t3] = ppTermPrec (prec t + 1) ctx t2 <+> equals <+> ppTermPrec (prec t + 1) ctx t3
-ppSyntax ctx t@At (_:_:t3:t4:ts) = ppTermPrec (prec t) ctx t3 <+> text "@" <+> ppTermPrec (prec t + 1) ctx t4 <+> ppList ctx ts
-ppSyntax ctx (Name n) ts = (case n of
+ppSyntax ctx t@At (_:_:t3:t4:ts) = bparens (not $ null ts)
+    (ppTermPrec (prec t) ctx t3 <+> text "@" <+> ppTermPrec (prec t + 1) ctx t4) <+> ppList ctx ts
+ppSyntax ctx t@(Name (Infix ft _) n) (t1:t2:ts) =
+    bparens (not $ null ts) (ppTermPrec (opFixity InfixL ft $ prec t) ctx t1 <+> text (case n of
+        Ident s -> "`" ++ s ++ "`"
+        Operator s -> s) <+> ppTermPrec (opFixity InfixR ft $ prec t) ctx t2) <+> ppList ctx ts
+ppSyntax ctx (Name _ n) ts = (case n of
     Ident s -> text s
     Operator s -> parens $ text s) <+> ppList ctx ts
 ppSyntax _ _ _ = error "ppSyntax"
+
+opFixity :: Infix -> Infix -> Int -> Int
+opFixity ft ft' p = if ft == ft' then p else p + 1
 
 ppList :: [String] -> [Term Syntax Doc] -> Doc
 ppList ctx ts = hsep $ map (ppTermPrec 10 ctx) ts
@@ -45,7 +53,7 @@ ppList ctx ts = hsep $ map (ppTermPrec 10 ctx) ts
 ppBound :: Int -> [String] -> [String] -> Term Syntax Doc -> Doc
 ppBound p ctx (v:vs) (Lambda t) =
     let (ctx',v') = renameName2 v ctx (freeVars t)
-    in ppBound p ctx' vs $ instantiate1 (capply $ Name $ Ident v') t
+    in ppBound p ctx' vs $ instantiate1 (capply $ Name Prefix $ Ident v') t
 ppBound p ctx _ t = ppTermPrec p ctx t
 
 ppTermPrec :: Int -> [String] -> Term Syntax Doc -> Doc
@@ -66,12 +74,13 @@ renameName2 var ctx ctx' = if var `elem` ctx && var `elem` ctx'
     then renameName (var ++ "'") ctx'
     else (var:ctx,var)
 
-prec :: Syntax -> Int
-prec Name{}     = 10
-prec At         = 8
-prec PathImp{}  = 7
-prec Pi{}       = 6
-prec Lam{}      = 5
+prec :: Syntax             -> Int
+prec (Name Prefix _)        = 100
+prec (Name (Infix _ p) _)   = p
+prec At                     = 80
+prec PathImp{}              = 70
+prec Pi{}                   = 60
+prec Lam{}                  = 50
 
 precTerm :: Term Syntax a -> Int
 precTerm Var{} = 10

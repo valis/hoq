@@ -13,6 +13,7 @@ import qualified Data.ByteString.Char8 as C
 import Control.Monad.State
 
 import TypeChecking.Monad.Warn
+import Syntax
 }
 
 $alpha      = [a-zA-Z]
@@ -37,7 +38,6 @@ $operator   = [\~\!\@\#\$\%\^\&\*\-\+\=\|\?\<\>\,\.\/\:\;\[\]\{\}]
                     dropWhile (\c -> not (isAlpha c) && c /= '_') (drop 6 s)        }
 "data"          { \_ _ -> TokData                                                   }
 @with           { \_ _ -> TokWith 0                                                 }
-@ident          { \p s -> TokIdent (p, s)                                           }
 \\              { \p _ -> TokLam p                                                  }
 \(              { \p _ -> TokLParen p                                               }
 \:              { \_ _ -> TokColon                                                  }
@@ -48,14 +48,20 @@ $operator   = [\~\!\@\#\$\%\^\&\*\-\+\=\|\?\<\>\,\.\/\:\;\[\]\{\}]
 \)              { \_ _ -> TokRParen                                                 }
 \|              { \_ _ -> TokPipe                                                   }
 \@              { \_ _ -> TokAt                                                     }
+\`              { \_ _ -> TokApos                                                   }
 "->"            { \_ _ -> TokArrow                                                  }
-$operator+      { \p s -> TokOperator (p, s)                                        }
+$operator+      { \p s -> TokOperator (PIdent p s)                                  }
+$digit+         { \p s -> TokInteger (p, read s)                                    }
+"infixl"        { \p _ -> TokInfix (p, InfixL)                                      }
+"infixr"        { \p _ -> TokInfix (p, InfixR)                                      }
+"infix"         { \p _ -> TokInfix (p, InfixNA)                                     }
+@ident          { \p s -> TokIdent (PIdent p s)                                     }
 @newline        { \_ _ -> TokNewLine                                                }
 
 {
 data Token
-    = TokIdent !(Posn, String)
-    | TokOperator !(Posn, String)
+    = TokIdent !PIdent
+    | TokOperator !PIdent
     | TokLam !Posn
     | TokLParen !Posn
     | TokImport ![String]
@@ -69,18 +75,19 @@ data Token
     | TokRParen
     | TokPipe
     | TokAt
+    | TokApos
     | TokArrow
     | TokWith !Int
     | TokNewLine
+    | TokInfix !(Posn, Infix)
+    | TokInteger !(Posn, Int)
     | TokEOF
 
-type Posn = (Int,Int)
-
 tokGetPos :: Token -> Maybe Posn
-tokGetPos (TokIdent (pos, _)) = Just pos
+tokGetPos (TokIdent (PIdent pos _)) = Just pos
 tokGetPos (TokLam pos) = Just pos
 tokGetPos (TokLParen pos) = Just pos
-tokGetPos (TokOperator (pos, _)) = Just pos
+tokGetPos (TokOperator (PIdent pos _)) = Just pos
 tokGetPos _ = Nothing
 
 breaks :: Eq a => a -> [a] -> [[a]]
@@ -92,7 +99,7 @@ type AlexInput = (Posn, B.ByteString)
 
 data Layout = Layout Int | NoLayout deriving Eq
 
-type ParserErr a = WarnT [(Posn, String)] (State [Layout]) a
+type ParserErr a = WarnT [(Posn, String)] (State ([Layout], [(Name,Fixity)])) a
 type Parser a = AlexInput -> ParserErr a
 
 alexScanTokens :: (Token -> Parser a) -> Parser a
@@ -106,20 +113,20 @@ alexScanTokens cont = go
         AlexSkip  inp' _    -> go inp'
         AlexToken inp'@((_, c), _) len act -> case act pos $ C.unpack (B.take len str) of
             TokNewLine -> do
-                layout:layouts <- lift get
+                (layout:layouts, ft) <- lift get
                 case layout of
                     NoLayout -> go inp'
                     Layout n -> case compare n c of
                         LT -> go inp'
                         EQ -> cont TokSemicolon inp'
                         GT -> do
-                            lift (put layouts)
+                            lift $ put (layouts, ft)
                             cont TokRBrace inp
             TokRBrace  -> do
-                layout <- lift get
+                (layout, ft) <- lift get
                 if NoLayout `elem` layout
                 then do
-                    lift $ put (tail layout)
+                    lift $ put (tail layout, ft)
                     cont TokRBrace $ if head layout == NoLayout then inp' else inp
                 else do
                     warn [(pos, "Misplaced '}'")]

@@ -46,10 +46,10 @@ intType :: Type Semantics a
 intType = Type interval NoLevel
 
 interval :: Term Semantics a
-interval = capply $ Semantics (Name $ Ident "I") Interval
+interval = capply $ Semantics (Name Prefix $ Ident "I") Interval
 
 pathExp :: Level -> Semantics
-pathExp lvl = Semantics (Name $ Ident "Path") (Path lvl)
+pathExp lvl = Semantics (Name Prefix $ Ident "Path") (Path lvl)
 
 pathImp :: Level -> Semantics
 pathImp lvl = Semantics PathImp (Path lvl)
@@ -63,24 +63,7 @@ typeCheck = typeCheckCtx Nil
 
 typeCheckCtx :: (Monad m, Eq a) => Context a -> Term (Posn, Syntax) Void
     -> Maybe (Type Semantics a) -> TCM m (Term Semantics a, Type Semantics a)
-typeCheckCtx ctx (Apply (pos, Name var) ts) mty = do
-    when (getStr var == "_") $ throwError [emsgLC pos "Expected an identifier" enull]
-    let mdt = case mty of
-                Just (Type (Apply (Semantics _ (DataType dti _)) params) _) -> Just (dti,params)
-                _ -> Nothing
-    mt <- lift $ getEntry var mdt
-    eres <- case mt of
-        [] -> liftM Right (typeCheckKeyword ctx pos (getStr var) ts mty)
-        [(s,ty)] -> return $ Left (capply s, ty)
-        _ -> throwError [emsgLC pos ("Ambiguous identifier: " ++ show (getStr var)) enull]
-    case eres of
-        Left (te, ty) -> do
-            (tes, Type ty' lvl') <- typeCheckApps pos ctx ts ty
-            case (mty, ty') of
-                (Nothing, _)            -> return ()
-                (Just (Type ety _), _)  -> actExpType ctx ty' ety pos
-            return (apps te tes, Type ty' lvl')
-        Right res -> return res
+typeCheckCtx ctx (Apply (pos, Name ft var) ts) mty = typeCheckName ctx pos ft var ts mty
 typeCheckCtx ctx (Apply (_, S.Lam []) [te]) mty = typeCheckCtx ctx te mty
 typeCheckCtx ctx (Apply (pos, S.Lam (v:vs)) [te]) (Just ty@(Type (Apply p@(Semantics _ (V.Pi lvl1 lvl2)) [a,b]) _)) = do
     (te', _) <- typeCheckCtx (Snoc ctx v $ Type a lvl1) (Apply (pos, S.Lam vs) [te]) $ Just $ Type (nf WHNF $ snd $ dropOnePi p a b) lvl2
@@ -129,6 +112,27 @@ typeCheckCtx ctx te (Just (Type ty _)) = do
     return (te', Type ty' lvl')
 typeCheckCtx _ _ _ = error "typeCheckCtx"
 
+typeCheckName :: (Monad m, Eq a) => Context a -> Posn -> Fixity -> Name -> [Term (Posn, Syntax) Void]
+    -> Maybe (Type Semantics a) -> TCM m (Term Semantics a, Type Semantics a)
+typeCheckName ctx pos ft var ts mty = do
+    when (getStr var == "_") $ throwError [emsgLC pos "Expected an identifier" enull]
+    let mdt = case mty of
+                Just (Type (Apply (Semantics _ (DataType dti _)) params) _) -> Just (dti,params)
+                _ -> Nothing
+    mt <- lift $ getEntry var mdt
+    eres <- case mt of
+        [] -> liftM Right (typeCheckKeyword ctx pos (getStr var) ts mty)
+        [(s,ty)] -> return $ Left (capply $ s { syntax = Name ft var }, ty)
+        _ -> throwError [emsgLC pos ("Ambiguous identifier: " ++ show (getStr var)) enull]
+    case eres of
+        Left (te, ty) -> do
+            (tes, Type ty' lvl') <- typeCheckApps pos ctx ts ty
+            case (mty, ty') of
+                (Nothing, _)            -> return ()
+                (Just (Type ety _), _)  -> actExpType ctx ty' ety pos
+            return (apps te tes, Type ty' lvl')
+        Right res -> return res
+
 typeCheckKeyword :: (Monad m, Eq a) => Context a -> Posn -> String -> [Term (Posn, Syntax) Void]
     -> Maybe (Type Semantics a) -> TCM m (Term Semantics a, Type Semantics a)
 typeCheckKeyword ctx pos u as Nothing | (lvl,""):_ <- reads u = do
@@ -172,7 +176,7 @@ typeCheckKeyword ctx pos "path" (a:as) mty = do
             (r,t) <- typeCheckCtx ctx a $ Just $
                 Type (Apply (Semantics (S.Pi ["i"]) $ V.Pi NoLevel l1) [interval, Lambda $ apps (fmap Free t1) [cvar Bound]]) l1
             actExpType ctx (Apply (pathImp l1) [t1, apps r [iCon ILeft], apps r [iCon IRight]]) ty pos
-            return (Apply (Semantics (Name $ Ident "path") PCon) [r], Type ty lvl)
+            return (Apply (Semantics (Name Prefix $ Ident "path") PCon) [r], Type ty lvl)
         Just (Type ty _) -> throwError [emsgLC pos "" $ pretty "Expected type:" <+> prettyOpen ctx ty
                                                      $$ pretty "Actual type: Path"]
 typeCheckKeyword ctx pos "coe" [] _ = throwError [expectedArgErrorMsg pos "coe"]
@@ -180,7 +184,7 @@ typeCheckKeyword ctx pos "coe" (a1:as) Nothing = do
     (r1, _, (v, t1)) <- typeCheckLambda ctx a1 intType
     lvl <- checkIsType (Snoc ctx v $ error "") (termPos a1) t1
     let res = Apply (Semantics (S.Pi ["r"]) $ V.Pi NoLevel lvl) [interval, Lambda $ apps (fmap Free r1) [cvar Bound]]
-        coe = Semantics (Name $ Ident "coe") Coe
+        coe = Semantics (Name Prefix $ Ident "coe") Coe
     case as of
         [] -> return (Apply coe [r1], Type (Apply (Semantics (S.Pi ["l"]) $ V.Pi NoLevel lvl) [interval, Lambda $
             Apply (Semantics (S.Pi []) $ V.Pi lvl lvl) [apps (fmap Free r1) [cvar Bound], fmap Free res]]) lvl)
@@ -209,7 +213,7 @@ typeCheckKeyword ctx pos "iso" (a1:a2:a3:a4:a5:a6:as) Nothing = do
     let h e s1 s3 s4 tlvl = typeCheckCtx ctx e $ Just $ Type (Apply (Semantics (S.Pi ["x"]) $ V.Pi tlvl tlvl) [s1, Lambda $
             Apply (pathImp tlvl) [Apply (Semantics (S.Lam ["_"]) V.Lam) [Lambda $ fmap (Free . Free) s1],
                 apps (fmap Free s4) [apps (fmap Free s3) [cvar Bound]], cvar Bound]]) tlvl
-        iso = Semantics (Name $ Ident "iso") Iso
+        iso = Semantics (Name Prefix $ Ident "iso") Iso
     (r5, _) <- h a5 r1 r3 r4 lvl1
     (r6, _) <- h a6 r2 r4 r3 lvl2
     case as of
@@ -222,7 +226,7 @@ typeCheckKeyword ctx pos "iso" (a1:a2:a3:a4:a5:a6:as) Nothing = do
 typeCheckKeyword ctx pos "iso" _ Nothing = throwError [emsgLC pos "Expected at least 6 arguments to \"iso\"" enull]
 typeCheckKeyword ctx pos "squeeze" as Nothing =
     let mkType t = Apply (Semantics (S.Pi []) $ V.Pi NoLevel NoLevel) [interval, t]
-        squeeze = Semantics (Name $ Ident "squeeze") Squeeze
+        squeeze = Semantics (Name Prefix $ Ident "squeeze") Squeeze
     in case as of
         [] -> return (capply squeeze, Type (mkType $ mkType interval) NoLevel)
         [a1] -> do

@@ -43,7 +43,7 @@ replaceFunction v e ty = ScopeT $ modify $ \scope -> case lookupDelete v (functi
 
 updScopeFunction :: Name -> SEval -> Type Semantics Void -> ScopeState -> (ID, ScopeState)
 updScopeFunction v e ty scope = (counter scope, scope
-    { functions = (v, (Semantics (Name v) (FunCall (counter scope) e), ty)) : functions scope
+    { functions = (v, (Semantics (Name Prefix v) (FunCall (counter scope) e), ty)) : functions scope
     , counter = counter scope + 1
     })
 
@@ -64,7 +64,7 @@ replaceDataType v n ty = ScopeT $ modify $ \scope -> case lookupDelete v (dataTy
 
 updScopeDataType :: Name -> Int -> Type Semantics Void -> ScopeState -> (ID, ScopeState)
 updScopeDataType v n ty scope = (counter scope, scope
-    { dataTypes = (v, (Semantics (Name v) (DataType (counter scope) n), ty)) : dataTypes scope
+    { dataTypes = (v, (Semantics (Name Prefix v) (DataType (counter scope) n), ty)) : dataTypes scope
     , counter = counter scope + 1
     })
 
@@ -78,7 +78,7 @@ lookupDelete a' ((a,b):xs) | a == a' = Just (b, xs)
 
 addConstructor :: Monad m => Name -> ID -> Int -> Int -> SEval -> Type Semantics Void -> ScopeT m ()
 addConstructor con dt i n e ty = ScopeT $ modify $ \scope -> scope
-    { constructors = ((con, dt), (n, Semantics (Name con) (Con i e), ty)) : constructors scope
+    { constructors = ((con, dt), (n, Semantics (Name Prefix con) (Con i e), ty)) : constructors scope
     }
 
 getConstructor :: Monad m => Name -> Maybe ID -> ScopeT m [(Int, Semantics, Type Semantics Void)]

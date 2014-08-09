@@ -41,6 +41,13 @@ ack zero n = suc n
 ack (suc m) zero = ack m (suc zero)
 ack (suc m) (suc n) = ack m (ack (suc m) n)
 
+-- Infix operators
+infixl 60 `plus`
+infixl 70 *
+(*) : Nat -> Nat -> Nat
+(*) zero _ = zero
+(*) (suc x) y = y `plus` x * y
+
 -- Interval type
 -- I is a type with constructors left : I and right : I
 -- coe and squeeze are primitive operators which satisfy the following rules:

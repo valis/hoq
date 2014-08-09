@@ -18,7 +18,7 @@ pExpr :: Monad m => B.ByteString -> WarnT [EMsg f] m RawExpr
 pExpr = runParser P.pExpr
 
 runParser :: Monad m => Parser a -> B.ByteString -> WarnT [EMsg f] m a
-runParser p s = case evalState (runWarnT $ p ((1, 1), s)) [Layout 1] of
+runParser p s = case evalState (runWarnT $ p ((1, 1), s)) ([Layout 1], []) of
     (errs, Nothing) -> throwError (mapErrs errs)
     (errs, Just a)  -> warn (mapErrs errs) >> return a
   where
