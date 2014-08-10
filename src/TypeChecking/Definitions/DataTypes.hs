@@ -7,6 +7,7 @@ module TypeChecking.Definitions.DataTypes
 import Control.Monad
 import Control.Monad.Fix
 import Data.List
+import Data.Bifunctor
 import Data.Bifoldable
 import Data.Void
 
@@ -22,7 +23,7 @@ import TypeChecking.Definitions.Conditions
 import TypeChecking.Definitions.Termination
 import Normalization
 
-typeCheckDataType :: MonadFix m => PName -> [Tele] -> [Con] -> [Clause] -> TCM m ()
+typeCheckDataType :: MonadFix m => PName -> [Tele] -> [S.Con] -> [Clause] -> TCM m ()
 typeCheckDataType p@(pos, dt) params cons conds = mdo
     let lcons = length cons
     (SomeEq ctx, dataType@(Type dtTerm _)) <- checkTele Nil params (universe NoLevel)
@@ -31,7 +32,7 @@ typeCheckDataType p@(pos, dt) params cons conds = mdo
         (_, Type conType conLevel) <- checkTele ctx tele $ Apply (Semantics (Name Prefix dt) $ DataType dtid lcons) (ctxToVars ctx)
         checkPositivity pos dtid (nf WHNF conType)
         let conds'' = map snd $ filter (\(c,_) -> c == conName) conds'
-            conTerm = Semantics (Name Prefix $ Ident conName) $ Con i (PatEval conds'')
+            conTerm = Semantics (Name Prefix $ Ident conName) $ Con $ DCon i lcons (PatEval conds'')
         return $ Just (con, (i, conds'', conTerm), Type conType conLevel)
     forM_ cons' $ \(PIdent pcon con, (i, cs, _), Type ty lvl) ->
         addConstructorCheck (pcon, Ident con) dtid i lcons (PatEval cs) $ Type (abstractTerm ctx ty) lvl
@@ -42,7 +43,7 @@ typeCheckDataType p@(pos, dt) params cons conds = mdo
                 when bf $ warn [emsgLC pos "Absurd patterns are not allowed in conditions" enull]
                 (term, _) <- typeCheckCtx (ctx +++ ctx') expr $ Just (nfType WHNF ty')
                 let scope = closed (abstractTerm ctx' term)
-                throwErrors (checkTermination (Left i) pos rtpats scope)
+                throwErrors $ checkTermination (Left i) pos (map (first snd) rtpats) scope
                 return $ Just (conName, (rtpats, scope))
             _ -> do
                 warn [notInScope pos "data constructor" (getStr con)]

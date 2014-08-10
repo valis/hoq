@@ -5,6 +5,7 @@ module TypeChecking.Definitions.Functions
 import Control.Monad
 import Data.Maybe
 import Data.Void
+import Data.Bifunctor
 
 import Syntax
 import Semantics
@@ -43,8 +44,9 @@ typeCheckFunction p@(pos, name) ety clauses = do
             (False, Just expr) -> do
                 (term, _) <- typeCheckCtx ctx expr $ Just (nfType WHNF ty')
                 let scope = closed (abstractTerm ctx term)
-                throwErrors (checkTermination (Right fcid) pos rtpats scope)
-                return $ Just ((rtpats, scope), (pos, rtpats))
+                    rtpats' = map (first snd) rtpats
+                throwErrors $ checkTermination (Right fcid) pos rtpats' scope
+                return $ Just ((rtpats, scope), (pos, rtpats'))
     let clauses' = map fst clausesAndPats
         eval = PatEval $ map (fmap $ \(Closed scope) -> Closed $ replaceFunCalls fcid fc scope) clauses'
         fc = Closed $ capply $ Semantics (Name Prefix name) (FunCall fcid eval)

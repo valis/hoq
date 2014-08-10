@@ -4,13 +4,13 @@ module Syntax
     , Clause(..), Con(..)
     , Import, Def(..), Tele(..)
     , Infix(..), Fixity(..)
-    , module Syntax.Term, module Syntax.Pattern
+    , Posn, Name(..), PName, getStr
+    , module Syntax.Term
     ) where
 
 import Data.Void
 
 import Syntax.Term
-import Syntax.Pattern
 
 data PIdent = PIdent { getPos :: Posn, getName :: String }
 data Clause = Clause PName [Term PName Void] RawExpr
@@ -19,6 +19,14 @@ data Tele = VarsTele [PIdent] RawExpr | TypeTele RawExpr
 data Con = ConDef PIdent [Tele]
 data Infix = InfixL | InfixR | InfixNA deriving Eq
 data Fixity = Infix Infix Int | Prefix deriving Eq
+
+type Posn = (Int, Int)
+data Name = Ident String | Operator String deriving Eq
+type PName = (Posn, Name)
+
+getStr :: Name -> String
+getStr (Ident s) = s
+getStr (Operator s) = s
 
 data Def
     = DefType PName RawExpr

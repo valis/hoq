@@ -2,10 +2,10 @@
     
 module Semantics
     ( Semantics(..), Type(..)
-    , SValue, SEval, PatternC
+    , SCon, SValue, SEval
     , lessOrEqual, pcompare
     , dropOnePi, iCon, universe
-    , module Syntax.Term, module Syntax.Pattern
+    , module Syntax.Term
     ) where
 
 import Prelude.Extras
@@ -13,16 +13,15 @@ import Prelude.Extras
 import Syntax.Term
 import qualified Syntax as S
 import Semantics.Value
-import Syntax.Pattern
 
 data Semantics = Semantics
     { syntax :: S.Syntax
     , value :: SValue
     }
 
+type SCon = Con (Closed (Term Semantics))
 type SValue = Value (Closed (Term Semantics))
 type SEval = Eval (Closed (Term Semantics))
-type PatternC = Pattern () (Closed (Term Semantics))
 
 instance Eq Semantics where
     s1 == s2 = value s1 == value s2
@@ -40,9 +39,9 @@ instance Eq a => Eq (Term Semantics a) where
     Apply (Semantics _ Lam) [t] == t' = t == t'
     t == t'@(Apply (Semantics _ Lam) _) = t' == t
     t@(Apply (Semantics _ Pi{}) _) == t'@(Apply (Semantics _ Pi{}) _) = pcompare t t' == Just EQ
-    Apply (Semantics _ PCon) ts == Apply (Semantics _ PCon) ts' = ts == ts'
-    Apply (Semantics _ PCon) [Apply (Semantics _ Lam) [Lambda (Apply (Semantics _ At) [_, _, t, Var Bound []])]] == t' = t == fmap Free t'
-    t == t'@(Apply (Semantics _ PCon) _) = t' == t
+    Apply (Semantics _ (Con PCon)) ts == Apply (Semantics _ (Con PCon)) ts' = ts == ts'
+    Apply (Semantics _ (Con PCon)) [Apply (Semantics _ Lam) [Lambda (Apply (Semantics _ At) [_, _, t, Var Bound []])]] == t' = t == fmap Free t'
+    t == t'@(Apply (Semantics _ (Con PCon)) _) = t' == t
     Apply (Semantics _ At) (_:_:ts) == Apply (Semantics _ At) (_:_:ts') = ts == ts'
     Apply s ts == Apply s' ts' = s == s' && ts == ts'
     _ == _ = False
@@ -84,8 +83,8 @@ dropOnePi (Semantics (S.Pi (v:vs)) s) a (Lambda b) = (v, Apply (Semantics (S.Pi 
 dropOnePi _ _ b = ("_", fmap Free b)
 
 iCon :: ICon -> Term Semantics a
-iCon ILeft  = capply $ Semantics (S.Name S.Prefix $ S.Ident "left")  (ICon ILeft)
-iCon IRight = capply $ Semantics (S.Name S.Prefix $ S.Ident "right") (ICon IRight)
+iCon ILeft  = capply $ Semantics (S.Name S.Prefix $ S.Ident "left")  $ Con (ICon ILeft)
+iCon IRight = capply $ Semantics (S.Name S.Prefix $ S.Ident "right") $ Con (ICon IRight)
 
 universe :: Level -> Term Semantics a
 universe lvl = capply $ Semantics (S.Name S.Prefix $ S.Ident $ show lvl) (Universe lvl)

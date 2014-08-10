@@ -27,40 +27,41 @@ tooManyArgs :: Posn -> EMsg f
 tooManyArgs pos = emsgLC pos "Too many arguments" enull
 
 typeCheckPattern :: (Monad m, Eq a) => Ctx String (Type Semantics) Void a -> Type Semantics a
-    -> Term PName Void -> TCM m (Bool, Maybe (TermInCtx a), PatternC String)
+    -> Term PName Void -> TCM m (Bool, Maybe (TermInCtx a), Term (String,SCon) String)
 typeCheckPattern ctx (Type (Apply (Semantics _ Interval) _) _) (Apply (pos, Ident "left") pats) = do
     unless (null pats) $ warn [tooManyArgs pos]
-    return (False, Just $ TermInCtx Nil $ iCon ILeft, PatternI () ILeft)
+    return (False, Just $ TermInCtx Nil $ iCon ILeft, Apply ("left", ICon ILeft) [])
 typeCheckPattern ctx (Type (Apply (Semantics _ Interval) _) _) (Apply (pos, Ident "right") pats) = do
     unless (null pats) $ warn [tooManyArgs pos]
-    return (False, Just $ TermInCtx Nil $ iCon IRight, PatternI () IRight)
+    return (False, Just $ TermInCtx Nil $ iCon IRight, Apply ("right", ICon IRight) [])
 typeCheckPattern ctx (Type (Apply (Semantics _ (DataType _ 0)) _) _) (Apply (_, Operator "") _) =
-    return (True, Nothing, PatternVar "_")
+    return (True, Nothing, Var "_" [])
 typeCheckPattern ctx (Type ty _) (Apply (pos, Operator "") _) =
     throwError [emsgLC pos "" $ pretty "Expected non-empty type:" <+> prettyOpen ctx ty]
-typeCheckPattern ctx _ (Apply (_, Ident "_") []) = return (False, Nothing, PatternVar "_")
+typeCheckPattern ctx _ (Apply (_, Ident "_") []) = return (False, Nothing, Var "_" [])
 typeCheckPattern ctx (Type ty@(Apply (Semantics _ (DataType dt _)) _) lvl) (Apply (pos, Ident var) []) = do
     cons <- lift $ getConstructor (Ident var) (Just dt)
     case cons of
-        (n, con@(Semantics _ (Con i (PatEval conds))), Type conType _):_ -> if isDataType conType
-            then return (False, Just $ TermInCtx Nil $ capply con, Pattern (PatternCon i n var conds) [])
+        (n, con@(Semantics _ (Con (DCon i _ conds))), Type conType _):_ -> if isDataType conType
+            then return (False, Just $ TermInCtx Nil $ capply con, Apply (var, DCon i n conds) [])
             else throwError [notEnoughArgs pos var]
-        _ -> return (False, Just $ TermInCtx (Snoc Nil var $ Type ty lvl) $ cvar Bound, PatternVar var)
+        _ -> return (False, Just $ TermInCtx (Snoc Nil var $ Type ty lvl) $ cvar Bound, Var var [])
   where
     isDataType :: Term Semantics a -> Bool
     isDataType (Lambda t) = isDataType t
     isDataType (Apply (Semantics _ DataType{}) _) = True
     isDataType _ = False
 typeCheckPattern ctx (Type ty lvl) (Apply (pos, Ident var) []) =
-    return (False, Just $ TermInCtx (Snoc Nil var $ Type ty lvl) $ cvar Bound, PatternVar var)
+    return (False, Just $ TermInCtx (Snoc Nil var $ Type ty lvl) $ cvar Bound, Var var [])
 typeCheckPattern ctx (Type (Apply (Semantics _ (DataType dt _)) params) _) (Apply (pos, Ident conName) pats) = do
     cons <- lift $ getConstructor (Ident conName) (Just dt)
     case cons of
-        (n, con@(Semantics _ (Con i (PatEval conds))), Type conType lvl):_ -> do
+        (n, con@(Semantics _ (Con (DCon i _ conds))), Type conType lvl):_ -> do
             let conType' = Type (nf WHNF $ apps (vacuous conType) params) lvl
             (bf, TermsInCtx ctx' terms (Type ty' _), rtpats) <- typeCheckPatterns ctx conType' pats
             case nf WHNF ty' of
-                Apply (Semantics _ DataType{}) _ -> return (bf, Just $ TermInCtx ctx' (Apply con terms), Pattern (PatternCon i n conName conds) rtpats)
+                Apply (Semantics _ DataType{}) _ ->
+                    return (bf, Just $ TermInCtx ctx' (Apply con terms), Apply (conName, DCon i n conds) rtpats)
                 _ -> throwError [notEnoughArgs pos conName]
         _ -> throwError [notInScope pos "data constructor" conName]
 typeCheckPattern ctx (Type ty _) (Apply (pos, _) _) =
@@ -69,7 +70,7 @@ typeCheckPattern ctx (Type ty _) (Apply (pos, _) _) =
 typeCheckPattern _ _ _ = error "typeCheckPattern"
 
 typeCheckPatterns :: (Monad m, Eq a) => Ctx String (Type Semantics) Void a -> Type Semantics a
-    -> [Term PName Void] -> TCM m (Bool, TermsInCtx a, [PatternC String])
+    -> [Term PName Void] -> TCM m (Bool, TermsInCtx a, [Term (String,SCon) String])
 typeCheckPatterns _ ty [] = return (False, TermsInCtx Nil [] ty, [])
 typeCheckPatterns ctx (Type (Apply p@(Semantics (S.Pi vs) (V.Pi l1 l2)) [a, b]) _) (pat:pats) = do
     let a' = Type (nf WHNF a) l1

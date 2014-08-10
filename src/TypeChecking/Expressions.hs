@@ -180,7 +180,7 @@ typeCheckKeyword ctx pos "path" (a:as) mty = do
             (r,t) <- typeCheckCtx ctx a $ Just $
                 Type (Apply (Semantics (S.Pi ["i"]) $ V.Pi NoLevel l1) [interval, Lambda $ apps (fmap Free t1) [cvar Bound]]) l1
             actExpType ctx (Apply (pathImp l1) [t1, apps r [iCon ILeft], apps r [iCon IRight]]) ty pos
-            return (Apply (Semantics (Name Prefix $ Ident "path") PCon) [r], Type ty lvl)
+            return (Apply (Semantics (Name Prefix $ Ident "path") $ Con PCon) [r], Type ty lvl)
         Just (Type ty _) -> throwError [emsgLC pos "" $ pretty "Expected type:" <+> prettyOpen ctx ty
                                                      $$ pretty "Actual type: Path"]
 typeCheckKeyword ctx pos "coe" [] _ = throwError [expectedArgErrorMsg pos "coe"]

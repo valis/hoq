@@ -78,7 +78,7 @@ lookupDelete a' ((a,b):xs) | a == a' = Just (b, xs)
 
 addConstructor :: Monad m => Name -> ID -> Int -> Int -> SEval -> Type Semantics Void -> ScopeT m ()
 addConstructor con dt i n e ty = ScopeT $ modify $ \scope -> scope
-    { constructors = ((con, dt), (n, Semantics (Name Prefix con) (Con i e), ty)) : constructors scope
+    { constructors = ((con, dt), (n, Semantics (Name Prefix con) (Con $ DCon i n e), ty)) : constructors scope
     }
 
 getConstructor :: Monad m => Name -> Maybe ID -> ScopeT m [(Int, Semantics, Type Semantics Void)]

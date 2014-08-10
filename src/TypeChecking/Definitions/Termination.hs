@@ -12,7 +12,7 @@ import Semantics
 import Syntax.ErrorDoc
 import TypeChecking.Context
 
-checkTermination :: Either Int ID -> S.Posn -> [PatternC String] -> Closed (Term Semantics) -> [EMsg (Term S.Syntax)]
+checkTermination :: Either Int ID -> S.Posn -> [Term (Con t) String] -> Closed (Term Semantics) -> [EMsg (Term S.Syntax)]
 checkTermination name pos pats (Closed scope) = map msg $ case scopeToCtx Nil scope of
     TermInCtx ctx term -> collectFunCalls ctx name term >>= \mts -> case mts of
         TermsInCtx ctx' terms -> if evalState (checkTerms ctx' pats terms) 0 == LT then [] else [pos]
@@ -20,9 +20,9 @@ checkTermination name pos pats (Closed scope) = map msg $ case scopeToCtx Nil sc
     msg :: S.Posn -> EMsg (Term S.Syntax)
     msg pos = emsgLC pos "Termination check failed" enull
 
-checkTerm :: Ctx String (Term Semantics) String a -> PatternC String -> Term Semantics a -> State Int Ordering
-checkTerm _ (PatternI _ con) (Apply (Semantics _ (ICon con')) []) | con == con' = return EQ
-checkTerm ctx (PatternVar _) (Var v []) = do
+checkTerm :: Ctx String (Term Semantics) String a -> Term (Con t) String -> Term Semantics a -> State Int Ordering
+checkTerm _ (Apply (ICon con) _) (Apply (Semantics _ (Con (ICon con'))) []) | con == con' = return EQ
+checkTerm ctx Var{} (Var v []) = do
     s <- get
     put (s + 1)
     return $ if s == lengthCtx ctx - 1 - index ctx v then EQ else GT
@@ -31,17 +31,17 @@ checkTerm ctx (PatternVar _) (Var v []) = do
     index Nil _ = 0
     index (Snoc ctx _ _) Bound = 0
     index (Snoc ctx _ _) (Free a) = index ctx a + 1
-checkTerm ctx (Pattern (PatternCon i _ _ _) pats) term = do
+checkTerm ctx (Apply (DCon i _ _) pats) term = do
     s <- get
     results <- mapM (\pat -> checkTerm ctx pat term) pats
     if minimum (GT:results) /= GT then return LT else case term of
-        Apply (Semantics _ (Con i' _)) terms | i == i' -> do
+        Apply (Semantics _ (Con (DCon i' _ _))) terms | i == i' -> do
             put s
             checkTerms ctx pats terms
         _ -> return GT
 checkTerm _ _ _ = return GT
 
-checkTerms :: Ctx String (Term Semantics) String a -> [PatternC String] -> [Term Semantics a] -> State Int Ordering
+checkTerms :: Ctx String (Term Semantics) String a -> [Term (Con t) String] -> [Term Semantics a] -> State Int Ordering
 checkTerms _ [] _ = return EQ
 checkTerms _ _ [] = return EQ
 checkTerms ctx (pat:pats) (term:terms) = do
@@ -62,6 +62,6 @@ collectFunCalls :: Ctx String (Term Semantics) b a -> Either Int ID
 collectFunCalls ctx name (Lambda t) = collectFunCalls (Snoc ctx (error "") $ error "") name t
 collectFunCalls ctx name (Var _ as) = as >>= collectFunCalls ctx name
 collectFunCalls ctx name (Apply a as) = (case a of
-    Semantics _ (Con name' _) | name == Left name' -> [TermsInCtx ctx as]
+    Semantics _ (Con (DCon name' _ _)) | name == Left name' -> [TermsInCtx ctx as]
     Semantics _ (FunCall name' _) | name == Right name' -> [TermsInCtx ctx as]
     _ -> []) ++ (as >>= collectFunCalls ctx name)
