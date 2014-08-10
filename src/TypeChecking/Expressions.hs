@@ -45,9 +45,6 @@ checkIsType ctx pos t = throwError [emsgLC pos "" $ pretty "Expected type: Type"
 intType :: Type Semantics a
 intType = Type interval NoLevel
 
-interval :: Term Semantics a
-interval = capply $ Semantics (Name Prefix $ Ident "I") Interval
-
 pathExp :: Level -> Semantics
 pathExp lvl = Semantics (Name Prefix $ Ident "Path") (Path lvl)
 
@@ -114,6 +111,12 @@ typeCheckCtx _ _ _ = error "typeCheckCtx"
 
 typeCheckName :: (Monad m, Eq a) => Context a -> Posn -> Fixity -> Name -> [Term (Posn, Syntax) Void]
     -> Maybe (Type Semantics a) -> TCM m (Term Semantics a, Type Semantics a)
+typeCheckName ctx pos ft (Ident var) ts mty | Just (te, ty) <- lookupCtx var ctx = do
+    (tes, Type ty' lvl') <- typeCheckApps pos ctx ts ty
+    case (mty, ty') of
+        (Nothing, _)            -> return ()
+        (Just (Type ety _), _)  -> actExpType ctx ty' ety pos
+    return (apps te tes, Type ty' lvl')
 typeCheckName ctx pos ft var ts mty = do
     when (getStr var == "_") $ throwError [emsgLC pos "Expected an identifier" enull]
     let mdt = case mty of
@@ -180,7 +183,7 @@ typeCheckKeyword ctx pos "path" (a:as) mty = do
             (r,t) <- typeCheckCtx ctx a $ Just $
                 Type (Apply (Semantics (S.Pi ["i"]) $ V.Pi NoLevel l1) [interval, Lambda $ apps (fmap Free t1) [cvar Bound]]) l1
             actExpType ctx (Apply (pathImp l1) [t1, apps r [iCon ILeft], apps r [iCon IRight]]) ty pos
-            return (Apply (Semantics (Name Prefix $ Ident "path") $ Con PCon) [r], Type ty lvl)
+            return (path [r], Type ty lvl)
         Just (Type ty _) -> throwError [emsgLC pos "" $ pretty "Expected type:" <+> prettyOpen ctx ty
                                                      $$ pretty "Actual type: Path"]
 typeCheckKeyword ctx pos "coe" [] _ = throwError [expectedArgErrorMsg pos "coe"]
@@ -245,14 +248,7 @@ typeCheckKeyword ctx pos var ts (Just (Type ty _)) = do
     (te', Type ty' lvl') <- typeCheckKeyword ctx pos var ts Nothing
     actExpType ctx ty' ty pos
     return (te', Type ty' lvl')
-typeCheckKeyword ctx pos var ts mty = case lookupCtx var ctx of
-    Just (te, ty)  -> do
-        (tes, Type ty' lvl') <- typeCheckApps pos ctx ts ty
-        case (mty, ty') of
-            (Nothing, _)            -> return ()
-            (Just (Type ety _), _)  -> actExpType ctx ty' ety pos
-        return (apps te tes, Type ty' lvl')
-    Nothing -> throwError [notInScope pos "" var]
+typeCheckKeyword _ pos var _ _ = throwError [notInScope pos "" var]
 
 actExpType :: (Monad m, Eq a) => Context a -> Term Semantics a -> Term Semantics a -> Posn -> EDocM m ()
 actExpType ctx act exp pos =

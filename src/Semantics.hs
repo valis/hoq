@@ -5,6 +5,7 @@ module Semantics
     , SCon, SValue, SEval
     , lessOrEqual, pcompare
     , dropOnePi, iCon, universe
+    , path, interval
     , module Syntax.Term
     ) where
 
@@ -85,6 +86,12 @@ dropOnePi _ _ b = ("_", fmap Free b)
 iCon :: ICon -> Term Semantics a
 iCon ILeft  = capply $ Semantics (S.Name S.Prefix $ S.Ident "left")  $ Con (ICon ILeft)
 iCon IRight = capply $ Semantics (S.Name S.Prefix $ S.Ident "right") $ Con (ICon IRight)
+
+path :: [Term Semantics a] -> Term Semantics a
+path = Apply $ Semantics (S.Name S.Prefix $ S.Ident "path") (Con PCon)
+
+interval :: Term Semantics a
+interval = capply $ Semantics (S.Name S.Prefix $ S.Ident "I") Interval
 
 universe :: Level -> Term Semantics a
 universe lvl = capply $ Semantics (S.Name S.Prefix $ S.Ident $ show lvl) (Universe lvl)

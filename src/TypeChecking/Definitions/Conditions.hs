@@ -50,8 +50,6 @@ checkPatterns (Closed func) cs pats (Closed scope) =
 
 findSuspiciousPairs :: [[Term (String,SCon) String]] -> [Term (String,SCon) String] -> [TermsInCtx2 (Term Semantics) b]
 findSuspiciousPairs _ [] = []
-findSuspiciousPairs cs (pat@(Apply (_, ICon con) _) : pats) = map ext $ findSuspiciousPairs (mapTail pat cs) pats
-  where ext (TermsInCtx2 ctx terms1 terms2) = (TermsInCtx2 ctx (iCon con : terms1) terms2)
 findSuspiciousPairs cs (pat@(Var var _) : pats) =
     check ILeft ++ check IRight ++ map ext (findSuspiciousPairs (mapTail pat cs) pats)
   where
@@ -61,10 +59,12 @@ findSuspiciousPairs cs (pat@(Var var _) : pats) =
         then []
         else case patternsToTerms pats of
             TermsInCtx ctx terms -> [TermsInCtx2 ctx (iCon con : terms) (iCon con : ctxToVars ctx)]
-findSuspiciousPairs cs (pat@(Apply (name, con@(DCon _ _ (PatEval conds))) args) : pats) =
-    (conds >>= \(cond,_) -> case unifyPatternLists args cond of
-        Nothing -> []
-        Just args' -> [ext0 args $ patternsToTerms args']) ++
+findSuspiciousPairs cs (pat@(Apply (name, con) args) : pats) =
+    (case con of
+        DCon _ _ (PatEval conds) -> conds >>= \(cond,_) -> case unifyPatternLists args cond of
+            Nothing -> []
+            Just args' -> [ext0 args $ patternsToTerms args']
+        _ -> []) ++
     map ext1 (findSuspiciousPairs cs' args) ++ case patternsToTerms args of
         TermsInCtx ctx terms -> map (ext2 ctx terms) (findSuspiciousPairs (mapTail pat cs) pats)
   where
@@ -87,6 +87,7 @@ findSuspiciousPairs cs (pat@(Apply (name, con@(DCon _ _ (PatEval conds))) args) 
     ext2 ctx terms (TermsInCtx2 ctx' terms1 terms2) =
         TermsInCtx2 (ctx +++ ctx') (fmap (liftBase ctx') (Apply (Semantics (S.Name S.Prefix $ S.Ident name) (Con con)) terms) : terms1)
                                    (map (fmap $ liftBase ctx') (ctxToVars ctx) ++ terms2)
+findSuspiciousPairs _ (Lambda{} : _) = error "findSuspiciousPairs"
 
 unifyPatterns :: Term (String,SCon) String -> Term (String,SCon) String -> Maybe [Term (String,SCon) String]
 unifyPatterns (Apply (_,con) pats) (Apply (_,con') pats') | con == con' = unifyPatternLists pats pats'
@@ -113,11 +114,13 @@ substPatterns pats terms = evalState (mapM substPattern pats) terms
     substPattern (Apply (name, con) pats) = do
         terms <- mapM substPattern pats
         return $ Apply (Semantics (S.Name S.Prefix $ S.Ident name) (Con con)) terms
+    substPattern Lambda{} = error "substPattern"
 
 patternToTerm :: Term (String,SCon) String -> TermInCtx (Term Semantics) a
 patternToTerm (Var var _) = TermInCtx (Snoc Nil var $ error "") (cvar Bound)
 patternToTerm (Apply (name, con) pats) = case patternsToTerms pats of
     TermsInCtx ctx' terms -> TermInCtx ctx' $ Apply (Semantics (S.Name S.Prefix $ S.Ident name) (Con con)) terms
+patternToTerm Lambda{} = error "patternToTerm"
 
 patternsToTerms :: [Term (String,SCon) String] -> TermsInCtx (Term Semantics) a
 patternsToTerms [] = TermsInCtx Nil []
