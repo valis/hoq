@@ -6,6 +6,7 @@ module TypeChecking.Definitions.Patterns
     ) where
 
 import Data.Void
+import Control.Monad
 
 import Semantics
 import Semantics.Value as V
@@ -22,19 +23,23 @@ data TermsInCtx b = forall a. Eq a => TermsInCtx (Ctx String (Type Semantics) b 
 notEnoughArgs :: Show a => Posn -> a -> EMsg f
 notEnoughArgs pos a = emsgLC pos ("Not enough arguments to " ++ show a) enull
 
+tooManyArgs :: Posn -> EMsg f
+tooManyArgs pos = emsgLC pos "Too many arguments" enull
+
 typeCheckPattern :: (Monad m, Eq a) => Ctx String (Type Semantics) Void a -> Type Semantics a
-    -> PatternP -> TCM m (Bool, Maybe (TermInCtx a), PatternC String)
-typeCheckPattern _ _ PatternI{} = error "typeCheckPattern: PatternI"
-typeCheckPattern ctx (Type (Apply (Semantics _ Interval) _) _) (PatternVar (PIdent _ "left")) =
+    -> Term PName Void -> TCM m (Bool, Maybe (TermInCtx a), PatternC String)
+typeCheckPattern ctx (Type (Apply (Semantics _ Interval) _) _) (Apply (pos, Ident "left") pats) = do
+    unless (null pats) $ warn [tooManyArgs pos]
     return (False, Just $ TermInCtx Nil $ iCon ILeft, PatternI () ILeft)
-typeCheckPattern ctx (Type (Apply (Semantics _ Interval) _) _) (PatternVar (PIdent _ "right")) =
+typeCheckPattern ctx (Type (Apply (Semantics _ Interval) _) _) (Apply (pos, Ident "right") pats) = do
+    unless (null pats) $ warn [tooManyArgs pos]
     return (False, Just $ TermInCtx Nil $ iCon IRight, PatternI () IRight)
-typeCheckPattern ctx (Type (Apply (Semantics _ (DataType _ 0)) _) _) (PatternEmpty _) =
+typeCheckPattern ctx (Type (Apply (Semantics _ (DataType _ 0)) _) _) (Apply (_, Operator "") _) =
     return (True, Nothing, PatternVar "_")
-typeCheckPattern ctx (Type ty _) (PatternEmpty pos) =
+typeCheckPattern ctx (Type ty _) (Apply (pos, Operator "") _) =
     throwError [emsgLC pos "" $ pretty "Expected non-empty type:" <+> prettyOpen ctx ty]
-typeCheckPattern ctx _ (PatternVar (PIdent _ "_")) = return (False, Nothing, PatternVar "_")
-typeCheckPattern ctx (Type ty@(Apply (Semantics _ (DataType dt _)) _) lvl) (PatternVar (PIdent pos var)) = do
+typeCheckPattern ctx _ (Apply (_, Ident "_") []) = return (False, Nothing, PatternVar "_")
+typeCheckPattern ctx (Type ty@(Apply (Semantics _ (DataType dt _)) _) lvl) (Apply (pos, Ident var) []) = do
     cons <- lift $ getConstructor (Ident var) (Just dt)
     case cons of
         (n, con@(Semantics _ (Con i (PatEval conds))), Type conType _):_ -> if isDataType conType
@@ -46,9 +51,9 @@ typeCheckPattern ctx (Type ty@(Apply (Semantics _ (DataType dt _)) _) lvl) (Patt
     isDataType (Lambda t) = isDataType t
     isDataType (Apply (Semantics _ DataType{}) _) = True
     isDataType _ = False
-typeCheckPattern ctx (Type ty lvl) (PatternVar (PIdent pos var)) =
+typeCheckPattern ctx (Type ty lvl) (Apply (pos, Ident var) []) =
     return (False, Just $ TermInCtx (Snoc Nil var $ Type ty lvl) $ cvar Bound, PatternVar var)
-typeCheckPattern ctx (Type (Apply (Semantics _ (DataType dt _)) params) _) (Pattern (PatternCon _ _ (PIdent pos conName) _) pats) = do
+typeCheckPattern ctx (Type (Apply (Semantics _ (DataType dt _)) params) _) (Apply (pos, Ident conName) pats) = do
     cons <- lift $ getConstructor (Ident conName) (Just dt)
     case cons of
         (n, con@(Semantics _ (Con i (PatEval conds))), Type conType lvl):_ -> do
@@ -58,12 +63,13 @@ typeCheckPattern ctx (Type (Apply (Semantics _ (DataType dt _)) params) _) (Patt
                 Apply (Semantics _ DataType{}) _ -> return (bf, Just $ TermInCtx ctx' (Apply con terms), Pattern (PatternCon i n conName conds) rtpats)
                 _ -> throwError [notEnoughArgs pos conName]
         _ -> throwError [notInScope pos "data constructor" conName]
-typeCheckPattern ctx (Type ty _) pat =
-    throwError [emsgLC (patternGetAttr getPos pat) "" $ pretty "Unexpected pattern"
-                                                     $$ pretty "Expected type:" <+> prettyOpen ctx ty]
+typeCheckPattern ctx (Type ty _) (Apply (pos, _) _) =
+    throwError [emsgLC pos "" $ pretty "Unexpected pattern"
+                             $$ pretty "Expected type:" <+> prettyOpen ctx ty]
+typeCheckPattern _ _ _ = error "typeCheckPattern"
 
 typeCheckPatterns :: (Monad m, Eq a) => Ctx String (Type Semantics) Void a -> Type Semantics a
-    -> [PatternP] -> TCM m (Bool, TermsInCtx a, [PatternC String])
+    -> [Term PName Void] -> TCM m (Bool, TermsInCtx a, [PatternC String])
 typeCheckPatterns _ ty [] = return (False, TermsInCtx Nil [] ty, [])
 typeCheckPatterns ctx (Type (Apply p@(Semantics (S.Pi vs) (V.Pi l1 l2)) [a, b]) _) (pat:pats) = do
     let a' = Type (nf WHNF a) l1
@@ -77,4 +83,5 @@ typeCheckPatterns ctx (Type (Apply p@(Semantics (S.Pi vs) (V.Pi l1 l2)) [a, b]) 
                 _        -> fmap (liftBase ctx') b
     (bf2, TermsInCtx ctx'' tes ty, rtpats) <- typeCheckPatterns (ctx +++ ctx') (Type (nf WHNF b') l2) pats
     return (bf1 || bf2, TermsInCtx (ctx' +++ ctx'') (fmap (liftBase ctx'') te : tes) ty, rtpat:rtpats)
-typeCheckPatterns _ _ (pat:_) = throwError [emsgLC (patternGetAttr getPos pat) "Too many arguments" enull]
+typeCheckPatterns _ _ (Apply (pos, _) _ : _) = throwError [tooManyArgs pos]
+typeCheckPatterns _ _ _ = error "typeCheckPatterns"

@@ -122,7 +122,11 @@ typeCheckName ctx pos ft var ts mty = do
     mt <- lift $ getEntry var mdt
     eres <- case mt of
         [] -> liftM Right (typeCheckKeyword ctx pos (getStr var) ts mty)
-        [(s,ty)] -> return $ Left (capply $ s { syntax = Name ft var }, ty)
+        [(s,ty)] ->
+            let s' = case syntax s of
+                        Name ft' _ | ft == ft'  -> s
+                        _                       -> s { syntax = Name ft var }
+            in return $ Left (capply s', ty)
         _ -> throwError [emsgLC pos ("Ambiguous identifier: " ++ show (getStr var)) enull]
     case eres of
         Left (te, ty) -> do

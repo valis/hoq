@@ -48,7 +48,7 @@ opFixity :: Infix -> Infix -> Int -> Int
 opFixity ft ft' p = if ft == ft' then p else p + 1
 
 ppList :: [String] -> [Term Syntax Doc] -> Doc
-ppList ctx ts = hsep $ map (ppTermPrec 10 ctx) ts
+ppList ctx ts = hsep $ map (ppTermPrec 100 ctx) ts
 
 ppBound :: Int -> [String] -> [String] -> Term Syntax Doc -> Doc
 ppBound p ctx (v:vs) (Lambda t) =
@@ -83,7 +83,7 @@ prec Pi{}                   = 60
 prec Lam{}                  = 50
 
 precTerm :: Term Syntax a -> Int
-precTerm Var{} = 10
-precTerm (Apply Name{} (_:_)) = 9
+precTerm Var{} = 100
+precTerm (Apply Name{} (_:_)) = 90
 precTerm (Apply s _) = prec s
 precTerm (Lambda t) = precTerm t

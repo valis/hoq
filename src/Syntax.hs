@@ -1,5 +1,5 @@
 module Syntax
-    ( Syntax(..), PatternP
+    ( Syntax(..)
     , RawExpr, PIdent(..)
     , Clause(..), Con(..)
     , Import, Def(..), Tele(..)
@@ -13,17 +13,16 @@ import Syntax.Term
 import Syntax.Pattern
 
 data PIdent = PIdent { getPos :: Posn, getName :: String }
-data Clause = Clause PName [PatternP] RawExpr
+data Clause = Clause PName [Term PName Void] RawExpr
 type Import = [String]
 data Tele = VarsTele [PIdent] RawExpr | TypeTele RawExpr
 data Con = ConDef PIdent [Tele]
-type PatternP = Pattern Posn (Closed (Term (Posn, Syntax))) PIdent
 data Infix = InfixL | InfixR | InfixNA deriving Eq
-data Fixity = Infix Infix Int | Prefix
+data Fixity = Infix Infix Int | Prefix deriving Eq
 
 data Def
     = DefType PName RawExpr
-    | DefFun PName [PatternP] (Maybe RawExpr)
+    | DefFun PName [Term PName Void] (Maybe RawExpr)
     | DefData PName [Tele] [Con] [Clause]
     | DefImport Import
 

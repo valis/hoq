@@ -20,7 +20,7 @@ import TypeChecking.Definitions.Termination
 import Normalization
 
 typeCheckFunction :: Monad m => PName -> Term (Posn, Syntax) Void
-    -> [(Posn, [PatternP], Maybe (Term (Posn, Syntax) Void))] -> TCM m ()
+    -> [(Posn, [Term PName Void], Maybe (Term (Posn, Syntax) Void))] -> TCM m ()
 typeCheckFunction p@(pos, name) ety clauses = do
     (ty, Type u _) <- typeCheck ety Nothing
     lvl <- case nf WHNF u of

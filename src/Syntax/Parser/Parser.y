@@ -82,12 +82,12 @@ FunClauses :: { [Clause] }
     | FunClauses ';'                        { $1                                }
     | FunClauses ';' Name Patterns '=' Expr { Clause $3 (reverse $4) $6 : $1    }
 
-Pattern :: { PatternP }
-    : PIdent                    { PatternVar $1                                 }
-    | '(' ')'                   { PatternEmpty $1                               }
-    | '(' PIdent Patterns ')'   { Pattern (PatternCon 0 0 $2 []) (reverse $3)   }
+Pattern :: { Term PName Void }
+    : PIdent                    { Apply (getPos $1, Ident $ getName $1) []                                 }
+    | '(' ')'                   { Apply ($1, Operator "") []                              }
+    | '(' PIdent Patterns ')'   { Apply (getPos $2, Ident $ getName $2) (reverse $3)   }
 
-Patterns :: { [PatternP] }
+Patterns :: { [Term PName Void] }
     : {- empty -}       { []    }
     | Patterns Pattern  { $2:$1 }
 
