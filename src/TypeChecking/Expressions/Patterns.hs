@@ -1,8 +1,8 @@
 {-# LANGUAGE ExistentialQuantification #-}
 
-module TypeChecking.Definitions.Patterns
-    ( typeCheckPatterns
-    , TermsInCtx(..)
+module TypeChecking.Expressions.Patterns
+    ( typeCheckPatterns, typeCheckPattern
+    , TermsInCtx(..), TermInCtx(..)
     ) where
 
 import Data.Void
@@ -14,7 +14,7 @@ import Syntax as S
 import Syntax.ErrorDoc
 import TypeChecking.Context
 import TypeChecking.Monad
-import TypeChecking.Expressions
+import TypeChecking.Expressions.Utils
 import Normalization
 
 data TermInCtx b  = forall a. Eq a => TermInCtx  (Ctx String (Type Semantics) b a) (Term Semantics a)
@@ -27,7 +27,7 @@ tooManyArgs :: Posn -> EMsg f
 tooManyArgs pos = emsgLC pos "Too many arguments" enull
 
 typeCheckPattern :: (Monad m, Eq a) => Ctx String (Type Semantics) Void a -> Type Semantics a
-    -> Term PName Void -> TCM m (Bool, Maybe (TermInCtx a), Term (String,SCon) String)
+    -> Term PName b -> TCM m (Bool, Maybe (TermInCtx a), Term (String,SCon) String)
 typeCheckPattern ctx (Type (Apply (Semantics _ Interval) _) _) (Apply (pos, Ident "left") pats) = do
     unless (null pats) $ warn [tooManyArgs pos]
     return (False, Just $ TermInCtx Nil $ iCon ILeft, Apply ("left", ICon ILeft) [])
@@ -70,7 +70,7 @@ typeCheckPattern ctx (Type ty _) (Apply (pos, _) _) =
 typeCheckPattern _ _ _ = error "typeCheckPattern"
 
 typeCheckPatterns :: (Monad m, Eq a) => Ctx String (Type Semantics) Void a -> Type Semantics a
-    -> [Term PName Void] -> TCM m (Bool, TermsInCtx a, [Term (String,SCon) String])
+    -> [Term PName b] -> TCM m (Bool, TermsInCtx a, [Term (String,SCon) String])
 typeCheckPatterns _ ty [] = return (False, TermsInCtx Nil [] ty, [])
 typeCheckPatterns ctx (Type (Apply p@(Semantics (S.Pi vs) (V.Pi l1 l2)) [a, b]) _) (pat:pats) = do
     let a' = Type (nf WHNF a) l1

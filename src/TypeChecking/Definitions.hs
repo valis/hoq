@@ -8,6 +8,7 @@ import Syntax
 import Semantics.Value
 import Syntax.ErrorDoc
 import TypeChecking.Expressions
+import TypeChecking.Expressions.Utils
 import TypeChecking.Definitions.DataTypes
 import TypeChecking.Definitions.Functions
 import TypeChecking.Monad

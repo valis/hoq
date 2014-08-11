@@ -14,7 +14,8 @@ import Syntax.ErrorDoc
 import TypeChecking.Monad
 import TypeChecking.Context
 import TypeChecking.Expressions
-import TypeChecking.Definitions.Patterns
+import TypeChecking.Expressions.Utils
+import TypeChecking.Expressions.Patterns
 import TypeChecking.Definitions.Coverage
 import TypeChecking.Definitions.Conditions
 import TypeChecking.Definitions.Termination

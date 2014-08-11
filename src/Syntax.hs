@@ -40,6 +40,7 @@ data Syntax
     | PathImp
     | At
     | Name Fixity Name
+    | Case [Term PName String]
 
 type RawExpr = Term (Posn, Syntax) Void
 

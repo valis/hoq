@@ -1,13 +1,12 @@
 module TypeChecking.Expressions
     ( typeCheck, typeCheckCtx
-    , inferErrorMsg, notInScope
-    , prettyOpen, checkIsType
-    , termPos
     ) where
 
 import Control.Monad
+import Data.Maybe
 import Data.Void
 import Data.Bifunctor
+import Data.Traversable(sequenceA)
 
 import Syntax as S
 import Semantics
@@ -15,32 +14,11 @@ import Semantics.Value as V
 import Syntax.ErrorDoc
 import TypeChecking.Monad
 import TypeChecking.Context
+import TypeChecking.Expressions.Utils
+import TypeChecking.Expressions.Patterns
 import Normalization
 
-notInScope :: Show a => Posn -> String -> a -> EMsg f
-notInScope pos s a = emsgLC pos ("Not in scope: " ++ (if null s then "" else s ++ " ") ++ show a) enull
-
-inferErrorMsg :: Posn -> String -> EMsg f
-inferErrorMsg pos s = emsgLC pos ("Cannot infer type of " ++ s) enull
-
-inferParamsErrorMsg :: Show a => Posn -> a -> EMsg f
-inferParamsErrorMsg pos d = emsgLC pos ("Cannot infer parameters of data constructor " ++ show d) enull
-
-argsErrorMsg :: Posn -> String -> EMsg f
-argsErrorMsg pos s = emsgLC pos (s ++ " is applied to arguments") enull
-
-expectedArgErrorMsg :: Show a => Posn -> a -> EMsg f
-expectedArgErrorMsg lc d = emsgLC lc ("Expected an argument to " ++ show d) enull
-
 type Context = Ctx String (Type Semantics) Void
-
-prettyOpen :: Context a -> Term Semantics a -> EDoc (Term Syntax)
-prettyOpen ctx term = epretty $ fmap (pretty . either id absurd) $ close ctx (bimap syntax Right term)
-
-checkIsType :: Monad m => Context a -> Posn -> Term Semantics a -> EDocM m Level
-checkIsType _ _ (Apply (Semantics _ (Universe lvl)) _) = return lvl
-checkIsType ctx pos t = throwError [emsgLC pos "" $ pretty "Expected type: Type"
-                                                 $$ pretty "Actual type:" <+> prettyOpen ctx t]
 
 intType :: Type Semantics a
 intType = Type interval NoLevel
@@ -50,10 +28,6 @@ pathExp lvl = Semantics (Name Prefix $ Ident "Path") (Path lvl)
 
 pathImp :: Level -> Semantics
 pathImp lvl = Semantics PathImp (Path lvl)
-
-termPos :: Term (Posn, s) a -> Posn
-termPos (Apply (pos, _) _) = pos
-termPos _ = error "termPos"
 
 typeCheck :: Monad m => Term (Posn, Syntax) Void -> Maybe (Type Semantics Void) -> TCM m (Term Semantics Void, Type Semantics Void)
 typeCheck = typeCheckCtx Nil
@@ -103,6 +77,31 @@ typeCheckCtx ctx (Apply (pos, S.At) (b:c:ts)) Nothing = do
             return (Apply (Semantics S.At V.At) (b':c':r1:r2:tes), ty)
         t1' -> throwError [emsgLC pos "" $ pretty "Expected type: Path"
                                         $$ pretty "Actual type:" <+> prettyOpen ctx t1']
+typeCheckCtx ctx (Apply (pos, (S.Case (pat:pats))) (expr:terms)) mty = do
+    (exprTerm,exprType) <- typeCheckCtx ctx expr Nothing
+    let (term1:terms1,terms2) = splitAt (length pats + 1) terms
+        typeCheckClause mtype (pat,term) = do
+            (bf, mt, pat') <- typeCheckPattern ctx exprType pat
+            when bf $ warn [emsgLC (termPos pat) "Absurd patterns are not allowed in case constructions" enull]
+            case fromMaybe (TermInCtx (Snoc Nil "_" exprType) $ error "") mt of
+                TermInCtx ctx' _ -> do
+                    (te, Type ty lvl) <- typeCheckCtx (ctx +++ ctx') term $ fmap (fmap $ liftBase ctx') mtype
+                    return (pat', (abstractTerm ctx' te, Type (abstractTerm ctx' ty) lvl))
+    (pat',(term1', Type type1 lvl)) <- typeCheckClause (if null terms2 then mty else Nothing) (pat,term1)
+    type1' <- case isStationary type1 of
+                Nothing -> throwError [emsgLC pos "Type of expressions in case constructions cannot be dependent" enull]
+                Just r  -> return (Type r lvl)
+    patsAndTerms <- mapM (liftM (\(p,(t,_)) -> (p,t)) . typeCheckClause (Just $ nfType WHNF type1')) (zip pats terms1)
+    let (pats',terms1') = unzip patsAndTerms
+        sem = Semantics (S.Case $ map (first $ \(s,_) -> ((0,0), Ident s)) $ pat':pats') $ V.Case (pat':pats')
+    (terms2', ty) <- typeCheckApps pos ctx terms2 type1'
+    return (Apply sem $ exprTerm : term1' : terms1' ++ terms2', ty)
+  where
+    isStationary :: Term a b -> Maybe (Term a b)
+    isStationary (Lambda t) = case sequenceA t of
+        Bound -> Nothing
+        Free t' -> isStationary t'
+    isStationary t = Just t
 typeCheckCtx ctx te (Just (Type ty _)) = do
     (te', Type ty' lvl') <- typeCheckCtx ctx te Nothing
     actExpType ctx ty' ty (termPos te)

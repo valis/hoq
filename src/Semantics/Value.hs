@@ -20,6 +20,7 @@ data Value t
     | Coe
     | Iso
     | Squeeze
+    | Case [Term (String, Con t) String]
 
 data Con t = DCon Int Int (Eval t) | PCon | ICon ICon
 data ICon = ILeft | IRight deriving Eq
@@ -42,6 +43,12 @@ instance Eq (Value t) where
     Coe == Coe = True
     Iso == Iso = True
     Squeeze == Squeeze = True
+    Case pats == Case pats' = and (zipWith cmpPats pats pats')
+      where
+        cmpPats :: Term (s, Con t) u -> Term (s', Con t) u' -> Bool
+        cmpPats Var{} Var{} = True
+        cmpPats (Apply (_,c) pats) (Apply (_,c') pats') = c == c' && and (zipWith cmpPats pats pats')
+        cmpPats _ _ = False
     _ == _ = False
 
 instance Eq (Con t) where

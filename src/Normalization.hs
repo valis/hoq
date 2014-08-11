@@ -61,6 +61,11 @@ nfSemantics mode t@(Semantics _ Squeeze) [t1,t2] = case (nf WHNF t1, nf WHNF t2)
     (_, Apply t@(Semantics _ (Con (ICon ILeft)))  _)  -> capply t
     (i, Apply (Semantics _ (Con (ICon IRight))) _)    -> if mode == Step then i else nf mode i
     (t1',t2')                                   -> Apply t $ nfs mode [t1',t2']
+nfSemantics mode t@(Semantics _ (Case pats)) (term:terms) =
+    let (terms1,terms2) = splitAt (length pats) terms
+    in case instantiateCaseClauses (zipWith (\pat te -> ([pat], te)) pats terms1) [term] of
+        Just (t', ts')  -> nfStep mode $ apps t' (ts' ++ terms2)
+        _               -> Apply t $ nfs mode (term:terms)
 nfSemantics mode a as = Apply a (nfs mode as)
 
 nfStep :: Eq a => NF -> Term Semantics a -> Term Semantics a
@@ -92,3 +97,7 @@ instantiatePat _ _ _ = Nothing
 instantiateClauses :: Eq a => [([Term (s, SCon) t], Closed (Term Semantics))]
     -> [Term Semantics a] -> Maybe (Term Semantics a, [Term Semantics a])
 instantiateClauses clauses terms = msum $ map (\(pats, Closed s) -> instantiatePat pats s terms) clauses
+
+instantiateCaseClauses :: Eq a => [([Term (s, SCon) t], Term Semantics a)]
+    -> [Term Semantics a] -> Maybe (Term Semantics a, [Term Semantics a])
+instantiateCaseClauses clauses terms = msum $ map (\(pats, s) -> instantiatePat pats s terms) clauses

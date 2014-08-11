@@ -7,6 +7,7 @@ module Syntax.Parser.Parser
 import Control.Monad.Trans
 import Control.Monad.State
 import Control.Monad.Error
+import Data.Bifunctor
 import Data.Void
 import Data.Maybe
 
@@ -30,6 +31,8 @@ import TypeChecking.Monad.Warn
     Integer     { TokInteger  $$    }
     '\\'        { TokLam      $$    }
     '('         { TokLParen   $$    }
+    'case'      { TokCase     $$    }
+    'of'        { TokOf       $$    }
     'data'      { TokData           }
     ':'         { TokColon          }
     '='         { TokEquals         }
@@ -58,8 +61,12 @@ InfixOps :: { [PName] }
     | InfixOps InfixOp  { $2:$1 }
 
 with :: { () }
-    : 'with' '{'   {% \_ -> lift $ modify (\(ls, fds) -> (NoLayout  : ls, fds)) }
-    | 'with' error {% \_ -> lift $ modify (\(ls, fds) -> (Layout $1 : ls, fds)) }
+    : 'with' '{'    {% \_ -> lift $ modify (\(ls, fds) -> (NoLayout  : ls, fds)) }
+    | 'with' error  {% \_ -> lift $ modify (\(ls, fds) -> (Layout $1 : ls, fds)) }
+
+of :: { () }
+    : 'of' '{'      {% \_ -> lift $ modify (\(ls, fds) -> (NoLayout  : ls, fds)) }
+    | 'of' error    {% \_ -> lift $ modify (\(ls, fds) -> (Layout $1 : ls, fds)) }
 
 Def :: { [Def] }
     : Name ':' Expr                                     { [DefType $1 $3]                                       }
@@ -83,9 +90,9 @@ FunClauses :: { [Clause] }
     | FunClauses ';' Name Patterns '=' Expr { Clause $3 (reverse $4) $6 : $1    }
 
 Pattern :: { Term PName Void }
-    : PIdent                    { Apply (getPos $1, Ident $ getName $1) []                                 }
-    | '(' ')'                   { Apply ($1, Operator "") []                              }
-    | '(' PIdent Patterns ')'   { Apply (getPos $2, Ident $ getName $2) (reverse $3)   }
+    : PIdent                    { Apply (getPos $1, Ident $ getName $1) []              }
+    | '(' ')'                   { Apply ($1, Operator "") []                            }
+    | '(' PIdent Patterns ')'   { Apply (getPos $2, Ident $ getName $2) (reverse $3)    }
 
 Patterns :: { [Term PName Void] }
     : {- empty -}       { []    }
@@ -146,8 +153,14 @@ Exprs :: { [RawExpr] }
     | Exprs Expr5   { $2:$1 }
 
 Expr5 :: { RawExpr }
-    : Name          { Apply (fst $1, Name Prefix $ snd $1) []   }
-    | '(' Expr ')'  { $2                                        }
+    : Name                              { Apply (fst $1, Name Prefix $ snd $1) []                                   }
+    | '(' Expr ')'                      { $2                                                                        }
+    | 'case' Expr of CaseClauses '}'    { Apply ($1, Case $ map vacuous $ reverse $ fst $4) ($2 : reverse (snd $4)) }
+
+CaseClauses :: { ([Term PName Void], [RawExpr]) }
+    : Name Patterns '->' Expr                   { ([Apply $1 $2], [$4])                 }
+    | CaseClauses ';'                           { $1                                    }
+    | CaseClauses ';' Name Patterns '->' Expr   { (Apply $3 $4 : fst $1, $6 : snd $1)   }
 
 {
 return' :: a -> Parser a

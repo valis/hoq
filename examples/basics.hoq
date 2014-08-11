@@ -23,13 +23,15 @@ data Nat = zero | suc Nat
 data List (A : Type) = nil | cons A (List A)
 
 -- Pattern matching
-not : Bool -> Bool
-not true = false
-not false = true
-
 and : Bool -> Bool -> Bool
 and true true = true
 and _ _ = false
+
+-- Case construction
+not : Bool -> Bool
+not b = case b of
+    true -> false
+    false -> true
 
 -- Recursive functions
 plus : Nat -> Nat -> Nat

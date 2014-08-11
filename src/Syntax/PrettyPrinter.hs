@@ -5,6 +5,7 @@ module Syntax.PrettyPrinter
     ) where
 
 import Text.PrettyPrint
+import Data.Bifunctor
 import Data.Bifoldable
 import Data.Void
 
@@ -42,6 +43,9 @@ ppSyntax ctx t@(Name (Infix ft _) n) (t1:t2:ts) =
 ppSyntax ctx (Name _ n) ts = (case n of
     Ident s -> text s
     Operator s -> parens $ text s) <+> ppList ctx ts
+ppSyntax ctx (Case pats) (expr:terms) = hang (text "case" <+> ppTermCtx ctx expr <+> text "of") 4 $ vcat $
+    map (\(pat,term) -> ppTermCtx ctx (bimap (Name Prefix . snd) text pat) <+> arrow <+>
+        ppBound 0 ctx (bifoldMap (const []) return pat) term) (zip pats terms)
 ppSyntax _ _ _ = error "ppSyntax"
 
 opFixity :: Infix -> Infix -> Int -> Int
@@ -81,6 +85,7 @@ prec At                     = 80
 prec PathImp{}              = 70
 prec Pi{}                   = 60
 prec Lam{}                  = 50
+prec _                      = 0
 
 precTerm :: Term Syntax a -> Int
 precTerm Var{} = 100

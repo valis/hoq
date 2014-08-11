@@ -4,7 +4,7 @@ elseif exists("b:current_syntax")
   finish
 endif
 
-syn keyword hoqKeyword         import
+syn keyword hoqKeyword         import case of infix infixl infixr
 syn keyword hoqConstructor     left right path coe iso squeeze
 syn keyword hoqType            data I Path with
 syn match   hoqLineComment     "---*\([^-!#$%&\*\+./<=>\?@\\^|~].*\)\?$"
