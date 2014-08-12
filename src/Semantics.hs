@@ -35,7 +35,7 @@ instance Eq a => Eq (Term Semantics a) where
     Var a as == Var a' as' = a == a' && as == as'
     Lambda t == Lambda t' = t == t'
     Apply s@(Semantics _ Lam) [Lambda t] == Apply s'@(Semantics _ Lam) [Lambda t'] = Apply s [t] == Apply s' [t']
-    Apply s@(Semantics _ Lam) [Lambda t] == t' = Apply s [t] == apps (fmap Free t') [cvar Bound]
+    Apply s@(Semantics _ Lam) [Lambda t] == t' = Apply s [t] == apps (fmap Free t') [bvar]
     Apply (Semantics _ Lam) [t] == t' = t == t'
     t == t'@(Apply (Semantics _ Lam) _) = t' == t
     t@(Apply (Semantics _ Pi{}) _) == t'@(Apply (Semantics _ Pi{}) _) = pcompare t t' == Just EQ

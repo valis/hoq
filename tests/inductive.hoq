@@ -49,3 +49,17 @@ data NotSet = NotSet I
 
 test2 : Set
 test2 = NotSet
+
+data Circle = base | loop I with
+    loop left  = base
+    loop right = base
+
+test3 : Circle -> Nat
+test3 x = case x of
+    base -> zero
+    loop _ -> zero
+
+test4 : Circle -> Nat
+test4 x = case x of
+    base -> zero
+    loop _ -> suc zero

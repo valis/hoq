@@ -2,7 +2,7 @@
 
 module Syntax.Term
     ( Term(..), Scoped(..)
-    , capply, cvar, apps
+    , capply, cvar, bvar, apps
     , instantiate1
     , Closed(..), closed
     ) where
@@ -50,6 +50,9 @@ capply p = Apply p []
 
 cvar :: a -> Term p a
 cvar a = Var a []
+
+bvar :: Term p (Scoped a)
+bvar = cvar Bound
 
 apps :: Term s a -> [Term s a] -> Term s a
 apps t [] = t

@@ -45,7 +45,7 @@ nfSemantics mode t@(Semantics _ Coe) (t1:t2:t3:t4:ts) =
         (True, _, _, _) -> nfStep mode (apps t3 ts)
         (_, True, _, (Apply (Semantics _ Iso) [_,_,c,_,_,_])) -> nfStep mode $ apps c (t3:ts)
         (_, _, True, (Apply (Semantics _ Iso) [_,_,_,c,_,_])) -> nfStep mode $ apps c (t3:ts)
-        (_, b1, b2, _) | b1 || b2 -> case nf NF $ apps (fmap Free t1') [cvar Bound] of
+        (_, b1, b2, _) | b1 || b2 -> case nf NF $ apps (fmap Free t1') [bvar] of
             Apply (Semantics _ Iso) [c1, c2, c3, c4, c5, c6, Var Bound []] -> case map sequenceA [c1,c2,c3,c4,c5,c6] of
                 [Free{}, Free{}, Free c3', Free c4', Free{}, Free{}] -> nfStep mode $ apps (if b1 then c3' else c4') (t3:ts)
                 _ -> r
@@ -76,7 +76,7 @@ nfType :: Eq a => NF -> Type Semantics a -> Type Semantics a
 nfType mode (Type t lvl) = Type (nf mode t) lvl
 
 isStationary :: Eq a => Term Semantics a -> Bool
-isStationary t = case sequenceA $ nf NF $ apps (fmap Free t) [cvar Bound] of
+isStationary t = case sequenceA $ nf NF $ apps (fmap Free t) [bvar] of
     Free _  -> True
     Bound   -> False
 

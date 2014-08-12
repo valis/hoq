@@ -8,6 +8,7 @@ import Control.Monad
 import Control.Monad.State
 import Data.Maybe
 import Data.Bifunctor
+import Data.Void
 
 import qualified Syntax as S
 import Semantics
@@ -21,27 +22,28 @@ instance Eq (Term (s, Con t) a) where
     Var{} == Var{} = True
     _ == _ = False
 
-checkConditions :: S.Posn -> Closed (Term Semantics) -> [([Term (String,SCon) String], Closed (Term Semantics))] -> [EMsg (Term S.Syntax)]
-checkConditions lc func cs =
-    maybeToList $ msum $ map (\(p, scope) -> fmap msg $ checkPatterns func (map fst cs) p scope) cs
+checkConditions :: Eq a => S.Posn -> Ctx String f Void a => Term Semantics a
+    -> [([Term (String,SCon) String], Term Semantics a)] -> [EMsg (Term S.Syntax)]
+checkConditions pos ctx func cs =
+    maybeToList $ msum $ map (\(p, scope) -> fmap (msg ctx) $ checkPatterns func (map fst cs) p scope) cs
   where
-    msg :: ([String], Term Semantics String, Term Semantics String) -> EMsg (Term S.Syntax)
-    msg (vs, t1, t2) = emsgLC lc "Conditions check failed:" $ scopeToEDoc vs t1 <+> pretty "is not equal to" <+> scopeToEDoc vs t2
+    msg :: Ctx String f Void a -> ([String], Term Semantics a, Term Semantics a) -> EMsg (Term S.Syntax)
+    msg ctx (vs, t1, t2) = emsgLC pos "Conditions check failed:" $
+        scopeToEDoc ctx vs t1 <+> pretty "is not equal to" <+> scopeToEDoc ctx vs t2
     
-    scopeToEDoc :: [String] -> Term Semantics String -> EDoc (Term S.Syntax)
-    scopeToEDoc vs t = epretty $ bimap syntax pretty $ apps t (map cvar vs)
+    scopeToEDoc :: Ctx String f Void a -> [String] -> Term Semantics a -> EDoc (Term S.Syntax)
+    scopeToEDoc ctx vs t = epretty $ bimap syntax pretty $ apps (vacuous $ abstractTerm ctx t) $ map cvar (ctxVars ctx ++ vs)
 
 data TermInCtx  f b = forall a. TermInCtx  (Ctx String f b a) (f a)
 data TermsInCtx f b = forall a. TermsInCtx (Ctx String f b a) [f a]
 data TermsInCtx2 f b = forall a. TermsInCtx2 (Ctx String f b a) [f a] [f a]
 
-checkPatterns :: Closed (Term Semantics) -> [[Term (String,SCon) String]] -> [Term (String,SCon) String]
-    -> Closed (Term Semantics) -> Maybe ([String], Term Semantics String, Term Semantics String)
-checkPatterns (Closed func) cs pats (Closed scope) =
-    listToMaybe $ findSuspiciousPairs cs pats >>= \(TermsInCtx2 ctx terms terms') ->
-        let nscope1 = nfApps $ abstractTerm ctx (apps func terms)
-            nscope2 = abstractTerm ctx (apps scope terms')
-        in if nf NF nscope1 == nf NF nscope2 then [] else [(reverse $ ctxVars ctx, nscope1, nscope2)]
+checkPatterns :: Eq a => Term Semantics a -> [[Term (String,SCon) String]] -> [Term (String,SCon) String]
+    -> Term Semantics a -> Maybe ([String], Term Semantics a, Term Semantics a)
+checkPatterns func cs pats scope = listToMaybe $ findSuspiciousPairs cs pats >>= \(TermsInCtx2 ctx terms terms') ->
+    let nscope1 = nfApps $ abstractTerm ctx $ apps (fmap (liftBase ctx) func) terms
+        nscope2 = abstractTerm ctx $ apps (fmap (liftBase ctx) scope) terms'
+    in if nf NF nscope1 == nf NF nscope2 then [] else [(reverse $ ctxVars ctx, nscope1, nscope2)]
   where
     nfApps :: Eq a => Term Semantics a -> Term Semantics a
     nfApps (Apply a as) = Apply a $ map (nf WHNF) as
@@ -53,8 +55,8 @@ findSuspiciousPairs _ [] = []
 findSuspiciousPairs cs (pat@(Var var _) : pats) =
     check ILeft ++ check IRight ++ map ext (findSuspiciousPairs (mapTail pat cs) pats)
   where
-    ext (TermsInCtx2 ctx terms1 terms2) = TermsInCtx2 (Snoc ctx var $ error "") (cvar Bound : map (fmap Free) terms1)
-                                                                                (cvar Bound : map (fmap Free) terms2)
+    ext (TermsInCtx2 ctx terms1 terms2) = TermsInCtx2 (Snoc ctx var $ error "") (bvar : map (fmap Free) terms1)
+                                                                                (bvar : map (fmap Free) terms2)
     check con = if null $ filter (== Apply ("", ICon con) []) (mapHead cs)
         then []
         else case patternsToTerms pats of
@@ -117,7 +119,7 @@ substPatterns pats terms = evalState (mapM substPattern pats) terms
     substPattern Lambda{} = error "substPattern"
 
 patternToTerm :: Term (String,SCon) String -> TermInCtx (Term Semantics) a
-patternToTerm (Var var _) = TermInCtx (Snoc Nil var $ error "") (cvar Bound)
+patternToTerm (Var var _) = TermInCtx (Snoc Nil var $ error "") bvar
 patternToTerm (Apply (name, con) pats) = case patternsToTerms pats of
     TermsInCtx ctx' terms -> TermInCtx ctx' $ Apply (Semantics (S.Name S.Prefix $ S.Ident name) (Con con)) terms
 patternToTerm Lambda{} = error "patternToTerm"

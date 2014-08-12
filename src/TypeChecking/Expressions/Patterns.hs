@@ -45,14 +45,14 @@ typeCheckPattern ctx (Type ty@(Apply (Semantics _ (DataType dt _)) _) k) (Apply 
         (con@(Semantics _ (Con (DCon i n conds))), Closed (Type conType _)):_ -> if isDataType conType
             then return (False, Just $ TermInCtx Nil $ capply con, Apply (var, DCon i n conds) [])
             else throwError [notEnoughArgs pos var]
-        _ -> return (False, Just $ TermInCtx (Snoc Nil var $ Type ty k) $ cvar Bound, Var var [])
+        _ -> return (False, Just $ TermInCtx (Snoc Nil var $ Type ty k) bvar, Var var [])
   where
     isDataType :: Term Semantics a -> Bool
     isDataType (Lambda t) = isDataType t
     isDataType (Apply (Semantics _ DataType{}) _) = True
     isDataType _ = False
 typeCheckPattern ctx (Type ty k) (Apply (pos, Ident var) []) =
-    return (False, Just $ TermInCtx (Snoc Nil var $ Type ty k) $ cvar Bound, Var var [])
+    return (False, Just $ TermInCtx (Snoc Nil var $ Type ty k) bvar, cvar var)
 typeCheckPattern ctx (Type (Apply (Semantics _ (DataType dt _)) params) _) (Apply (pos, Ident conName) pats) = do
     cons <- lift $ getConstructor (Ident conName) (Just dt)
     case cons of
@@ -77,7 +77,7 @@ typeCheckPatterns ctx (Type (Apply p@(Semantics (S.Pi vs) (V.Pi l1 l2)) [a, b]) 
     (bf1, mte, rtpat) <- typeCheckPattern ctx a' pat
     TermInCtx ctx' te <- case mte of
                             Nothing ->  let var = if null vs then "_" else head vs
-                                        in return $ TermInCtx (Snoc Nil var a') (cvar Bound)
+                                        in return $ TermInCtx (Snoc Nil var a') bvar
                             Just te -> return te
     let b' = case b of
                 Lambda{} -> instantiate1 te $ fmap (fmap $ liftBase ctx') $ snd (dropOnePi p a b)

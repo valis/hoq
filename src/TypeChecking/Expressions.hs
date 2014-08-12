@@ -98,8 +98,11 @@ typeCheckCtx ctx (Apply (pos, (S.Case (pat:pats))) (expr:terms)) mty = do
     (terms2', ty) <- typeCheckApps pos ctx terms2 type1'
     let (pats',terms1') = unzip patsAndTerms
         sem = Semantics (S.Case $ map (first $ \(s,_) -> ((0,0), Ident s)) $ pat':pats') $ V.Case (pat':pats')
+        terms' = term1' : terms1' ++ terms2'
     warn $ coverageErrorMsg pos $ checkCoverage $ zipWith (\p1 p2 -> (termPos p1, [first snd p2])) (pat:pats) (pat':pats')
-    return (Apply sem $ exprTerm : term1' : terms1' ++ terms2', ty)
+    warn $ checkConditions pos ctx (Lambda $ Apply sem $ bvar : map (fmap Free) terms') $
+        map (\(p,t) -> ([p],t)) $ (pat',term1'):patsAndTerms
+    return (Apply sem $ exprTerm:terms', ty)
   where
     isStationary :: Term a b -> Maybe (Term a b)
     isStationary (Lambda t) = case sequenceA t of
@@ -184,7 +187,7 @@ typeCheckKeyword ctx pos "path" (a:as) mty = do
             return (te, Type (Apply (pathImp k) [ty, te' ILeft, te' IRight]) k)
         Just (Type ty@(Apply (Semantics _ (Path k1)) [t1,_,_]) k) -> do
             let sem = Semantics (S.Pi ["i"]) $ V.Pi (TypeK NoLevel) k1
-            (r,t) <- typeCheckCtx ctx a $ Just $ Type (Apply sem [interval, Lambda $ apps (fmap Free t1) [cvar Bound]]) k1
+            (r,t) <- typeCheckCtx ctx a $ Just $ Type (Apply sem [interval, Lambda $ apps (fmap Free t1) [bvar]]) k1
             actExpType ctx (Apply (pathImp k1) [t1, apps r [iCon ILeft], apps r [iCon IRight]]) ty pos
             return (path [r], Type ty k)
         Just (Type ty _) -> throwError [emsgLC pos "" $ pretty "Expected type:" <+> prettyOpen ctx ty
@@ -193,11 +196,11 @@ typeCheckKeyword ctx pos "coe" [] _ = throwError [expectedArgErrorMsg pos "coe"]
 typeCheckKeyword ctx pos "coe" (a1:as) Nothing = do
     (r1, _, (v, t1)) <- typeCheckLambda ctx a1 intType
     k <- checkIsType (Snoc ctx v $ error "") (termPos a1) t1
-    let res = Apply (Semantics (S.Pi ["r"]) $ V.Pi (TypeK NoLevel) k) [interval, Lambda $ apps (fmap Free r1) [cvar Bound]]
+    let res = Apply (Semantics (S.Pi ["r"]) $ V.Pi (TypeK NoLevel) k) [interval, Lambda $ apps (fmap Free r1) [bvar]]
         coe = Semantics (Name Prefix $ Ident "coe") Coe
     case as of
         [] -> return (Apply coe [r1], Type (Apply (Semantics (S.Pi ["l"]) $ V.Pi (TypeK NoLevel) k) [interval, Lambda $
-            Apply (Semantics (S.Pi []) $ V.Pi k k) [apps (fmap Free r1) [cvar Bound], fmap Free res]]) k)
+            Apply (Semantics (S.Pi []) $ V.Pi k k) [apps (fmap Free r1) [bvar], fmap Free res]]) k)
         a2:as1 -> do
             (r2, _) <- typeCheckCtx ctx a2 (Just intType)
             case as1 of
@@ -222,7 +225,7 @@ typeCheckKeyword ctx pos "iso" (a1:a2:a3:a4:a5:a6:as) Nothing = do
     (r4, _) <- typeCheckCtx ctx a4 $ Just $ Type (Apply (Semantics (S.Pi []) $ V.Pi k2 k1) [r2,r1]) k
     let h e s1 s3 s4 tk = typeCheckCtx ctx e $ Just $ Type (Apply (Semantics (S.Pi ["x"]) $ V.Pi tk tk) [s1, Lambda $
             Apply (pathImp tk) [Apply (Semantics (S.Lam ["_"]) V.Lam) [Lambda $ fmap (Free . Free) s1],
-                apps (fmap Free s4) [apps (fmap Free s3) [cvar Bound]], cvar Bound]]) tk
+                apps (fmap Free s4) [apps (fmap Free s3) [bvar]], bvar]]) tk
         iso = Semantics (Name Prefix $ Ident "iso") Iso
     (r5, _) <- h a5 r1 r3 r4 k1
     (r6, _) <- h a6 r2 r4 r3 k2

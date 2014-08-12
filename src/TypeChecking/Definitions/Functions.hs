@@ -55,7 +55,7 @@ typeCheckFunction p@(pos, name) ety clauses = do
     case checkCoverage (map snd clausesAndPats) of
         Nothing | length clausesAndPats /= length (filter (\(_,_,me) -> isJust me) clauses) -> return ()
         r -> warn (coverageErrorMsg pos r)
-    warn $ checkConditions pos fc (map fst clausesAndPats)
+    warn $ checkConditions pos Nil (open fc) $ map (\((p,Closed t),_) -> (p,t)) clausesAndPats
 
 replaceFunCalls :: ID -> Closed (Term Semantics) -> Term Semantics a -> Term Semantics a
 replaceFunCalls name fc (Var a ts) = Var a $ map (replaceFunCalls name fc) ts

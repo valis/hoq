@@ -54,7 +54,8 @@ typeCheckDataType p@(pos, dt) params cons conds = mdo
                 warn [notInScope pos "data constructor" (getStr con)]
                 return Nothing
     lift $ replaceDataType dt lcons $ Closed $ Type (vacuous $ replaceSort dtTerm mk) mk
-    forM_ cons' $ \(PIdent pos _, (_, conds, con), _) -> warn $ checkConditions pos (Closed $ capply con) conds
+    forM_ cons' $ \(PIdent pos _, (_, conds, con), _) -> warn $
+        checkConditions pos Nil (capply con) $ map (\(p, Closed t) -> (p, t)) conds
 
 data SomeEq f = forall a. Eq a => SomeEq (f a)
 
