@@ -1,6 +1,6 @@
 {-# LANGUAGE GADTs, ExistentialQuantification, FlexibleInstances #-}
 
-module TypeChecking.Definitions.Conditions
+module TypeChecking.Expressions.Conditions
     ( checkConditions
     ) where
 

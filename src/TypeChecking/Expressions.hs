@@ -16,6 +16,8 @@ import TypeChecking.Monad
 import TypeChecking.Context
 import TypeChecking.Expressions.Utils
 import TypeChecking.Expressions.Patterns
+import TypeChecking.Expressions.Conditions
+import TypeChecking.Expressions.Coverage
 import Normalization
 
 type Context = Ctx String (Type Semantics) Void
@@ -93,9 +95,10 @@ typeCheckCtx ctx (Apply (pos, (S.Case (pat:pats))) (expr:terms)) mty = do
                 Nothing -> throwError [emsgLC pos "Type of expressions in case constructions cannot be dependent" enull]
                 Just r  -> return (Type r k)
     patsAndTerms <- mapM (liftM (\(p,(t,_)) -> (p,t)) . typeCheckClause (Just $ nfType WHNF type1')) (zip pats terms1)
+    (terms2', ty) <- typeCheckApps pos ctx terms2 type1'
     let (pats',terms1') = unzip patsAndTerms
         sem = Semantics (S.Case $ map (first $ \(s,_) -> ((0,0), Ident s)) $ pat':pats') $ V.Case (pat':pats')
-    (terms2', ty) <- typeCheckApps pos ctx terms2 type1'
+    warn $ coverageErrorMsg pos $ checkCoverage $ zipWith (\p1 p2 -> (termPos p1, [first snd p2])) (pat:pats) (pat':pats')
     return (Apply sem $ exprTerm : term1' : terms1' ++ terms2', ty)
   where
     isStationary :: Term a b -> Maybe (Term a b)

@@ -1,4 +1,4 @@
-module TypeChecking.Definitions.Coverage
+module TypeChecking.Expressions.Coverage
     ( checkCoverage
     ) where
 

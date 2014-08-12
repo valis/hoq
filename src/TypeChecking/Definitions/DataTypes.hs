@@ -20,7 +20,7 @@ import TypeChecking.Context
 import TypeChecking.Expressions
 import TypeChecking.Expressions.Utils
 import TypeChecking.Expressions.Patterns
-import TypeChecking.Definitions.Conditions
+import TypeChecking.Expressions.Conditions
 import TypeChecking.Definitions.Termination
 import Normalization
 

@@ -25,6 +25,10 @@ argsErrorMsg pos s = emsgLC pos (s ++ " is applied to arguments") enull
 expectedArgErrorMsg :: Show a => Posn -> a -> EMsg f
 expectedArgErrorMsg lc d = emsgLC lc ("Expected an argument to " ++ show d) enull
 
+coverageErrorMsg :: Posn -> Maybe [Posn] -> [EMsg f]
+coverageErrorMsg pos Nothing = [emsgLC pos "Incomplete pattern matching" enull]
+coverageErrorMsg _ (Just uc) = map (\pos -> emsgLC pos "Unreachable clause" enull) uc
+
 prettyOpen :: Ctx String (Type Semantics) Void a -> Term Semantics a -> EDoc (Term Syntax)
 prettyOpen ctx term = epretty $ fmap (pretty . either id absurd) $ close ctx (bimap syntax Right term)
 

@@ -2,7 +2,6 @@ module TypeChecking.Definitions.Functions
     ( typeCheckFunction
     ) where
 
-import Control.Monad
 import Data.Maybe
 import Data.Void
 import Data.Bifunctor
@@ -16,8 +15,8 @@ import TypeChecking.Context
 import TypeChecking.Expressions
 import TypeChecking.Expressions.Utils
 import TypeChecking.Expressions.Patterns
-import TypeChecking.Definitions.Coverage
-import TypeChecking.Definitions.Conditions
+import TypeChecking.Expressions.Coverage
+import TypeChecking.Expressions.Conditions
 import TypeChecking.Definitions.Termination
 import Normalization
 
@@ -53,9 +52,8 @@ typeCheckFunction p@(pos, name) ety clauses = do
         fc = Closed $ capply $ Semantics (Name Prefix name) (FunCall fcid eval)
     lift $ replaceFunction name eval (Type ty lvl)
     case checkCoverage (map snd clausesAndPats) of
-        Nothing -> when (length clausesAndPats == length (filter (\(_,_,me) -> isJust me) clauses)) $
-                warn [emsgLC pos "Incomplete pattern matching" enull]
-        Just uc -> warn $ map (\pos -> emsgLC pos "Unreachable clause" enull) uc
+        Nothing | length clausesAndPats /= length (filter (\(_,_,me) -> isJust me) clauses) -> return ()
+        r -> warn (coverageErrorMsg pos r)
     warn $ checkConditions pos fc (map fst clausesAndPats)
 
 replaceFunCalls :: ID -> Closed (Term Semantics) -> Term Semantics a -> Term Semantics a
