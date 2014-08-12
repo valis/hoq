@@ -28,8 +28,8 @@ expectedArgErrorMsg lc d = emsgLC lc ("Expected an argument to " ++ show d) enul
 prettyOpen :: Ctx String (Type Semantics) Void a -> Term Semantics a -> EDoc (Term Syntax)
 prettyOpen ctx term = epretty $ fmap (pretty . either id absurd) $ close ctx (bimap syntax Right term)
 
-checkIsType :: Monad m => Ctx String (Type Semantics) Void a -> Posn -> Term Semantics a -> EDocM m Level
-checkIsType _ _ (Apply (Semantics _ (Universe lvl)) _) = return lvl
+checkIsType :: Monad m => Ctx String (Type Semantics) Void a -> Posn -> Term Semantics a -> EDocM m Sort
+checkIsType _ _ (Apply (Semantics _ (Universe k)) _) = return k
 checkIsType ctx pos t = throwError [emsgLC pos "" $ pretty "Expected type: Type"
                                                  $$ pretty "Actual type:" <+> prettyOpen ctx t]
 

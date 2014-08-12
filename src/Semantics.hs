@@ -3,7 +3,6 @@
 module Semantics
     ( Semantics(..), Type(..)
     , SCon, SValue, SEval
-    , lessOrEqual, pcompare
     , dropOnePi, iCon, universe
     , path, interval
     , module Syntax.Term
@@ -27,10 +26,10 @@ type SEval = Eval (Closed (Term Semantics))
 instance Eq Semantics where
     s1 == s2 = value s1 == value s2
 
-data Type p a = Type { getType :: Term p a, getLevel :: Level }
+data Type p a = Type { getType :: Term p a, getSort :: Sort }
 
 instance Functor (Type p) where
-    fmap f (Type t l) = Type (fmap f t) l
+    fmap f (Type t k) = Type (fmap f t) k
 
 instance Eq a => Eq (Term Semantics a) where
     Var a as == Var a' as' = a == a' && as == as'
@@ -52,31 +51,26 @@ instance Eq1 (Term Semantics) where (==#) = (==)
 instance Eq a => Eq (Type Semantics a) where
     Type t _ == Type t' _ = t == t'
 
-pcompare :: Eq a => Term Semantics a -> Term Semantics a -> Maybe Ordering
-pcompare (Apply t ts) (Apply t' ts') = go t ts t' ts'
-  where
-    go :: Eq a => Semantics -> [Term Semantics a] -> Semantics -> [Term Semantics a] -> Maybe Ordering
-    go p@(Semantics _ Pi{}) [a, Lambda b] p'@(Semantics _ Pi{}) [a', Lambda b'] =
-        go p [fmap Free a, b] p' [fmap Free a', b']
-    go p@(Semantics _ Pi{}) [a, b] p'@(Semantics _ Pi{}) [a', Lambda b'] =
-        go p [fmap Free a, fmap Free b] p' [fmap Free a', b']
-    go p@(Semantics _ Pi{}) [a, Lambda b] p'@(Semantics _ Pi{}) [a', b'] =
-        go p [fmap Free a, b] p' [fmap Free a', fmap Free b']
-    go p@(Semantics _ Pi{}) [a, b] p'@(Semantics _ Pi{}) [a', b'] = contraCovariant (pcompare a a') (pcompare b b')
-    go (Semantics _ (Universe u)) _ (Semantics _ (Universe u')) _ = Just $ compare (level u) (level u')
-    go t ts t' ts' = if Apply t ts == Apply t' ts' then Just EQ else Nothing
-pcompare t t' = if t == t' then Just EQ else Nothing
+instance Eq a => POrd (Term Semantics a) where
+    pcompare (Apply t ts) (Apply t' ts') = go t ts t' ts'
+      where
+        go :: Eq a => Semantics -> [Term Semantics a] -> Semantics -> [Term Semantics a] -> Maybe Ordering
+        go p@(Semantics _ Pi{}) [a, Lambda b] p'@(Semantics _ Pi{}) [a', Lambda b'] =
+            go p [fmap Free a, b] p' [fmap Free a', b']
+        go p@(Semantics _ Pi{}) [a, b] p'@(Semantics _ Pi{}) [a', Lambda b'] =
+            go p [fmap Free a, fmap Free b] p' [fmap Free a', b']
+        go p@(Semantics _ Pi{}) [a, Lambda b] p'@(Semantics _ Pi{}) [a', b'] =
+            go p [fmap Free a, b] p' [fmap Free a', fmap Free b']
+        go p@(Semantics _ Pi{}) [a, b] p'@(Semantics _ Pi{}) [a', b'] = contraCovariant (pcompare a a') (pcompare b b')
+        go (Semantics _ (Universe k)) _ (Semantics _ (Universe k')) _ = pcompare k k'
+        go t ts t' ts' = if Apply t ts == Apply t' ts' then Just EQ else Nothing
+    pcompare t t' = if t == t' then Just EQ else Nothing
 
 contraCovariant :: Maybe Ordering -> Maybe Ordering -> Maybe Ordering
 contraCovariant (Just LT) (Just r) | r == EQ || r == GT = Just GT
 contraCovariant (Just EQ) r                             = r
 contraCovariant (Just GT) (Just r) | r == LT || r == EQ = Just LT
 contraCovariant _ _                                     = Nothing
-
-lessOrEqual :: Eq a => Term Semantics a -> Term Semantics a -> Bool
-lessOrEqual t t' = case pcompare t t' of
-    Just r | r == EQ || r == LT -> True
-    _                           -> False
 
 dropOnePi :: Semantics -> Term Semantics a -> Term Semantics a -> (String, Term Semantics (Scoped a))
 dropOnePi (Semantics (S.Pi [v]) _) a (Lambda b) = (v, b)
@@ -93,5 +87,5 @@ path = Apply $ Semantics (S.Name S.Prefix $ S.Ident "path") (Con PCon)
 interval :: Term Semantics a
 interval = capply $ Semantics (S.Name S.Prefix $ S.Ident "I") Interval
 
-universe :: Level -> Term Semantics a
-universe lvl = capply $ Semantics (S.Name S.Prefix $ S.Ident $ show lvl) (Universe lvl)
+universe :: Sort -> Term Semantics a
+universe k = capply $ Semantics (S.Name S.Prefix $ S.Ident $ show k) (Universe k)
