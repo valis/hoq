@@ -42,7 +42,7 @@ typeCheckPattern ctx _ (Apply (_, Ident "_") []) = return (False, Nothing, Var "
 typeCheckPattern ctx (Type ty@(Apply (Semantics _ (DataType dt _)) _) lvl) (Apply (pos, Ident var) []) = do
     cons <- lift $ getConstructor (Ident var) (Just dt)
     case cons of
-        (n, con@(Semantics _ (Con (DCon i _ conds))), Type conType _):_ -> if isDataType conType
+        (con@(Semantics _ (Con (DCon i n conds))), Type conType _):_ -> if isDataType conType
             then return (False, Just $ TermInCtx Nil $ capply con, Apply (var, DCon i n conds) [])
             else throwError [notEnoughArgs pos var]
         _ -> return (False, Just $ TermInCtx (Snoc Nil var $ Type ty lvl) $ cvar Bound, Var var [])
@@ -56,7 +56,7 @@ typeCheckPattern ctx (Type ty lvl) (Apply (pos, Ident var) []) =
 typeCheckPattern ctx (Type (Apply (Semantics _ (DataType dt _)) params) _) (Apply (pos, Ident conName) pats) = do
     cons <- lift $ getConstructor (Ident conName) (Just dt)
     case cons of
-        (n, con@(Semantics _ (Con (DCon i _ conds))), Type conType lvl):_ -> do
+        (con@(Semantics _ (Con (DCon i n conds))), Type conType lvl):_ -> do
             let conType' = Type (nf WHNF $ apps (vacuous conType) params) lvl
             (bf, TermsInCtx ctx' terms (Type ty' _), rtpats) <- typeCheckPatterns ctx conType' pats
             case nf WHNF ty' of
