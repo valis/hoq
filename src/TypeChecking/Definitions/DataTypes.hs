@@ -28,7 +28,7 @@ typeCheckDataType :: MonadFix m => PName -> [Tele] -> [S.Con] -> [Clause] -> TCM
 typeCheckDataType p@(pos, dt) params cons conds = mdo
     let lcons = length cons
     (SomeEq ctx, dataType@(Type dtTerm _)) <- checkTele Nil params $ universe (Set NoLevel)
-    dtid <- addDataTypeCheck p lcons dataType
+    dtid <- addDataTypeCheck p lcons $ Closed (vacuous dataType)
     cons' <- forW (zip cons [0..]) $ \(ConDef con@(PIdent pos conName) tele, i) -> do
         (_, Type conType conSort) <- checkTele ctx tele $ Apply (Semantics (Name Prefix dt) $ DataType dtid lcons) (ctxToVars ctx)
         case findOccurrence dtid (nf WHNF conType) of
@@ -40,7 +40,7 @@ typeCheckDataType p@(pos, dt) params cons conds = mdo
     let ks = map (\(_, _, Type _ k) -> k) cons'
         mk = if null ks then Prop else dmaximum ks
     forM_ cons' $ \(PIdent pcon con, (i, cs, _), Type ty k) ->
-        addConstructorCheck (pcon, Ident con) dtid i lcons (PatEval cs) $ Type (abstractTerm ctx ty) mk
+        addConstructorCheck (pcon, Ident con) dtid i lcons (PatEval cs) $ Closed $ Type (vacuous $ abstractTerm ctx ty) mk
     conds' <- forW conds $ \(Clause (pos, con) pats expr) ->
         case find (\((PIdent _ c), _, _) -> Ident c == con) cons' of
             Just (PIdent _ conName, (i, _, _), ty) -> do
@@ -53,7 +53,7 @@ typeCheckDataType p@(pos, dt) params cons conds = mdo
             _ -> do
                 warn [notInScope pos "data constructor" (getStr con)]
                 return Nothing
-    lift $ replaceDataType dt lcons $ Type (replaceSort dtTerm mk) mk
+    lift $ replaceDataType dt lcons $ Closed $ Type (vacuous $ replaceSort dtTerm mk) mk
     forM_ cons' $ \(PIdent pos _, (_, conds, con), _) -> warn $ checkConditions pos (Closed $ capply con) conds
 
 data SomeEq f = forall a. Eq a => SomeEq (f a)

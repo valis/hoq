@@ -39,25 +39,25 @@ typeCheckPattern ctx (Type (Apply (Semantics _ (DataType _ 0)) _) _) (Apply (_, 
 typeCheckPattern ctx (Type ty _) (Apply (pos, Operator "") _) =
     throwError [emsgLC pos "" $ pretty "Expected non-empty type:" <+> prettyOpen ctx ty]
 typeCheckPattern ctx _ (Apply (_, Ident "_") []) = return (False, Nothing, Var "_" [])
-typeCheckPattern ctx (Type ty@(Apply (Semantics _ (DataType dt _)) _) lvl) (Apply (pos, Ident var) []) = do
+typeCheckPattern ctx (Type ty@(Apply (Semantics _ (DataType dt _)) _) k) (Apply (pos, Ident var) []) = do
     cons <- lift $ getConstructor (Ident var) (Just dt)
     case cons of
-        (con@(Semantics _ (Con (DCon i n conds))), Type conType _):_ -> if isDataType conType
+        (con@(Semantics _ (Con (DCon i n conds))), Closed (Type conType _)):_ -> if isDataType conType
             then return (False, Just $ TermInCtx Nil $ capply con, Apply (var, DCon i n conds) [])
             else throwError [notEnoughArgs pos var]
-        _ -> return (False, Just $ TermInCtx (Snoc Nil var $ Type ty lvl) $ cvar Bound, Var var [])
+        _ -> return (False, Just $ TermInCtx (Snoc Nil var $ Type ty k) $ cvar Bound, Var var [])
   where
     isDataType :: Term Semantics a -> Bool
     isDataType (Lambda t) = isDataType t
     isDataType (Apply (Semantics _ DataType{}) _) = True
     isDataType _ = False
-typeCheckPattern ctx (Type ty lvl) (Apply (pos, Ident var) []) =
-    return (False, Just $ TermInCtx (Snoc Nil var $ Type ty lvl) $ cvar Bound, Var var [])
+typeCheckPattern ctx (Type ty k) (Apply (pos, Ident var) []) =
+    return (False, Just $ TermInCtx (Snoc Nil var $ Type ty k) $ cvar Bound, Var var [])
 typeCheckPattern ctx (Type (Apply (Semantics _ (DataType dt _)) params) _) (Apply (pos, Ident conName) pats) = do
     cons <- lift $ getConstructor (Ident conName) (Just dt)
     case cons of
-        (con@(Semantics _ (Con (DCon i n conds))), Type conType lvl):_ -> do
-            let conType' = Type (nf WHNF $ apps (vacuous conType) params) lvl
+        (con@(Semantics _ (Con (DCon i n conds))), Closed (Type conType k)):_ -> do
+            let conType' = Type (nf WHNF $ apps conType params) k
             (bf, TermsInCtx ctx' terms (Type ty' _), rtpats) <- typeCheckPatterns ctx conType' pats
             case nf WHNF ty' of
                 Apply (Semantics _ DataType{}) _ ->

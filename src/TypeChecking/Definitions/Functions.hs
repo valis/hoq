@@ -24,13 +24,14 @@ typeCheckFunction :: Monad m => PName -> Term (Posn, Syntax) Void
     -> [(Posn, [Term PName Void], Maybe (Term (Posn, Syntax) Void))] -> TCM m ()
 typeCheckFunction p@(pos, name) ety clauses = do
     (ty, Type u _) <- typeCheck ety Nothing
-    lvl <- case nf WHNF u of
-            Apply (Semantics _ (Universe lvl)) _ -> return lvl
+    k <- case nf WHNF u of
+            Apply (Semantics _ (Universe k)) _ -> return k
             u' -> throwError [emsgLC (termPos ety) "" $ pretty "Expected a type"
                                                      $$ pretty "Actual type:" <+> prettyOpen Nil u']
-    fcid <- addFunctionCheck p (PatEval []) (Type ty lvl)
+    let cty = Closed $ Type (vacuous ty) k
+    fcid <- addFunctionCheck p (PatEval []) cty
     clausesAndPats <- forW clauses $ \(pos,pats,mexpr) ->  do
-        (bf, TermsInCtx ctx _ ty', rtpats) <- typeCheckPatterns Nil (Type (nf WHNF ty) lvl) pats
+        (bf, TermsInCtx ctx _ ty', rtpats) <- typeCheckPatterns Nil (Type (nf WHNF ty) k) pats
         case (bf,mexpr) of
             (True,  Nothing) -> return Nothing
             (False, Nothing) -> do
@@ -50,7 +51,7 @@ typeCheckFunction p@(pos, name) ety clauses = do
     let clauses' = map fst clausesAndPats
         eval = PatEval $ map (fmap $ \(Closed scope) -> Closed $ replaceFunCalls fcid fc scope) clauses'
         fc = Closed $ capply $ Semantics (Name Prefix name) (FunCall fcid eval)
-    lift $ replaceFunction name eval (Type ty lvl)
+    lift $ replaceFunction name eval cty
     case checkCoverage (map snd clausesAndPats) of
         Nothing | length clausesAndPats /= length (filter (\(_,_,me) -> isJust me) clauses) -> return ()
         r -> warn (coverageErrorMsg pos r)
