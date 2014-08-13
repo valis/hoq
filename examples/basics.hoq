@@ -82,6 +82,15 @@ J A B d a a' p = coe (\i -> B a (p @ i) (path (\j -> p @ squeeze i j))) left (d 
 ext : (A : Type) (B : A -> Type) (f g : (a : A) -> B a) -> ((a : A) -> f a = g a) -> f = g
 ext A B f g p = path (\i a -> p a @ i)
 
+-- There are three special subuniverses of Type: Contr, Prop, and Set_i
+-- For each A : Contr, we have contr : A
+-- A path in Set belongs to Prop, and a path in Prop belongs to Contr, that is
+-- Path : (A : I -> Set) -> A left -> A right -> Prop
+-- Path : (A : I -> Prop) -> A left -> A right -> Contr
+-- Data types which use only types in Set (note that I does not belong to Set) also belong to Set
+Nat-isSet : (x y : Nat) (p q : x = y) -> p = q
+Nat-isSet _ _ _ _ = contr
+
 -- Univalence
 not-not : (x : Bool) -> not (not x) = x
 not-not true  = idp Bool true

@@ -12,6 +12,7 @@ data Value t
     = Lam
     | Pi Sort Sort
     | Con (Con t)
+    | CCon
     | FunCall ID (Eval t)
     | Universe Sort
     | DataType ID Int
@@ -36,6 +37,7 @@ instance Eq (Value t) where
     Lam == Lam = True
     Pi{} == Pi{} = True
     Con c == Con c' = c == c'
+    CCon == CCon = True
     FunCall n _ == FunCall n' _ = n == n'
     Universe k == Universe k' = k == k'
     DataType n _ == DataType n' _ = n == n'

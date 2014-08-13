@@ -5,12 +5,13 @@ elseif exists("b:current_syntax")
 endif
 
 syn keyword hoqKeyword         import case of infix infixl infixr
-syn keyword hoqConstructor     left right path coe iso squeeze
-syn keyword hoqType            data I Path with
+syn keyword hoqConstructor     left right path coe iso squeeze contr
+syn keyword hoqType            data I Path with Contr Prop
 syn match   hoqLineComment     "---*\([^-!#$%&\*\+./<=>\?@\\^|~].*\)\?$"
 syn region  hoqBlockComment    start="{-"  end="-}" contains=hoqBlockComment
 syn match   hoqNumber          "\<[0-9]\+\>"
 syn match   hoqType            "\<Type[0-9]*\>"
+syn match   hoqType            "\<Set[0-9]*\>"
 " syn match   hoqDelimiter       "(\|)\|;\|_\|{\|}"
 syn match   hoqOperator        "=\|:\|->\|\\\|@"
 

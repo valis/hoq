@@ -31,6 +31,11 @@ pathExp k = Semantics (Name Prefix $ Ident "Path") (Path k)
 pathImp :: Sort -> Semantics
 pathImp k = Semantics PathImp (Path k)
 
+sortPred :: Sort -> Sort
+sortPred Prop = Contr
+sortPred Set{} = Prop
+sortPred k = k
+
 typeCheck :: Monad m => Term (Posn, Syntax) Void -> Maybe (Type Semantics Void) -> TCM m (Term Semantics Void, Type Semantics Void)
 typeCheck = typeCheckCtx Nil
 
@@ -54,7 +59,15 @@ typeCheckCtx ctx (Apply (pos, S.Pi vs) (a:b:ts)) Nothing = do
     k1 <- checkIsType ctx (termPos a) ty1
     (b', k2) <- extend ctx vs (Type a' k1)
     unless (null ts) $ warn [argsErrorMsg pos "A type"]
-    let k = dmax k1 k2
+    let k = case (k1, k2) of
+                (_, Contr) -> Contr
+                (_, Prop) -> Prop
+                (Set l1, Set l2) -> Set (max l1 l2)
+                (TypeK l1, Set l2) -> Set (max l1 l2)
+                (_, Set l) -> Set l
+                (Set l1, TypeK l2) -> TypeK (max l1 l2)
+                (TypeK l1, TypeK l2) -> TypeK (max l1 l2)
+                (_, TypeK l) -> TypeK l
     return (Apply (Semantics (S.Pi vs) (V.Pi k1 k2)) [a', b'], Type (universe k) $ succ k)
   where
     extend :: (Monad m, Eq a) => Context a -> [String] -> Type Semantics a -> TCM m (Term Semantics a, Sort)
@@ -70,7 +83,7 @@ typeCheckCtx ctx (Apply (pos, PathImp) (a1:a2:ts)) Nothing = do
     (r1, Type t1 k) <- typeCheckCtx ctx a1 Nothing
     (r2, _) <- typeCheckCtx ctx a2 $ Just $ Type (nf WHNF t1) k
     return (Apply (Semantics PathImp (Path k)) [Apply (Semantics (S.Lam ["_"]) V.Lam)
-            [Lambda $ fmap Free t1], r1, r2], Type (universe k) $ succ k)
+            [Lambda $ fmap Free t1], r1, r2], Type (universe $ sortPred k) $ succ $ sortPred k)
 typeCheckCtx ctx (Apply (pos, S.At) (b:c:ts)) Nothing = do
     (r1, Type t1 k) <- typeCheckCtx ctx b Nothing
     (r2, _) <- typeCheckCtx ctx c (Just intType)
@@ -148,36 +161,44 @@ typeCheckName ctx pos ft var ts mty = do
 
 typeCheckKeyword :: (Monad m, Eq a) => Context a -> Posn -> String -> [Term (Posn, Syntax) Void]
     -> Maybe (Type Semantics a) -> TCM m (Term Semantics a, Type Semantics a)
-typeCheckKeyword ctx pos u as Nothing | (k,""):_ <- reads u = do
+typeCheckKeyword _ pos u as Nothing | (k,""):_ <- reads u = do
     unless (null as) $ warn [argsErrorMsg pos "A type"]
     return (universe k, Type (universe $ succ k) $ succ $ succ k)
-typeCheckKeyword ctx pos "I" as Nothing = do
+typeCheckKeyword ctx pos "contr" [] (Just (Type ty k)) = do
+    case k of
+        Contr   -> return ()
+        _       -> warn [emsgLC pos "" $ pretty "Expected a contractible type"
+                                      $$ pretty "Actual type:" <+> prettyOpen ctx ty]
+    return (capply $ Semantics (Name Prefix $ Ident "contr") CCon, Type ty k)
+typeCheckKeyword _ pos "contr" _ _ = throwError [inferErrorMsg pos "contr"]
+typeCheckKeyword _ pos "I" as Nothing = do
     unless (null as) $ warn [argsErrorMsg pos "A type"]
     return (interval, Type (universe $ TypeK NoLevel) $ TypeK $ Level 1)
-typeCheckKeyword ctx pos "left" as Nothing = do
+typeCheckKeyword _ pos "left" as Nothing = do
     unless (null as) $ warn [argsErrorMsg pos $ show "left"]
     return (iCon ILeft, intType)
-typeCheckKeyword ctx pos "right" as Nothing = do
+typeCheckKeyword _ pos "right" as Nothing = do
     unless (null as) $ warn [argsErrorMsg pos $ show "right"]
     return (iCon IRight, intType)
-typeCheckKeyword ctx pos "Path" [] _ = throwError [expectedArgErrorMsg pos "Path"]
+typeCheckKeyword _ pos "Path" [] _ = throwError [expectedArgErrorMsg pos "Path"]
 typeCheckKeyword ctx pos "Path" (a:as) Nothing = do
     (r1, _, (v, t1)) <- typeCheckLambda ctx a intType
     k <- checkIsType (Snoc ctx v $ error "") (termPos a) t1
     let r1' c = apps r1 [iCon c]
-        mkType t = Type t (succ k)
+        k' = sortPred k
+        mkType t = Type t (succ k')
     case as of
         [] -> return (Apply (pathExp k) [r1], mkType $ Apply (Semantics (S.Pi []) $ V.Pi k $ succ k)
-            [r1' ILeft, Apply (Semantics (S.Pi []) $ V.Pi k $ succ k) [r1' IRight, universe k]])
+            [r1' ILeft, Apply (Semantics (S.Pi []) $ V.Pi k $ succ k) [r1' IRight, universe k']])
         [a2] -> do
             (r2, _) <- typeCheckCtx ctx a2 $ Just $ Type (nf WHNF $ r1' ILeft) k
-            return (Apply (pathExp k) [r1,r2], mkType $ Apply (Semantics (S.Pi []) $ V.Pi k $ succ k) [r1' IRight, universe k])
+            return (Apply (pathExp k) [r1,r2], mkType $ Apply (Semantics (S.Pi []) $ V.Pi k $ succ k) [r1' IRight, universe k'])
         a2:a3:as' -> do
             unless (null as') $ warn [argsErrorMsg pos "A type"]
             (r2, _) <- typeCheckCtx ctx a2 $ Just $ Type (nf WHNF $ r1' ILeft) k
             (r3, _) <- typeCheckCtx ctx a3 $ Just $ Type (nf WHNF $ r1' IRight) k
-            return (Apply (pathExp k) [r1,r2,r3], mkType $ universe k)
-typeCheckKeyword ctx pos "path" [] _ = throwError [expectedArgErrorMsg pos "path"]
+            return (Apply (pathExp k) [r1,r2,r3], mkType $ universe k')
+typeCheckKeyword _ pos "path" [] _ = throwError [expectedArgErrorMsg pos "path"]
 typeCheckKeyword ctx pos "path" (a:as) mty = do
     unless (null as) $ warn [argsErrorMsg pos "A path"]
     case mty of
@@ -192,7 +213,7 @@ typeCheckKeyword ctx pos "path" (a:as) mty = do
             return (path [r], Type ty k)
         Just (Type ty _) -> throwError [emsgLC pos "" $ pretty "Expected type:" <+> prettyOpen ctx ty
                                                      $$ pretty "Actual type: Path"]
-typeCheckKeyword ctx pos "coe" [] _ = throwError [expectedArgErrorMsg pos "coe"]
+typeCheckKeyword _ pos "coe" [] _ = throwError [expectedArgErrorMsg pos "coe"]
 typeCheckKeyword ctx pos "coe" (a1:as) Nothing = do
     (r1, _, (v, t1)) <- typeCheckLambda ctx a1 intType
     k <- checkIsType (Snoc ctx v $ error "") (termPos a1) t1
@@ -236,7 +257,7 @@ typeCheckKeyword ctx pos "iso" (a1:a2:a3:a4:a5:a6:as) Nothing = do
             unless (null as') $ warn [argsErrorMsg pos "A type"]
             (r7, _) <- typeCheckCtx ctx a7 (Just intType)
             return (Apply iso [r1,r2,r3,r4,r5,r6,r7], Type (universe k) $ succ k)
-typeCheckKeyword ctx pos "iso" _ Nothing = throwError [emsgLC pos "Expected at least 6 arguments to \"iso\"" enull]
+typeCheckKeyword _ pos "iso" _ Nothing = throwError [emsgLC pos "Expected at least 6 arguments to \"iso\"" enull]
 typeCheckKeyword ctx pos "squeeze" as Nothing =
     let mkType t = Apply (Semantics (S.Pi []) $ V.Pi (TypeK NoLevel) $ TypeK NoLevel) [interval, t]
         squeeze = Semantics (Name Prefix $ Ident "squeeze") Squeeze

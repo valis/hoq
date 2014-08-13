@@ -5,9 +5,6 @@ data Nat = zero | suc Nat
 data Z = positive Nat | negative Nat with
     negative zero = positive zero
 
-Z-isSet : (x y : Z) (p q : x = y) -> p = q
-Z-isSet = NotImplemented
-
 succ : Z -> Z
 succ (positive x)       = positive (suc x)
 succ (negative zero)    = positive (suc zero)
@@ -42,10 +39,10 @@ succ-pred (positive zero) = idp Z (positive zero)
 succ-pred (positive (suc x)) = idp Z (positive (suc x))
 succ-pred (negative x) = idp Z (negative x)
 
-iter : I -> Type
+iter : I -> Set
 iter i = iso Z Z succ pred pred-succ succ-pred i
 
-code : Circle -> Type
+code : Circle -> Set
 code base     = Z
 code (loop i) = iter i
 
@@ -116,17 +113,17 @@ decode-encode-base (negative (suc x)) =
     (map Z Z pred (coe (\i -> code (wind (negative x) @ i)) left (positive zero) right) (negative x) (decode-encode-base (negative x)))
     )
 
-Circle-elim' : (P : Circle -> Type) (b : P base) -> transport Circle P base base (path loop) b = b -> (x : Circle) -> P x
-Circle-elim' P b t base     = b
-Circle-elim' P b t (loop i) = 
-    coe  (\j -> Path (\k -> P (loop k)) b (t @ j)) left
+Prop-Contr : (A : Prop) (a a' : A) -> a = a'
+Prop-Contr _ _ _ = contr
+
+Circle-elim-Prop : (P : Circle -> Prop) (b : P base) -> (x : Circle) -> P x
+Circle-elim-Prop P b base     = b
+Circle-elim-Prop P b (loop i) = 
+    coe  (\j -> Path (\k -> P (loop k)) b (Prop-Contr (P base) (transport Circle P base base (path loop) b) b @ j)) left
     (path (\j -> coe (\k -> P (loop k)) left b j)) right @ i
 
 decode-encode : (x : Circle) (z : code x) -> encode x (decode x z) = z
-decode-encode = Circle-elim' (\x -> (z : code x) -> encode x (decode x z) = z) decode-encode-base
-    (path (\i z -> Z-isSet (coe (\i -> code (wind z @ i)) left (positive zero) right) z
-    (transport Circle (\x -> (z : code x) -> encode x (decode x z) = z) base base (path loop) decode-encode-base z)
-    (decode-encode-base z) @ i))
+decode-encode = Circle-elim-Prop (\x -> (z : code x) -> encode x (decode x z) = z) decode-encode-base
 
 Circle-loop-space-is-Z : (base = base) = Z
 Circle-loop-space-is-Z = path (iso (base = base) Z (encode base) (decode base) (encode-decode base) (decode-encode base))
