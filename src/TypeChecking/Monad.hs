@@ -9,6 +9,7 @@ module TypeChecking.Monad
 import Control.Monad
 import Control.Monad.Trans(lift)
 
+import TypeChecking.Expressions.Utils
 import TypeChecking.Monad.Warn
 import TypeChecking.Monad.Scope
 import Syntax
@@ -16,14 +17,14 @@ import Semantics
 import Semantics.Value
 import Syntax.ErrorDoc
 
-type EDocM = WarnT [EMsg (Term Syntax)]
+type EDocM = WarnT [Error]
 type TCM m = EDocM (ScopeT m)
 
 runTCM :: Monad m => TCM m a -> m (Maybe a)
 runTCM = liftM snd . runScopeT . runWarnT
 
-multipleDeclaration :: Posn -> Name -> EMsg f
-multipleDeclaration pos var = emsgLC pos ("Multiple declarations of " ++ show (getStr var)) enull
+multipleDeclaration :: Posn -> Name -> Error
+multipleDeclaration pos var = Error Other $ emsgLC pos ("Multiple declarations of " ++ show (getStr var)) enull
 
 addFunctionCheck :: Monad m => PName -> SEval -> Closed (Type Semantics) -> TCM m ID
 addFunctionCheck (pos, var) e ty = do

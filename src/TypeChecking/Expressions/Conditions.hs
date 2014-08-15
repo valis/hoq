@@ -15,6 +15,7 @@ import Semantics
 import Semantics.Value
 import Syntax.ErrorDoc
 import TypeChecking.Context
+import TypeChecking.Expressions.Utils
 import Normalization
 
 instance Eq (Term (s, Con t) a) where
@@ -23,12 +24,12 @@ instance Eq (Term (s, Con t) a) where
     _ == _ = False
 
 checkConditions :: Eq a => S.Posn -> Ctx String f Void a => Term Semantics a
-    -> [([Term (String,SCon) String], Term Semantics a)] -> [EMsg (Term S.Syntax)]
+    -> [([Term (String,SCon) String], Term Semantics a)] -> [Error]
 checkConditions pos ctx func cs =
     maybeToList $ msum $ map (\(p, scope) -> fmap (msg ctx) $ checkPatterns func (map fst cs) p scope) cs
   where
-    msg :: Ctx String f Void a -> ([String], Term Semantics a, Term Semantics a) -> EMsg (Term S.Syntax)
-    msg ctx (vs, t1, t2) = emsgLC pos "Conditions check failed:" $
+    msg :: Ctx String f Void a -> ([String], Term Semantics a, Term Semantics a) -> Error
+    msg ctx (vs, t1, t2) = Error Conditions $ emsgLC pos "Conditions check failed:" $
         scopeToEDoc ctx vs t1 <+> pretty "is not equal to" <+> scopeToEDoc ctx vs t2
     
     scopeToEDoc :: Ctx String f Void a -> [String] -> Term Semantics a -> EDoc (Term S.Syntax)

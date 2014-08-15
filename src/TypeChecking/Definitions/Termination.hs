@@ -11,14 +11,15 @@ import Semantics.Value
 import Semantics
 import Syntax.ErrorDoc
 import TypeChecking.Context
+import TypeChecking.Expressions.Utils
 
-checkTermination :: Either Int ID -> S.Posn -> [Term (Con t) String] -> Closed (Term Semantics) -> [EMsg (Term S.Syntax)]
+checkTermination :: Either Int ID -> S.Posn -> [Term (Con t) String] -> Closed (Term Semantics) -> [Error]
 checkTermination name pos pats (Closed scope) = map msg $ case scopeToCtx Nil scope of
     TermInCtx ctx term -> collectFunCalls ctx name term >>= \mts -> case mts of
         TermsInCtx ctx' terms -> if evalState (checkTerms ctx' pats terms) 0 == LT then [] else [pos]
   where
-    msg :: S.Posn -> EMsg (Term S.Syntax)
-    msg pos = emsgLC pos "Termination check failed" enull
+    msg :: S.Posn -> Error
+    msg pos = Error Other $ emsgLC pos "Termination check failed" enull
 
 checkTerm :: Ctx String (Term Semantics) String a -> Term (Con t) String -> Term Semantics a -> State Int Ordering
 checkTerm _ (Apply (ICon con) _) (Apply (Semantics _ (Con (ICon con'))) []) | con == con' = return EQ

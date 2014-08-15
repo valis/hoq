@@ -3,6 +3,7 @@
 module TypeChecking.Monad.Warn
     ( WarnT, warn, runWarnT
     , throwError, catchError
+    , catchErrorBy
     , forW, throwErrors
     ) where
 
@@ -55,3 +56,8 @@ forW as k = liftM catMaybes $ forM as $ \a -> k a `catchError` \w -> warn w >> r
 throwErrors :: Monad m => [w] -> WarnT [w] m ()
 throwErrors [] = return ()
 throwErrors ws = throwError ws
+
+catchErrorBy :: Monad m => (w -> Bool) -> WarnT [w] m a -> (w -> WarnT [w] m a) -> WarnT [w] m a
+catchErrorBy p m h = WarnT $ runWarnT m >>= \(errs, ma) -> case break p errs of
+    (errs1,err':errs2)  -> runWarnT $ warn (errs1 ++ errs2) >> h err'
+    _                   -> return (errs, ma)

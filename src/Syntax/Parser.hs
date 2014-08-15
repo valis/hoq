@@ -10,16 +10,17 @@ import Syntax.ErrorDoc
 import Syntax.Parser.Lexer
 import qualified Syntax.Parser.Parser as P
 import TypeChecking.Monad.Warn
+import TypeChecking.Expressions.Utils
 
-pDefs :: Monad m => B.ByteString -> WarnT [EMsg f] m [Def]
+pDefs :: Monad m => B.ByteString -> WarnT [Error] m [Def]
 pDefs = liftM reverse . runParser P.pDefs
 
-pExpr :: Monad m => B.ByteString -> WarnT [EMsg f] m RawExpr
+pExpr :: Monad m => B.ByteString -> WarnT [Error] m RawExpr
 pExpr = runParser P.pExpr
 
-runParser :: Monad m => Parser a -> B.ByteString -> WarnT [EMsg f] m a
+runParser :: Monad m => Parser a -> B.ByteString -> WarnT [Error] m a
 runParser p s = case evalState (runWarnT $ p ((1, 1), s)) ([Layout 1], []) of
     (errs, Nothing) -> throwError (mapErrs errs)
     (errs, Just a)  -> warn (mapErrs errs) >> return a
   where
-    mapErrs = map $ \(pos, err) -> emsgLC pos err enull
+    mapErrs = map $ \(pos, err) -> Error Other $ emsgLC pos err enull

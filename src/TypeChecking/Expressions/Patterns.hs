@@ -20,12 +20,6 @@ import Normalization
 data TermInCtx b  = forall a. Eq a => TermInCtx  (Ctx String (Type Semantics) b a) (Term Semantics a)
 data TermsInCtx b = forall a. Eq a => TermsInCtx (Ctx String (Type Semantics) b a) [Term Semantics a] (Type Semantics a)
 
-notEnoughArgs :: Show a => Posn -> a -> EMsg f
-notEnoughArgs pos a = emsgLC pos ("Not enough arguments to " ++ show a) enull
-
-tooManyArgs :: Posn -> EMsg f
-tooManyArgs pos = emsgLC pos "Too many arguments" enull
-
 typeCheckPattern :: (Monad m, Eq a) => Ctx String (Type Semantics) Void a -> Type Semantics a
     -> Term PName b -> TCM m (Bool, Maybe (TermInCtx a), Term (String,SCon) String)
 typeCheckPattern ctx (Type (Apply (Semantics _ Interval) _) _) (Apply (pos, Ident "left") pats) = do
@@ -37,7 +31,7 @@ typeCheckPattern ctx (Type (Apply (Semantics _ Interval) _) _) (Apply (pos, Iden
 typeCheckPattern ctx (Type (Apply (Semantics _ (DataType _ 0)) _) _) (Apply (_, Operator "") _) =
     return (True, Nothing, Var "_" [])
 typeCheckPattern ctx (Type ty _) (Apply (pos, Operator "") _) =
-    throwError [emsgLC pos "" $ pretty "Expected non-empty type:" <+> prettyOpen ctx ty]
+    throwError [Error Other $ emsgLC pos "" $ pretty "Expected non-empty type:" <+> prettyOpen ctx ty]
 typeCheckPattern ctx _ (Apply (_, Ident "_") []) = return (False, Nothing, Var "_" [])
 typeCheckPattern ctx (Type ty@(Apply (Semantics _ (DataType dt _)) _) k) (Apply (pos, Ident var) []) = do
     cons <- lift $ getConstructor (Ident var) (Just dt)
@@ -65,8 +59,8 @@ typeCheckPattern ctx (Type (Apply (Semantics _ (DataType dt _)) params) _) (Appl
                 _ -> throwError [notEnoughArgs pos conName]
         _ -> throwError [notInScope pos "data constructor" conName]
 typeCheckPattern ctx (Type ty _) (Apply (pos, _) _) =
-    throwError [emsgLC pos "" $ pretty "Unexpected pattern"
-                             $$ pretty "Expected type:" <+> prettyOpen ctx ty]
+    throwError [Error TypeMismatch $ emsgLC pos "" $ pretty "Unexpected pattern"
+                                                  $$ pretty "Expected type:" <+> prettyOpen ctx ty]
 typeCheckPattern _ _ _ = error "typeCheckPattern"
 
 typeCheckPatterns :: (Monad m, Eq a) => Ctx String (Type Semantics) Void a -> Type Semantics a

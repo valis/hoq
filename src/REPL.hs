@@ -17,6 +17,7 @@ import Syntax.PrettyPrinter
 import Syntax.ErrorDoc
 import TypeChecking.Monad
 import TypeChecking.Expressions
+import TypeChecking.Expressions.Utils
 import Normalization
 
 ep :: NF -> String -> ScopeT IO ()
@@ -27,7 +28,7 @@ ep mode str = do
         return term'
     liftIO $ case mres of
         ([], Just term) -> putStrLn $ render $ ppTerm $ first syntax (nf mode term)
-        (errs, _)       -> mapM_ (hPutStrLn stderr . erender) errs
+        (errs, _)       -> mapM_ (hPutStrLn stderr . erender . errorMsg) errs
 
 processCmd :: String -> String -> ScopeT IO ()
 processCmd "quit" _   = liftIO exitSuccess

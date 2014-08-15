@@ -32,7 +32,7 @@ typeCheckDataType p@(pos, dt) params cons conds = mdo
     cons' <- forW (zip cons [0..]) $ \(ConDef con@(PIdent pos conName) tele, i) -> do
         (_, Type conType conSort) <- checkTele ctx tele $ Apply (Semantics (Name Prefix dt) $ DataType dtid lcons) (ctxToVars ctx)
         case findOccurrence dtid (nf WHNF conType) of
-            Just n | n > 1 -> throwError [emsgLC pos "Data type is not strictly positive" enull]
+            Just n | n > 1 -> throwError [Error Other $ emsgLC pos "Data type is not strictly positive" enull]
             _ -> return ()
         let conds'' = map snd $ filter (\(c,_) -> c == conName) conds'
             conTerm = Semantics (Name Prefix $ Ident conName) $ Con $ DCon i lcons (PatEval conds'')
@@ -45,7 +45,7 @@ typeCheckDataType p@(pos, dt) params cons conds = mdo
         case find (\((PIdent _ c), _, _) -> Ident c == con) cons' of
             Just (PIdent _ conName, (i, _, _), ty) -> do
                 (bf, TermsInCtx ctx' _ ty', rtpats) <- typeCheckPatterns ctx (nfType WHNF ty) pats
-                when bf $ warn [emsgLC pos "Absurd patterns are not allowed in conditions" enull]
+                when bf $ warn [Error Other $ emsgLC pos "Absurd patterns are not allowed in conditions" enull]
                 (term, _) <- typeCheckCtx (ctx +++ ctx') expr $ Just (nfType WHNF ty')
                 let scope = closed (abstractTerm ctx' term)
                 throwErrors $ checkTermination (Left i) pos (map (first snd) rtpats) scope

@@ -20,7 +20,7 @@ typeCheckDefs (DefImport{} : defs) = typeCheckDefs defs
 typeCheckDefs (DefType p@(pos, name) ty : defs) =
     case span (theSameAs name) defs of
         ([],_) -> do
-            warn [emsgLC pos ("Missing a realization of function " ++ show (getStr name)) enull]
+            warn [Error Other $ emsgLC pos ("Missing a realization of function " ++ show (getStr name)) enull]
             typeCheckDefs defs
         (defs1,defs2) -> do
             typeCheckFunction p ty (map (\d -> case d of
@@ -33,7 +33,7 @@ typeCheckDefs (DefFun p@(pos, name) [] (Just expr) : defs) = do
     addFunctionCheck p (SynEval $ closed term) $ Closed (vacuous ty)
     typeCheckDefs defs
 typeCheckDefs (DefFun (pos, name) [] Nothing : defs) = do
-    warn [emsgLC pos "Expected right hand side" enull]
+    warn [Error Other $ emsgLC pos "Expected right hand side" enull]
     typeCheckDefs $ dropWhile (theSameAs name) defs
 typeCheckDefs (DefFun (pos, name) _ _ : defs) = do
     warn [inferErrorMsg pos "the argument"]

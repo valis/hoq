@@ -26,8 +26,8 @@ typeCheckFunction p@(pos, name) ety clauses = do
     (ty, Type u _) <- typeCheck ety Nothing
     k <- case nf WHNF u of
             Apply (Semantics _ (Universe k)) _ -> return k
-            u' -> throwError [emsgLC (termPos ety) "" $ pretty "Expected a type"
-                                                     $$ pretty "Actual type:" <+> prettyOpen Nil u']
+            u' -> throwError [Error TypeMismatch $ emsgLC (termPos ety) "" $ pretty "Expected a type"
+                                                                          $$ pretty "Actual type:" <+> prettyOpen Nil u']
     let cty = Closed $ Type (vacuous ty) k
     fcid <- addFunctionCheck p (PatEval []) cty
     clausesAndPats <- forW clauses $ \(pos,pats,mexpr) ->  do
@@ -36,11 +36,11 @@ typeCheckFunction p@(pos, name) ety clauses = do
             (True,  Nothing) -> return Nothing
             (False, Nothing) -> do
                 let msg = "The right hand side can be omitted only if the absurd pattern is given"
-                warn [emsgLC pos msg enull]
+                warn [Error Other $ emsgLC pos msg enull]
                 return Nothing
             (True, Just expr) -> do
                 let msg = "If the absurd pattern is given the right hand side must be omitted"
-                warn [emsgLC (termPos expr) msg enull]
+                warn [Error Other $ emsgLC (termPos expr) msg enull]
                 return Nothing
             (False, Just expr) -> do
                 (term, _) <- typeCheckCtx ctx expr $ Just (nfType WHNF ty')
