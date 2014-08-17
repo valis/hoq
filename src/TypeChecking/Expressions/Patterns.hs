@@ -70,8 +70,7 @@ typeCheckPatterns ctx (Type (Apply p@(Semantics (S.Pi vs) (V.Pi l1 l2)) [a, b]) 
     let a' = Type (nf WHNF a) l1
     (bf1, mte, rtpat) <- typeCheckPattern ctx a' pat
     TermInCtx ctx' te <- case mte of
-                            Nothing ->  let var = if null vs then "_" else head vs
-                                        in return $ TermInCtx (Snoc Nil var a') bvar
+                            Nothing -> return $ TermInCtx (Snoc Nil "_" a') bvar
                             Just te -> return te
     let b' = case b of
                 Lambda{} -> instantiate1 te $ fmap (fmap $ liftBase ctx') $ snd (dropOnePi p a b)

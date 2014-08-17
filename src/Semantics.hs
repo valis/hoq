@@ -11,7 +11,8 @@ module Semantics
 
 import Prelude.Extras
 import Control.Monad
-import Data.Traversable(sequenceA)
+import Data.Foldable(Foldable(..))
+import Data.Traversable(Traversable,traverse,sequenceA,fmapDefault,foldMapDefault)
 
 import Syntax.Term
 import qualified Syntax as S
@@ -31,8 +32,11 @@ instance Eq Semantics where
 
 data Type p a = Type { getType :: Term p a, getSort :: Sort }
 
-instance Functor (Type p) where
-    fmap f (Type t k) = Type (fmap f t) k
+instance Functor  (Type p) where fmap = fmapDefault
+instance Foldable (Type p) where foldMap = foldMapDefault
+
+instance Traversable (Type p) where
+    traverse f (Type t k) = fmap (\t' -> Type t' k) (traverse f t)
 
 cmpTerms :: (a -> b -> Bool) -> Term Semantics a -> Term Semantics b -> Maybe [(a, b, Term Semantics a, Term Semantics b)]
 cmpTerms f t@(Var a as) t'@(Var a' as') = fmap ((if f a a' then [] else [(a, a', t, t')]) ++) (cmpTermsList f as as')
