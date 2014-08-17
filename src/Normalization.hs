@@ -19,7 +19,7 @@ nf mode (Lambda t) = Lambda $ if mode == WHNF then t else nf mode t
 
 nfSemantics :: Eq a => NF -> Semantics -> [Term Semantics a] -> Term Semantics a
 nfSemantics mode (Semantics (S.Lam (_:vs)) Lam) (Lambda a@Lambda{} : t : ts) =
-    nfStep mode $ Apply (Semantics (S.Lam $ tail vs) Lam) (instantiate1 t a : ts)
+    nfStep mode $ Apply (Semantics (S.Lam vs) Lam) (instantiate1 t a : ts)
 nfSemantics mode (Semantics _ Lam) (Lambda s : t : ts) = nfStep mode $ apps (instantiate1 t s) ts
 nfSemantics mode t@(Semantics _ (Con (DCon _ _ (PatEval conds)))) ts = case instantiateClauses conds ts of
     Just (t', ts')  -> nfStep mode (apps t' ts')

@@ -32,6 +32,9 @@ notInScope pos s a = Error NotInScope $ emsgLC pos ("Not in scope: " ++ (if null
 inferErrorMsg :: Posn -> String -> Error
 inferErrorMsg pos s = Error Inference $ emsgLC pos ("Cannot infer type of " ++ s) enull
 
+inferExprErrorMsg :: Posn -> Error
+inferExprErrorMsg pos = Error Inference $ emsgLC pos "Cannot infer an expressions" enull
+
 inferParamsErrorMsg :: Show a => Posn -> a -> Error
 inferParamsErrorMsg pos d = Error Inference $ emsgLC pos ("Cannot infer parameters of data constructor " ++ show d) enull
 

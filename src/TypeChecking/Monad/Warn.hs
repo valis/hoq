@@ -5,6 +5,7 @@ module TypeChecking.Monad.Warn
     , throwError, catchError
     , catchErrorBy
     , forW, throwErrors
+    , mapWarnT
     ) where
 
 import Control.Monad
@@ -61,3 +62,6 @@ catchErrorBy :: Monad m => (w -> Bool) -> WarnT [w] m a -> (w -> WarnT [w] m a) 
 catchErrorBy p m h = WarnT $ runWarnT m >>= \(errs, ma) -> case break p errs of
     (errs1,err':errs2)  -> runWarnT $ warn (errs1 ++ errs2) >> h err'
     _                   -> return (errs, ma)
+
+mapWarnT :: Monad m => (w -> w') -> WarnT w m a -> WarnT w' m a
+mapWarnT f (WarnT m) = WarnT $ liftM (\(w,a) -> (f w, a)) m

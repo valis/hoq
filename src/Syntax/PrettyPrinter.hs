@@ -26,7 +26,9 @@ ppTerm t = ppTermCtx (freeVars t) (vacuous t)
 ppTermCtx :: [String] -> Term Syntax Doc -> Doc
 ppTermCtx ctx (Var d ts) = d <+> ppList ctx ts
 ppTermCtx ctx (Apply s ts) = ppSyntax ctx s ts
-ppTermCtx _ _ = error "ppTermCtx"
+ppTermCtx ctx (Lambda t) = ppTermCtx ctx $ fmap (\v -> case v of
+    Bound -> text "(error: Bound)"
+    Free d -> d) t
 
 ppSyntax :: [String] -> Syntax -> [Term Syntax Doc] -> Doc
 ppSyntax ctx p@(Pi vs) [t1, t2] = (if null vs

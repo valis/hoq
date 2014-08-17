@@ -22,27 +22,27 @@ import TypeChecking.Monad
 loadFile :: (MonadIO m, MonadFix m) => String -> ScopeT m ()
 loadFile filename = do
     (errs, _) <- runWarnT $ evalStateT (loadFile' [] filename) []
-    liftIO $ mapM_ (hPutStrLn stderr . erenderWithFilename filename . errorMsg) errs
+    liftIO $ mapM_ (\(fn, err) -> hPutStrLn stderr $ erenderWithFilename fn $ errorMsg err) errs
 
-loadFile' :: (MonadIO m, MonadFix m) => [String] -> String -> StateT [String] (TCM m) ()
+loadFile' :: (MonadIO m, MonadFix m) => [String] -> String -> StateT [String] (WarnT [(String,Error)] (ScopeT m)) ()
 loadFile' checking filename = do
     mcnt <- liftIO $ fmap Right (B.readFile filename)
                     `catch` \e -> return $ Left $ show (e :: SomeException)
     case mcnt of
         Right cnt -> parseDefs filename checking cnt
-        Left err  -> lift $ warn [Error Other $ emsg err enull]
+        Left err  -> lift $ warn [(filename, Error Other $ emsg err enull)]
 
-parseDefs :: (MonadIO m, MonadFix m) => String -> [String] -> B.ByteString -> StateT [String] (TCM m) ()
+parseDefs :: (MonadIO m, MonadFix m) => String -> [String] -> B.ByteString -> StateT [String] (WarnT [(String,Error)] (ScopeT m)) ()
 parseDefs cur checking s = do
-    defs <- lift (pDefs s)
+    defs <- lift $ mapWarnT (map $ \e -> (cur,e)) (pDefs s)
     forM_ (defs >>= \def -> case def of
         DefImport imp -> [imp]
         _             -> []) $ \moduleName ->
             let filename = foldr1 combine moduleName <.> "hoq"
             in if filename `elem` checking
-                then lift $ warn [Error Other $ emsg ("Modules " ++ cur ++ " and " ++ filename ++ " form a cycle") enull]
+                then lift $ warn [(cur, Error Other $ emsg ("Modules " ++ cur ++ " and " ++ filename ++ " form a cycle") enull)]
                 else do
                     checked <- get
                     if filename `elem` checked then return () else loadFile' (cur:checking) filename
     modify (cur:)
-    lift (typeCheckDefs defs)
+    lift $ mapWarnT (map $ \e -> (cur,e)) (typeCheckDefs defs)
