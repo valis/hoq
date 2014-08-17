@@ -10,16 +10,11 @@ psqueeze _ _ _ p i = path (\j -> p @ squeeze i j)
 J : (A : Type) (a : A) (B : (a' : A) -> a = a' -> Type) -> B a (idp _ _) -> (a' : A) (p : a = a') -> B a' p
 J _ _ B b _ p = coe (\i -> B (p @ i) (psqueeze _ _ _ p i)) left b right
 
-{-
 inv : (A : Type) (a a' : A) -> a = a' -> a' = a
 inv _ a _ p = transport _ (\x -> x = a) _ _ p (idp _ _)
 
 comp : (A : Type) (a a' a'' : A) -> a = a' -> a' = a'' -> a = a''
 comp _ a _ _ p q = transport _ (\x -> a = x) _ _ q p
 
-inv-comp : (A : Type) (a a' : A) (p : a = a') -> comp A a' a a' (inv A a a' p) p = idp _ _
-inv-comp A a a' p = J A a (\x q -> comp A x a x (inv A a x q) q = idp A x) (idp (a = a) _) a' p
--}
-
-inv-comp : (A : Type) (a : A) -> idp A a = idp A a
-inv-comp A a = idp (a = a) _
+inv-comp : (A : Type) (a a' : A) (p : a = a') -> comp _ _ _ _ (inv _ _ _ p) p = idp _ _
+inv-comp _ _ _ p = J _ _ (\_ q -> comp _ _ _ _ (inv _ _ _ q) q = idp _ _) (idp _ _) _ p

@@ -52,7 +52,7 @@ typeCheckCtx ctx term mty = do
     return (te, ty)
 
 typeCheckCtx' :: (Monad m, Eq a) => Context a -> Term (Posn, Syntax) Void -> Maybe (Type Semantics (Either (Int,Posn) a))
-    -> TCM m (Term Semantics a, Type Semantics a, [(Int, (Posn, Term Semantics a))])
+    -> TCM m (Term Semantics a, Type Semantics a, [((Int, Posn), Term Semantics a)])
 typeCheckCtx' ctx (Apply (pos, Name ft var) ts) mty = typeCheckName ctx pos ft var ts mty
 typeCheckCtx' ctx (Apply (_, S.Lam []) [te]) mty = typeCheckCtx' ctx te mty
 typeCheckCtx' ctx (Apply (pos, S.Lam (v:vs)) [te]) (Just (Type (Apply p@(Semantics _ (V.Pi k1 k2)) [a,b]) k3)) =
@@ -64,9 +64,9 @@ typeCheckCtx' ctx (Apply (pos, S.Lam (v:vs)) [te]) (Just (Type (Apply p@(Semanti
             let te'' = case te' of
                     Apply (Semantics (S.Lam vs') _) [t] -> Apply (Semantics (S.Lam $ v:vs') V.Lam) [Lambda t]
                     _                                   -> Apply (Semantics (S.Lam [v]) V.Lam) [Lambda te']
-                tab' = tab >>= \(k, (p, term)) -> case sequenceA term of
+                tab' = tab >>= \(kp, term) -> case sequenceA term of
                                                     Bound -> []
-                                                    Free t -> [(k, (p, t))]
+                                                    Free t -> [(kp, t)]
             return (te'', Type (Apply (Semantics (S.Pi [v]) $ V.Pi k1 k2') [a', Lambda b']) k3, tab')
 typeCheckCtx' ctx (Apply (pos, S.Lam{}) [_]) (Just (Type (Var Left{} _) _)) =
     throwError [inferErrorMsg pos "lambda expressions"]
@@ -122,9 +122,9 @@ typeCheckCtx' ctx (Apply (pos, (S.Case (pat:pats))) (expr:terms)) mty = do
             case fromMaybe (TermInCtx (Snoc Nil "_" exprType) $ error "") mt of
                 TermInCtx ctx' _ -> do
                     (te, Type ty k, tab) <- typeCheckCtx' (ctx +++ ctx') term $ fmap (fmap $ fmap $ liftBase ctx') mtype
-                    let tab' = tab >>= \(k, (p, t)) -> case sequenceA $ fmap (toBase ctx') t of
-                                                        Nothing -> []
-                                                        Just t' -> [(k, (p, t'))]
+                    let tab' = tab >>= \(kp, t) -> case sequenceA $ fmap (toBase ctx') t of
+                                                    Nothing -> []
+                                                    Just t' -> [(kp, t')]
                     return (pat', abstractTerm ctx' te, Type (abstractTerm ctx' ty) k, tab')
     (pat', term1', Type type1 k, tab1) <- typeCheckClause (if null terms2 then mty else Nothing) (pat,term1)
     type1' <- case isStationary type1 of
@@ -153,7 +153,7 @@ typeCheckCtx' ctx te (Just (Type ty _)) = do
 typeCheckCtx' _ _ _ = error "typeCheckCtx"
 
 typeCheckName :: (Monad m, Eq a) => Context a -> Posn -> Fixity -> Name -> [Term (Posn, Syntax) Void]
-    -> Maybe (Type Semantics (Either (Int,Posn) a)) -> TCM m (Term Semantics a, Type Semantics a, [(Int, (Posn, Term Semantics a))])
+    -> Maybe (Type Semantics (Either (Int,Posn) a)) -> TCM m (Term Semantics a, Type Semantics a, [((Int, Posn), Term Semantics a)])
 typeCheckName ctx pos ft var ts mty = do
     when (getStr var == "_") $ throwError [inferExprErrorMsg pos]
     eres <- case lookupCtx (getStr var) ctx of
@@ -180,7 +180,7 @@ typeCheckName ctx pos ft var ts mty = do
         Right res -> return res
 
 typeCheckKeyword :: (Monad m, Eq a) => Context a -> Posn -> String -> [Term (Posn, Syntax) Void]
-    -> Maybe (Type Semantics (Either (Int,Posn) a)) -> TCM m (Term Semantics a, Type Semantics a, [(Int, (Posn, Term Semantics a))])
+    -> Maybe (Type Semantics (Either (Int,Posn) a)) -> TCM m (Term Semantics a, Type Semantics a, [((Int, Posn), Term Semantics a)])
 typeCheckKeyword _ pos u as Nothing | (k,""):_ <- reads u = do
     unless (null as) $ warn [argsErrorMsg pos "A type"]
     return (universe k, Type (universe $ succ k) $ succ $ succ k, [])
@@ -230,7 +230,7 @@ typeCheckKeyword ctx pos "path" (a:as) mty = do
         Just (Type (Var (Left (i,p)) _) _) -> do
             (te, Type ty k, _) <- typeCheckLambda ctx a intType
             let ty = Apply (pathImp k) [ty, apps te [iCon ILeft], apps te [iCon IRight]]
-            return (te, Type ty k, [(i,(p,ty))])
+            return (te, Type ty k, [((i,p),ty)])
         Just (Type ety@(Apply (Semantics _ (Path k1)) [t1,_,_]) k) -> do
             let sem = Semantics (S.Pi ["i"]) $ V.Pi (TypeK NoLevel) k1
                 aty = Apply sem [interval, Lambda $ apps (fmap Free t1) [bvar]]
@@ -316,25 +316,20 @@ typeCheckKeyword _ pos var _ _ = throwError [notInScope pos "" var]
 data CmpTypes = ActExp | ExpAct deriving Eq
 
 cmpTypes :: (Monad m, Eq a) => CmpTypes -> Context a -> Term Semantics a -> Term Semantics (Either (Int,Posn) a) -> Posn
-    -> EDocM m [(Int, (Posn, Term Semantics a))]
+    -> EDocM m [((Int, Posn), Term Semantics a)]
 cmpTypes d ctx t1 t2 pos =
     let t1' = nf NF t1
         t2' = nf NF t2
         (act,exp) = if d == ActExp then (prettyOpen ctx t1', prettyOpen' ctx t2') else (prettyOpen' ctx t2', prettyOpen ctx t1')
         throwErr = throwError [Error TypeMismatch $ emsgLC pos "" $ pretty "Expected type:" <+> exp
                                                                  $$ pretty "Actual type:"   <+> act]
-    in case pcmpTerms (\a eb -> Right a == eb) t1' t2' of
-        Just (o, l) | o == EQ || o == if d == ActExp then LT else GT ->
-            case mapM (\(_,eb,ta,_) -> case eb of
-                                        Left (k,p) -> Just (k, (p, ta))
-                                        _ -> Nothing) l of
-                Just l' -> return l'
-                Nothing -> throwErr
+    in case pcmpTerms t1' t2' of
+        Just (o, l) | o == EQ || o == if d == ActExp then LT else GT -> return l
         _ -> throwErr
 
 typeCheckApps :: (Monad m, Eq a) => Posn -> Context a -> [Either (Term (Posn, Syntax) Void) (Term Semantics a)]
     -> Type Semantics a -> Maybe (Type Semantics (Either (Int,Posn) a))
-    -> TCM m ([Term Semantics a], Type Semantics a, [(Int, (Posn, Term Semantics a))])
+    -> TCM m ([Term Semantics a], Type Semantics a, [((Int, Posn), Term Semantics a)])
 typeCheckApps pos ctx allTerms ty mety = go 0 [] allTerms $ nfType WHNF (fmap Right ty)
   where
     go _ acc [] (Type aty k) =
@@ -382,9 +377,9 @@ typeCheckApps pos ctx allTerms ty mety = go 0 [] allTerms $ nfType WHNF (fmap Ri
     go _ _ _ (Type ty _) = throwError [Error TypeMismatch $ emsgLC pos "" $ pretty "Expected pi type"
                                                                        $$ pretty "Actual type:" <+> prettyOpen' ctx ty]
     
-    replaceTerms :: [Either t s] -> [(Int, (p, s))] -> [Either t s]
+    replaceTerms :: [Either t s] -> [((Int, p), s)] -> [Either t s]
     replaceTerms ts [] = ts
-    replaceTerms ts ((k,(_,t)):tab) =
+    replaceTerms ts (((k,_),t):tab) =
         let (ts1,ts2) = splitAt k (replaceTerms ts tab)
         in if null ts2 then ts1 else ts1 ++ [Right t] ++ tail ts2
 

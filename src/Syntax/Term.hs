@@ -79,7 +79,7 @@ instance Foldable Scoped where
 
 instance Traversable Scoped where
     traverse _ Bound = pure Bound
-    traverse f (Free a)  = Free <$> f a
+    traverse f (Free a) = Free <$> f a
 
 instance Applicative Scoped where
     pure = Free
