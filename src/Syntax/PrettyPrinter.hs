@@ -31,9 +31,10 @@ ppTermCtx ctx (Lambda t) = ppTermCtx ctx $ fmap (\v -> case v of
     Free d -> d) t
 
 ppSyntax :: [String] -> Syntax -> [Term Syntax Doc] -> Doc
-ppSyntax ctx p@(Pi vs) [t1, t2] = (if null vs
-    then ppTermPrec (prec p + 1) ctx t1
-    else parens $ hsep (map text vs) <+> colon <+> ppTermCtx ctx t1) <+> arrow <+> ppBound (prec p) ctx vs t2
+ppSyntax ctx p@(Pi e vs) [t1, t2] =
+    (if null vs then ppTermPrec (prec p + 1) ctx t1
+                else (if e == Explicit then parens else braces) $ hsep (map text vs) <+> colon <+> ppTermCtx ctx t1)
+    <+> arrow <+> ppBound (prec p) ctx vs t2
 ppSyntax ctx l@(Lam vs) (t:ts) = bparens (not $ null ts) (text "\\" <> hsep (map text vs) <+> arrow <+> ppBound (prec l) ctx vs t) <+> ppList ctx ts
 ppSyntax ctx t@PathImp [_,t2,t3] = ppTermPrec (prec t + 1) ctx t2 <+> equals <+> ppTermPrec (prec t + 1) ctx t3
 ppSyntax ctx t@At (_:_:t3:t4:ts) = bparens (not $ null ts)
@@ -48,6 +49,7 @@ ppSyntax ctx (Name _ n) ts = (case n of
 ppSyntax ctx (Case pats) (expr:terms) = hang (text "case" <+> ppTermCtx ctx expr <+> text "of") 4 $ vcat $
     map (\(pat,term) -> ppTermCtx ctx (bimap (Name Prefix . snd) text pat) <+> arrow <+>
         ppBound 0 ctx (bifoldMap (const []) return pat) term) (zip pats terms)
+ppSyntax _ Null _ = empty
 ppSyntax _ _ _ = error "ppSyntax"
 
 opFixity :: Infix -> Infix -> Int -> Int

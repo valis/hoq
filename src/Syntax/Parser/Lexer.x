@@ -45,7 +45,7 @@ $operator   = [\~\!\@\#\$\%\^\&\*\-\+\=\|\?\<\>\,\.\/\:\;\[\]\{\}]
 \(              { \p _ -> TokLParen p                                               }
 \:              { \_ _ -> TokColon                                                  }
 \=              { \_ _ -> TokEquals                                                 }
-\{              { \_ _ -> TokLBrace                                                 }
+\{              { \p _ -> TokLBrace p                                               }
 \}              { \_ _ -> TokRBrace                                                 }
 \;              { \_ _ -> TokSemicolon                                              }
 \)              { \_ _ -> TokRParen                                                 }
@@ -73,7 +73,7 @@ data Token
     | TokOf !Int
     | TokColon
     | TokEquals
-    | TokLBrace
+    | TokLBrace !Posn
     | TokRBrace
     | TokSemicolon
     | TokDot

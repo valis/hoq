@@ -66,8 +66,8 @@ typeCheckPattern _ _ _ = error "typeCheckPattern"
 typeCheckPatterns :: (Monad m, Eq a) => Ctx String (Type Semantics) Void a -> Type Semantics a
     -> [Term PName b] -> TCM m (Bool, TermsInCtx a, [Term (String,SCon) String])
 typeCheckPatterns _ ty [] = return (False, TermsInCtx Nil [] ty, [])
-typeCheckPatterns ctx (Type (Apply p@(Semantics (S.Pi vs) (V.Pi l1 l2)) [a, b]) _) (pat:pats) = do
-    let a' = Type (nf WHNF a) l1
+typeCheckPatterns ctx (Type (Apply p@(Semantics _ (V.Pi k1 k2)) [a, b]) _) (pat:pats) = do
+    let a' = Type (nf WHNF a) k1
     (bf1, mte, rtpat) <- typeCheckPattern ctx a' pat
     TermInCtx ctx' te <- case mte of
                             Nothing -> return $ TermInCtx (Snoc Nil "_" a') bvar
@@ -75,7 +75,7 @@ typeCheckPatterns ctx (Type (Apply p@(Semantics (S.Pi vs) (V.Pi l1 l2)) [a, b]) 
     let b' = case b of
                 Lambda{} -> instantiate1 te $ fmap (fmap $ liftBase ctx') $ snd (dropOnePi p a b)
                 _        -> fmap (liftBase ctx') b
-    (bf2, TermsInCtx ctx'' tes ty, rtpats) <- typeCheckPatterns (ctx +++ ctx') (Type (nf WHNF b') l2) pats
+    (bf2, TermsInCtx ctx'' tes ty, rtpats) <- typeCheckPatterns (ctx +++ ctx') (Type (nf WHNF b') k2) pats
     return (bf1 || bf2, TermsInCtx (ctx' +++ ctx'') (fmap (liftBase ctx'') te : tes) ty, rtpat:rtpats)
 typeCheckPatterns _ _ (Apply (pos, _) _ : _) = throwError [tooManyArgs pos]
 typeCheckPatterns _ _ _ = error "typeCheckPatterns"

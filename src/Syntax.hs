@@ -1,5 +1,5 @@
 module Syntax
-    ( Syntax(..)
+    ( Syntax(..), Explicit(..)
     , RawExpr, PIdent(..)
     , Clause(..), Con(..)
     , Import, Def(..), Tele(..)
@@ -36,11 +36,14 @@ data Def
 
 data Syntax
     = Lam [String]
-    | Pi [String]
+    | Pi Explicit [String]
     | PathImp
     | At
     | Name Fixity Name
     | Case [Term PName String]
+    | Null
+
+data Explicit = Explicit | Implicit deriving Eq
 
 type RawExpr = Term (Posn, Syntax) Void
 

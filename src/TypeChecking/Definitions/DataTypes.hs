@@ -72,13 +72,13 @@ checkTele ctx (VarsTele vars expr : tele) term = do
     case extendCtx (map getName vars) Nil (Type r1 k1) of
         SomeEq ctx' -> do
             (rctx, Type r2 k2) <- checkTele (ctx +++ ctx') tele $ fmap (liftBase ctx') term
-            let sem = Semantics (S.Pi $ reverse $ ctxVars ctx') (V.Pi k1 k2)
+            let sem = Semantics (S.Pi Explicit $ reverse $ ctxVars ctx') (V.Pi k1 k2)
             return (rctx, Type (Apply sem [r1, abstractTerm ctx' r2]) $ dmax k1 k2)
 checkTele ctx (TypeTele expr : tele) term = do
     (r1, Type t1 _) <- typeCheckCtx ctx expr Nothing
     k1 <- checkIsType ctx (termPos expr) (nf WHNF t1)
     (rctx, Type r2 k2) <- checkTele ctx tele term
-    return (rctx, Type (Apply (Semantics (S.Pi []) $ V.Pi k1 k2) [r1,r2]) $ dmax k1 k2)
+    return (rctx, Type (Apply (Semantics (S.Pi Explicit []) $ V.Pi k1 k2) [r1,r2]) $ dmax k1 k2)
 
 replaceSort :: Term Semantics a -> Sort -> Term Semantics a
 replaceSort (Apply p@(Semantics _ V.Pi{}) [a,b]) k = Apply p [a, replaceSort b k]

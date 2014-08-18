@@ -19,25 +19,19 @@ data Circle = base | loop I with
     loop left  = base
     loop right = base
 
-comp' : base = base -> base = base -> base = base
-comp' = comp Circle base base base
-
-inv' : base = base -> base = base
-inv' = inv Circle base base
-
 wind : Z -> base = base
-wind (positive zero)    = idp Circle base
-wind (positive (suc x)) = comp' (wind (positive x)) (path loop)
-wind (negative (suc x)) = comp' (wind (negative x)) (inv' (path loop))
+wind (positive zero)    = idp
+wind (positive (suc x)) = wind (positive x) * path loop
+wind (negative (suc x)) = wind (negative x) * inv (path loop)
 
 pred-succ : (x : Z) -> pred (succ x) = x
-pred-succ (positive x) = idp Z (positive x)
-pred-succ (negative (suc x)) = idp Z (negative (suc x))
+pred-succ (positive x) = idp
+pred-succ (negative (suc x)) = idp
 
 succ-pred : (x : Z) -> succ (pred x) = x
-succ-pred (positive zero) = idp Z (positive zero)
-succ-pred (positive (suc x)) = idp Z (positive (suc x))
-succ-pred (negative x) = idp Z (negative x)
+succ-pred (positive zero) = idp
+succ-pred (positive (suc x)) = idp
+succ-pred (negative x) = idp
 
 iter : I -> Set
 iter i = iso Z Z succ pred pred-succ succ-pred i
@@ -46,84 +40,65 @@ code : Circle -> Set
 code base     = Z
 code (loop i) = iter i
 
-encode : (x : Circle) -> base = x -> code x
+encode : {x : Circle} -> base = x -> code x
 encode _ p = coe (\i -> code (p @ i)) left (positive zero) right
 
-assoc : (p q r : base = base) -> comp' (comp' p q) r = comp' p (comp' q r)
-assoc p q = J Circle base
-    (\x s -> comp Circle base base x (comp' p q) s = comp Circle base base x p (comp Circle base base x q s))
-    (idp (base = base) (comp' p q)) base
+assoc : (p q r : base = base) -> (p * q) * r = p * (q * r)
+assoc p q r = J (\x s -> (p * q) * s = p * (q * s)) idp r -- TODO: remove r
 
-map : (A B : Type) (f : A -> B) -> (a a' : A) -> a = a' -> f a = f a'
-map A B f a a' p = transport A (\x -> f a = f x) a a' p (idp B (f a))
+map : {A B : Type} (f : A -> B) -> {a a' : A} -> a = a' -> f a = f a'
+map _ _ f a _ p = transport (\x -> f a = f x) p idp
 
-wind-succ-loop-neg : (x : Nat) -> comp' (wind (pred (negative x))) (path loop) = wind (negative x)
+wind-succ-loop-neg : (x : Nat) -> wind (pred (negative x)) * path loop = wind (negative x)
 wind-succ-loop-neg x =
-    comp (base = base) (comp' (comp' (wind (negative x)) (inv' (path loop))) (path loop))
-                       (comp' (wind (negative x)) (comp' (inv' (path loop)) (path loop)))
-                       (wind (negative x))
-    (assoc (wind (negative x)) (inv' (path loop)) (path loop))
-    (map (base = base) (base = base) (comp' (wind (negative x)))
-        (comp' (inv' (path loop)) (path loop)) (idp Circle base) (inv-comp Circle base base (path loop)))
+    assoc (wind (negative x)) (inv (path loop)) (path loop) *
+    map (\p -> wind (negative x) * p) (inv-comp (path loop))
 
-wind-succ-loop : (x : Z) -> comp' (wind (pred x)) (path loop) = wind x
+wind-succ-loop : (x : Z) -> wind (pred x) * path loop = wind x
 wind-succ-loop (positive zero) = wind-succ-loop-neg zero
-wind-succ-loop (positive (suc x)) = idp (base = base) (wind (positive (suc x)))
+wind-succ-loop (positive (suc x)) = idp
 wind-succ-loop (negative x) = wind-succ-loop-neg x
 
 decode : (x : Circle) -> code x -> base = x
 decode base     = wind
 decode (loop i) =
     coe (\j -> Path (\k -> iter k -> base = loop k) wind (\y -> wind-succ-loop y @ j)) left
-    (path (\k y -> comp Circle base base (loop k) (wind (coe iter k y left)) (psqueeze Circle base base (path loop) k)))
+    (path (\k y -> wind (coe iter k y left) * psqueeze (path loop) k))
     right @ i
 
-encode-decode : (x : Circle) (p : base = x) -> decode x (encode x p) = p
-encode-decode = J Circle base (\x p -> decode x (encode x p) = p) (idp (base = base) (idp Circle base))
+encode-decode : {x : Circle} (p : base = x) -> decode x (encode p) = p
+encode-decode _ p = J (\x p -> decode x (encode p) = p) idp p -- TODO: remove p
 
 coe-comp : (p q : base = base) (z : Z) ->
-    coe (\i -> code (comp' p q @ i)) left z right =
+    coe (\i -> code (p * q @ i)) left z right =
     coe (\i -> code (q @ i)) left (coe (\i -> code (p @ i)) left z right) right
-coe-comp p q z = J Circle base (\x s -> coe (\i -> code (comp Circle base base x p s @ i)) left z right =
-    coe (\i -> code (s @ i)) left (coe (\i -> code (p @ i)) left z right) right)
-    (idp Z (coe (\i -> code (p @ i)) left z right)) base q
+coe-comp p q z = J (\x s -> coe (\i -> code (p * s @ i)) left z right =
+    coe (\i -> code (s @ i)) left (coe (\i -> code (p @ i)) left z right) right) idp q
 
-coe-inv : (p : base = base) (z : Z) -> coe (\i -> code (inv' p @ i)) left z right = coe (\i -> code (p @ i)) right z left
-coe-inv = J Circle base (\x s -> (y : code x) ->
-    coe (\i -> code (inv Circle base x s @ i)) left y right = coe (\i -> code (s @ i)) right y left) (idp Z) base
+coe-inv : (p : base = base) (z : Z) -> coe (\i -> code (inv p @ i)) left z right = coe (\i -> code (p @ i)) right z left
+coe-inv p = J (\x s -> (y : code x) ->
+    coe (\i -> code (inv s @ i)) left y right = coe (\i -> code (s @ i)) right y left) (\_ -> idp) p -- TODO: remove p
 
-decode-encode-base : (z : Z) -> encode base (wind z) = z
-decode-encode-base (positive zero) = idp Z (positive zero)
+decode-encode-base : (z : Z) -> encode (wind z) = z
+decode-encode-base (positive zero) = idp
 decode-encode-base (positive (suc x)) =
-    comp Z (coe (\i -> code (comp' (wind (positive x)) (path loop) @ i)) left (positive zero) right)
-           (succ (coe (\i -> code (wind (positive x) @ i)) left (positive zero) right))
-           (positive (suc x))
-    (coe-comp (wind (positive x)) (path loop) (positive zero))
-    (map Z Z succ (coe (\i -> code (wind (positive x) @ i)) left (positive zero) right) (positive x)
-        (decode-encode-base (positive x)))
+    coe-comp (wind (positive x)) (path loop) (positive zero) * map succ (decode-encode-base (positive x))
 decode-encode-base (negative (suc x)) =
-    comp Z (coe (\i -> code (comp' (wind (negative x)) (inv' (path loop)) @ i)) left (positive zero) right)
-           (coe (\i -> code (inv' (path loop) @ i)) left (coe (\i -> code (wind (negative x) @ i)) left (positive zero) right) right)
-           (negative (suc x))
-    (coe-comp (wind (negative x)) (inv' (path loop)) (positive zero))
-    (comp Z (coe (\i -> code (inv' (path loop) @ i)) left (coe (\i -> code (wind (negative x) @ i)) left (positive zero) right) right)
-            (pred (coe (\i -> code (wind (negative x) @ i)) left (positive zero) right))
-            (negative (suc x))
-    (coe-inv (path loop) (coe (\i -> code (wind (negative x) @ i)) left (positive zero) right))
-    (map Z Z pred (coe (\i -> code (wind (negative x) @ i)) left (positive zero) right) (negative x) (decode-encode-base (negative x)))
-    )
+     coe-comp (wind (negative x)) (inv (path loop)) (positive zero) *
+    (coe-inv (path loop) (coe (\i -> code (wind (negative x) @ i)) left (positive zero) right) *
+     map pred (decode-encode-base (negative x)))
 
-Prop-Contr : (A : Prop) (a a' : A) -> a = a'
+Prop-Contr : {A : Prop} (a a' : A) -> a = a'
 Prop-Contr _ _ _ = contr
 
 Circle-elim-Prop : (P : Circle -> Prop) (b : P base) -> (x : Circle) -> P x
 Circle-elim-Prop P b base     = b
 Circle-elim-Prop P b (loop i) = 
-    coe  (\j -> Path (\k -> P (loop k)) b (Prop-Contr (P base) (transport Circle P base base (path loop) b) b @ j)) left
+    coe  (\j -> Path (\k -> P (loop k)) b (Prop-Contr (transport P (path loop) b) b @ j)) left
     (path (\j -> coe (\k -> P (loop k)) left b j)) right @ i
 
-decode-encode : (x : Circle) (z : code x) -> encode x (decode x z) = z
-decode-encode = Circle-elim-Prop (\x -> (z : code x) -> encode x (decode x z) = z) decode-encode-base
+decode-encode : (x : Circle) (z : code x) -> encode (decode x z) = z
+decode-encode = Circle-elim-Prop (\x -> (z : code x) -> encode (decode x z) = z) decode-encode-base
 
 Circle-loop-space-is-Z : (base = base) = Z
-Circle-loop-space-is-Z = path (iso (base = base) Z (encode base) (decode base) (encode-decode base) (decode-encode base))
+Circle-loop-space-is-Z = path (iso (base = base) Z (\p -> encode p) (decode base) (\p -> encode-decode p) (decode-encode base)) -- TODO: remove p's

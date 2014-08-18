@@ -70,7 +70,7 @@ lowerResult l = forM l $ \(k,t) -> case sequenceA t of
     Bound -> Nothing
 
 pcmpTerms :: Eq a => Term Semantics a -> Term Semantics (Either k a) -> Maybe (Ordering, [(k, Term Semantics a)])
-pcmpTerms (Apply (Semantics (S.Pi vs) p@Pi{}) [a, b@Lambda{}]) (Apply (Semantics (S.Pi vs') p'@Pi{}) [a', b'@Lambda{}]) =
+pcmpTerms (Apply (Semantics (S.Pi e vs) p@Pi{}) [a, b@Lambda{}]) (Apply (Semantics (S.Pi e' vs') p'@Pi{}) [a', b'@Lambda{}]) =
     contraCovariant (pcmpTerms a a') (go vs a b vs' a' b')
   where
     go :: Eq a => [String] -> Term Semantics a -> Term Semantics a
@@ -78,10 +78,10 @@ pcmpTerms (Apply (Semantics (S.Pi vs) p@Pi{}) [a, b@Lambda{}]) (Apply (Semantics
                -> Maybe (Ordering, [(k, Term Semantics a)])
     go (_:vs) a (Lambda b) (_:vs') a' (Lambda b') =
         plowerResult $ go vs (fmap Free a) b vs' (fmap (sequenceA . Free) a') (fmap sequenceA b')
-    go vs a b@Lambda{} _ _ b' = pcmpTerms (Apply (Semantics (S.Pi vs) p) [a, b]) b'
-    go _ _ b vs' a' b'@Lambda{} = pcmpTerms b $ Apply (Semantics (S.Pi vs') p') [a', b']
+    go vs a b@Lambda{} _ _ b' = pcmpTerms (Apply (Semantics (S.Pi e vs) p) [a, b]) b'
+    go _ _ b vs' a' b'@Lambda{} = pcmpTerms b $ Apply (Semantics (S.Pi e' vs') p') [a', b']
     go _ _ b _ _ b' = pcmpTerms b b'
-pcmpTerms (Apply (Semantics (S.Pi vs) p@Pi{}) [a, Lambda b]) (Apply (Semantics (S.Pi vs') p'@Pi{}) [a', b']) =
+pcmpTerms (Apply (Semantics (S.Pi _ vs) p@Pi{}) [a, Lambda b]) (Apply (Semantics (S.Pi _ vs') p'@Pi{}) [a', b']) =
     contraCovariant (pcmpTerms a a') $ plowerResult $ pcmpTerms b $ fmap (sequenceA . Free) b'
 pcmpTerms (Apply (Semantics _ Pi{}) [a, b]) (Apply (Semantics _ Pi{}) [a', Lambda b']) =
     contraCovariant (pcmpTerms a a') $ plowerResult $ pcmpTerms (fmap Free b) (fmap sequenceA b')
@@ -116,8 +116,8 @@ instance Eq a => POrd (Term Semantics a) where
     pcompare t t' = pcmpTerms t (fmap Right t') >>= \(o,l) -> if null l then Just o else Nothing
 
 dropOnePi :: Semantics -> Term Semantics a -> Term Semantics a -> (String, Term Semantics (Scoped a))
-dropOnePi (Semantics (S.Pi [v]) _) a (Lambda b) = (v, b)
-dropOnePi (Semantics (S.Pi (v:vs)) s) a (Lambda b) = (v, Apply (Semantics (S.Pi vs) s) [fmap Free a, b])
+dropOnePi (Semantics (S.Pi _ [v]) _) a (Lambda b) = (v, b)
+dropOnePi (Semantics (S.Pi e (v:vs)) s) a (Lambda b) = (v, Apply (Semantics (S.Pi e vs) s) [fmap Free a, b])
 dropOnePi _ _ b = ("_", fmap Free b)
 
 iCon :: ICon -> Term Semantics a

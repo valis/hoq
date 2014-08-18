@@ -36,7 +36,7 @@ import TypeChecking.Monad.Warn
     'data'      { TokData           }
     ':'         { TokColon          }
     '='         { TokEquals         }
-    '{'         { TokLBrace         }
+    '{'         { TokLBrace   $$    }
     '}'         { TokRBrace         }
     ';'         { TokSemicolon      }
     ')'         { TokRParen         }
@@ -60,13 +60,16 @@ InfixOps :: { [PName] }
     : InfixOp           { [$1]  }
     | InfixOps InfixOp  { $2:$1 }
 
+LBrace :: { Posn }
+    : '{'           {% \_ -> lift  (modify $ \(ls, fds) -> (NoLayout  : ls, fds)) >> return $1 }
+
 with :: { () }
-    : 'with' '{'    {% \_ -> lift $ modify (\(ls, fds) -> (NoLayout  : ls, fds)) }
-    | 'with' error  {% \_ -> lift $ modify (\(ls, fds) -> (Layout $1 : ls, fds)) }
+    : 'with' '{'    {% \_ -> lift $ modify $ \(ls, fds) -> (NoLayout  : ls, fds) }
+    | 'with' error  {% \_ -> lift $ modify $ \(ls, fds) -> (Layout $1 : ls, fds) }
 
 of :: { () }
-    : 'of' '{'      {% \_ -> lift $ modify (\(ls, fds) -> (NoLayout  : ls, fds)) }
-    | 'of' error    {% \_ -> lift $ modify (\(ls, fds) -> (Layout $1 : ls, fds)) }
+    : 'of' '{'      {% \_ -> lift $ modify $ \(ls, fds) -> (NoLayout  : ls, fds) }
+    | 'of' error    {% \_ -> lift $ modify $ \(ls, fds) -> (Layout $1 : ls, fds) }
 
 Def :: { [Def] }
     : Name ':' Expr                                     { [DefType $1 $3]                                       }
@@ -113,10 +116,11 @@ Teles :: { [Tele] }
     : {- empty -}   { []    }
     | Teles Tele    { $2:$1 }
 
-PiTele :: { PiTele }
-    : '(' Exprs ':' Expr ')' { PiTele $1 (reverse $2) $4 }
+PiTele :: { (Explicit,PiTele) }
+    : '(' Exprs ':' Expr ')'    { (Explicit, PiTele $1 (reverse $2) $4) }
+    | LBrace Exprs ':' Expr '}' { (Implicit, PiTele $1 (reverse $2) $4) }
 
-PiTeles :: { [PiTele] }
+PiTeles :: { [(Explicit,PiTele)] }
     : PiTele            { [$1]  }
     | PiTeles PiTele    { $2:$1 }
 
@@ -129,9 +133,9 @@ Expr :: { RawExpr }
     | '\\' PIdents '->' Expr    { Apply ($1, Lam $ reverse $ map getName $2) [$4]   }
 
 Expr1 :: { RawExpr }
-    : Expr2                 { $1                                                    }
-    | Expr2 '->' Expr1      { Apply (termPos $1, Pi []) [$1, $3]                    }
-    | PiTeles '->' Expr1    {% \_ -> piExpr (reverse $1) $3                         }
+    : Expr2                         { $1                                            }
+    | Expr2 '->' Expr1              { Apply (termPos $1, Pi Explicit []) [$1, $3]   }
+    | PiTeles '->' Expr1            {% \_ -> piExpr (reverse $1) $3                 }
 
 Expr2 :: { RawExpr }
     : Expr3             { $1                                    }
@@ -199,12 +203,12 @@ treeToExpr (Branch ft name a b) =
 
 data PiTele = PiTele Posn [RawExpr] RawExpr
 
-piExpr :: [PiTele] -> RawExpr -> ParserErr RawExpr
+piExpr :: [(Explicit,PiTele)] -> RawExpr -> ParserErr RawExpr
 piExpr [] term = return term
-piExpr (PiTele pos t1 t2 : teles) term = do
+piExpr ((e, PiTele pos t1 t2) : teles) term = do
     vars <- mapM exprToVar t1
     term' <- piExpr teles term
-    return $ Apply (pos, Pi $ map getName vars) [t2,term']
+    return $ Apply (pos, Pi e $ map getName vars) [t2,term']
 
 fixityDecl :: (Posn, Infix) -> (Posn, Int) -> [PName] -> ParserErr ()
 fixityDecl (pos, fd) (_, pr) names = forM_ names $ \(_,name) -> do

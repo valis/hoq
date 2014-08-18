@@ -28,6 +28,5 @@ not-eq false p = coe (\i -> T (p @ i)) left  s right
 
 not-lem : ((A : Type) -> ((A -> E) -> E) -> A) -> E
 not-lem f = not-eq (f B (\g -> g true))
-    (comp B (not (f B (\g -> g true))) (f B (\g -> g false)) (f B (\g -> g true))
-        (path (\i -> coe biso i (f (biso i) (\g -> g (coe biso left true i))) right))
-        (path (\i -> f B (\g -> g (E-elim (false = true) (g true) @ i)))))
+    (path (\i -> coe biso i (f (biso i) (\g -> g (coe biso left true i))) right) *
+     path (\i -> f B (\g -> g (E-elim (false = true) (g true) @ i))))
