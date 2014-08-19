@@ -26,6 +26,11 @@ data ErrorType
     | Other
     deriving Eq
 
+data Argument = Argument Int Posn (Maybe Name)
+
+instance Eq Argument where
+    Argument k p _ == Argument k' p' _ = k == k' && p == p'
+
 notInScope :: Show a => Posn -> String -> a -> Error
 notInScope pos s a = Error NotInScope $ emsgLC pos ("Not in scope: " ++ (if null s then "" else s ++ " ") ++ show a) enull
 
@@ -34,6 +39,10 @@ inferErrorMsg pos s = Error Inference $ emsgLC pos ("Cannot infer type of " ++ s
 
 inferExprErrorMsg :: Posn -> Error
 inferExprErrorMsg pos = Error Inference $ emsgLC pos "Cannot infer an expressions" enull
+
+inferArgErrorMsg :: Argument -> Error
+inferArgErrorMsg (Argument k pos mname) = Error Inference $ emsgLC pos
+    ("Cannot infer " ++ show (k + 1) ++ "th argument" ++ maybe "" (\name -> " for " ++ nameToPrefix name) mname) enull
 
 inferParamsErrorMsg :: Show a => Posn -> a -> Error
 inferParamsErrorMsg pos d = Error Inference $ emsgLC pos ("Cannot infer parameters of data constructor " ++ show d) enull
@@ -66,5 +75,5 @@ termPos :: Term (Posn, s) a -> Posn
 termPos (Apply (pos, _) _) = pos
 termPos _ = error "termPos"
 
-catchErrorType :: Monad m => ErrorType -> WarnT [Error] m a -> (Error -> WarnT [Error] m a) -> WarnT [Error] m a
+catchErrorType :: Monad m => ErrorType -> WarnT [Error] m a -> ([Error] -> WarnT [Error] m a) -> WarnT [Error] m a
 catchErrorType err = catchErrorBy (== Error err (emsg "" enull))

@@ -15,6 +15,7 @@ import Control.Monad.Error.Class
 import Control.Applicative
 import Data.Monoid hiding ((<>))
 import Data.Maybe
+import Data.Either
 
 newtype WarnT w m a = WarnT { runWarnT :: m (w, Maybe a) }
 
@@ -58,10 +59,11 @@ throwErrors :: Monad m => [w] -> WarnT [w] m ()
 throwErrors [] = return ()
 throwErrors ws = throwError ws
 
-catchErrorBy :: Monad m => (w -> Bool) -> WarnT [w] m a -> (w -> WarnT [w] m a) -> WarnT [w] m a
-catchErrorBy p m h = WarnT $ runWarnT m >>= \(errs, ma) -> case break p errs of
-    (errs1,err':errs2)  -> runWarnT $ warn (errs1 ++ errs2) >> h err'
-    _                   -> return (errs, ma)
+catchErrorBy :: Monad m => (w -> Bool) -> WarnT [w] m a -> ([w] -> WarnT [w] m a) -> WarnT [w] m a
+catchErrorBy p m h = WarnT $ runWarnT m >>= \(errs, ma) ->
+    case partitionEithers $ map (\err -> if p err then Left err else Right err) errs of
+        ([],_) -> return (errs,ma)
+        (errs1,errs2) -> runWarnT $ warn errs2 >> h errs1
 
 mapWarnT :: Monad m => (w -> w') -> WarnT w m a -> WarnT w' m a
 mapWarnT f (WarnT m) = WarnT $ liftM (\(w,a) -> (f w, a)) m

@@ -46,6 +46,7 @@ ppSyntax ctx (Name _ n) ts = text (nameToPrefix n) <+> ppList ctx ts
 ppSyntax ctx (Case pats) (expr:terms) = hang (text "case" <+> ppTermCtx ctx expr <+> text "of") 4 $ vcat $
     map (\(pat,term) -> ppTermCtx ctx (bimap (Name Prefix . snd) text pat) <+> arrow <+>
         ppBound 0 ctx (bifoldMap (const []) return pat) term) (zip pats terms)
+ppSyntax ctx Null [t] = ppTermCtx ctx t
 ppSyntax _ Null _ = empty
 ppSyntax _ _ _ = error "ppSyntax"
 
