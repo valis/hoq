@@ -104,7 +104,7 @@ type AlexInput = (Posn, B.ByteString)
 
 data Layout = Layout Int | NoLayout deriving Eq
 
-type ParserErr a = WarnT [(Posn, String)] (State ([Layout], [(Name,Fixity)])) a
+type ParserErr a = WarnT [(Posn, String)] (State [Layout]) a
 type Parser a = AlexInput -> ParserErr a
 
 alexScanTokens :: (Token -> Parser a) -> Parser a
@@ -118,20 +118,20 @@ alexScanTokens cont = go
         AlexSkip  inp' _    -> go inp'
         AlexToken inp'@((_, c), _) len act -> case act pos $ C.unpack (B.take len str) of
             TokNewLine -> do
-                (layout:layouts, ft) <- lift get
+                layout:layouts <- lift get
                 case layout of
                     NoLayout -> go inp'
                     Layout n -> case compare n c of
                         LT -> go inp'
                         EQ -> cont TokSemicolon inp'
                         GT -> do
-                            lift $ put (layouts, ft)
+                            lift (put layouts)
                             cont TokRBrace inp
             TokRBrace  -> do
-                (layout, ft) <- lift get
+                layout <- lift get
                 if NoLayout `elem` layout
                 then do
-                    lift $ put (tail layout, ft)
+                    lift $ put (tail layout)
                     cont TokRBrace $ if head layout == NoLayout then inp' else inp
                 else do
                     warn [(pos, "Misplaced '}'")]

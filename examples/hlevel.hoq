@@ -32,8 +32,6 @@ h1-prop A f a a' = proj1 (a = a') (\p -> (p' : a = a') -> p = p') (f a a')
 contr-prop : (A : Type) -> isContr A -> isProp A
 contr-prop A (pair c f) a a' = inv (f a) * f a'
 
--- J : {A : Type} {a : A} (B : (a' : A) -> a = a' -> Type) -> B a idp -> {a' : A} (p : a = a') -> B a' p
-
 prop-h1 : (A : Type) -> isProp A -> of-hlevel (suc zero) A
 prop-h1 A f a a' = pair (inv (f a a) * f a a') (J (\x q -> inv (f a a) * f a x = q) (inv-comp (f a a)))
 

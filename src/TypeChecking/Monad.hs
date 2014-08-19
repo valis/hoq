@@ -24,7 +24,7 @@ runTCM :: Monad m => TCM m a -> m (Maybe a)
 runTCM = liftM snd . runScopeT . runWarnT
 
 multipleDeclaration :: Posn -> Name -> Error
-multipleDeclaration pos var = Error Other $ emsgLC pos ("Multiple declarations of " ++ show (getStr var)) enull
+multipleDeclaration pos var = Error Other $ emsgLC pos ("Multiple declarations of " ++ show (nameToString var)) enull
 
 addFunctionCheck :: Monad m => PName -> SEval -> Closed (Type Semantics) -> TCM m ID
 addFunctionCheck (pos, var) e ty = do

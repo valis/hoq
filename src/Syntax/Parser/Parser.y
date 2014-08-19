@@ -61,31 +61,31 @@ InfixOps :: { [PName] }
     | InfixOps InfixOp  { $2:$1 }
 
 LBrace :: { Posn }
-    : '{'           {% \_ -> lift  (modify $ \(ls, fds) -> (NoLayout  : ls, fds)) >> return $1 }
+    : '{'           {% \_ -> lift  (modify (NoLayout :)) >> return $1 }
 
 with :: { () }
-    : 'with' '{'    {% \_ -> lift $ modify $ \(ls, fds) -> (NoLayout  : ls, fds) }
-    | 'with' error  {% \_ -> lift $ modify $ \(ls, fds) -> (Layout $1 : ls, fds) }
+    : 'with' '{'    {% \_ -> lift $ modify (NoLayout  :) }
+    | 'with' error  {% \_ -> lift $ modify (Layout $1 :) }
 
 of :: { () }
-    : 'of' '{'      {% \_ -> lift $ modify $ \(ls, fds) -> (NoLayout  : ls, fds) }
-    | 'of' error    {% \_ -> lift $ modify $ \(ls, fds) -> (Layout $1 : ls, fds) }
+    : 'of' '{'      {% \_ -> lift $ modify (NoLayout  :) }
+    | 'of' error    {% \_ -> lift $ modify (Layout $1 :) }
 
-Def :: { [Def] }
-    : Name ':' Expr                                     { [DefType $1 $3]                                       }
-    | Name Patterns '=' Expr                            { [DefFun $1 (reverse $2) (Just $4)]                    }
-    | Name Patterns                                     { [DefFun $1 (reverse $2) Nothing]                      }
-    | 'data' Name Teles                                 { [DefData $2 (reverse $3) [] []]                       }
-    | 'data' Name Teles '=' Cons                        { [DefData $2 (reverse $3) (reverse $5) []]             }
-    | 'data' Name Teles '=' Cons with FunClauses '}'    { [DefData $2 (reverse $3) (reverse $5) (reverse $7)]   }
-    | Infix Integer InfixOps                            {% \_ -> fixityDecl $1 $2 $3 >> return []               }
-    | Import                                            { [DefImport $1]                                        }
+Def :: { Def }
+    : Name ':' Expr                                     { DefType $1 $3                                     }
+    | Name Patterns '=' Expr                            { DefFun $1 (reverse $2) (Just $4)                  }
+    | Name Patterns                                     { DefFun $1 (reverse $2) Nothing                    }
+    | 'data' Name Teles                                 { DefData $2 (reverse $3) [] []                     }
+    | 'data' Name Teles '=' Cons                        { DefData $2 (reverse $3) (reverse $5) []           }
+    | 'data' Name Teles '=' Cons with FunClauses '}'    { DefData $2 (reverse $3) (reverse $5) (reverse $7) }
+    | Infix Integer InfixOps                            { DefFixity (fst $1) (snd $1) (snd $2) (map snd $3) }
+    | Import                                            { DefImport $1 }
 
 Defs :: { [Def] }
-    : {- empty -}   { []        }
-    | Def           { $1        }
-    | Defs ';'      { $1        }
-    | Defs ';' Def  { $3 ++ $1  }
+    : {- empty -}   { []    }
+    | Def           { [$1]  }
+    | Defs ';'      { $1    }
+    | Defs ';' Def  { $3:$1 }
 
 FunClauses :: { [Clause] }
     : Name Patterns '=' Expr                { [Clause $1 (reverse $2) $4]       }
@@ -133,21 +133,18 @@ Expr :: { RawExpr }
     | '\\' PIdents '->' Expr    { Apply ($1, Lam $ reverse $ map getName $2) [$4]   }
 
 Expr1 :: { RawExpr }
-    : Expr2                         { $1                                            }
-    | Expr2 '->' Expr1              { Apply (termPos $1, Pi Explicit []) [$1, $3]   }
-    | PiTeles '->' Expr1            {% \_ -> piExpr (reverse $1) $3                 }
+    : Expr2                 { $1                                            }
+    | Expr2 '->' Expr1      { Apply (termPos $1, Pi Explicit []) [$1, $3]   }
+    | PiTeles '->' Expr1    {% \_ -> piExpr (reverse $1) $3                 }
 
 Expr2 :: { RawExpr }
     : Expr3             { $1                                    }
     | Expr3 '=' Expr3   { Apply (termPos $1, PathImp) [$1,$3]   }
 
 Expr3 :: { RawExpr }
-    : ExprT { treeToExpr $1 }
-
-ExprT :: { Tree }
-    : Expr4                 { Leaf $1                                                                           }
-    | ExprT '@' Expr4       {% \_ -> branch (Infix InfixL 90) At $1 (Leaf $3)                                   }
-    | ExprT InfixOp Expr4   {% \_ -> getInfixOp (snd $2) >>= \ft -> branch ft (Name ft $ snd $2) $1 (Leaf $3)   }
+    : Expr4                 { Apply (termPos $1, Null) [$1]                                 }
+    | Expr3 '@' Expr4       { Apply (termPos $1, At) [$1, $3]                               }
+    | Expr3 InfixOp Expr4   { Apply (termPos $1, Name (Infix InfixL 90) $ snd $2) [$1, $3]  }
 
 Expr4 :: { RawExpr }
     : Exprs { let e:es = reverse $1 in apps e es }
@@ -173,34 +170,6 @@ return' a _ = return a
 bind :: Parser a -> (a -> Parser b) -> Parser b
 bind p k e = p e >>= \a -> k a e
 
-data Tree = Branch Fixity Syntax Tree Tree | Leaf RawExpr
-
-branch :: Fixity -> Syntax -> Tree -> Tree -> ParserErr Tree
-branch ft@(Infix ia p) name (Branch ft'@(Infix ia' p') name' a1 a2) b | p' < p || p == p' && ia == InfixR && ia' == InfixR = do
-    a2' <- branch ft name a2 b
-    return (Branch ft' name' a1 a2')
-branch ft@(Infix ia p) name a@(Branch ft'@(Infix ia' p') name' _ _) b | p == p' && not (ia == InfixL && ia' == InfixL) = do
-    let showOp ft'' name'' = syntaxToString name'' ++ " [" ++ show ft'' ++ "]"
-        msg = "Precedence parsing error: cannot mix " ++ showOp ft  name ++
-                                              " and " ++ showOp ft' name' ++ " in the same infix expression"
-    warn [(termPos $ treeToExpr a, msg)]
-    return (Branch ft name a b)
-  where
-    syntaxToString :: Syntax -> String
-    syntaxToString Lam{} = "\\"
-    syntaxToString Pi{} = "->"
-    syntaxToString PathImp = "="
-    syntaxToString At = "@"
-    syntaxToString (Name _ (Ident s)) = "`" ++ s ++ "`"
-    syntaxToString (Name _ (Operator s)) = s
-branch ft name a b = return (Branch ft name a b)
-
-treeToExpr :: Tree -> RawExpr
-treeToExpr (Leaf e) = e
-treeToExpr (Branch ft name a b) =
-    let a' = treeToExpr a
-    in Apply (termPos a', name) [a', treeToExpr b]
-
 data PiTele = PiTele Posn [RawExpr] RawExpr
 
 piExpr :: [(Explicit,PiTele)] -> RawExpr -> ParserErr RawExpr
@@ -209,19 +178,6 @@ piExpr ((e, PiTele pos t1 t2) : teles) term = do
     vars <- mapM exprToVar t1
     term' <- piExpr teles term
     return $ Apply (pos, Pi e $ map getName vars) [t2,term']
-
-fixityDecl :: (Posn, Infix) -> (Posn, Int) -> [PName] -> ParserErr ()
-fixityDecl (pos, fd) (_, pr) names = forM_ names $ \(_,name) -> do
-    (ls, fds) <- lift get
-    case lookup name fds of
-        Just _  -> warn [(pos, "Multiple fixity declarations for " ++ show (getStr name))]
-        Nothing -> return ()
-    lift $ put (ls, (name, Infix fd pr):fds)
-
-getInfixOp :: Name -> ParserErr Fixity
-getInfixOp name = do
-    (_,fds) <- lift get
-    return $ fromMaybe (Infix InfixL 90) (lookup name fds)
 
 termPos :: RawExpr -> Posn
 termPos (Apply (pos, _) _) = pos

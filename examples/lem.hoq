@@ -20,13 +20,13 @@ not-not true  = path (\_ -> true)
 not-not false = path (\_ -> false)
 
 biso : I -> Type
-biso i = iso B B not not not-not not-not i
+biso = iso B B not not not-not not-not
 
 not-eq : (b : B) -> not b = b -> E
 not-eq true  p = coe (\i -> T (p @ i)) right s left
 not-eq false p = coe (\i -> T (p @ i)) left  s right
 
 not-lem : ((A : Type) -> ((A -> E) -> E) -> A) -> E
-not-lem f = not-eq (f B (\g -> g true))
-    (path (\i -> coe biso i (f (biso i) (\g -> g (coe biso left true i))) right) *
-     path (\i -> f B (\g -> g (E-elim (false = true) (g true) @ i))))
+not-lem f = not-eq (f B (\g -> g true)) $
+    path (\i -> coe biso i (f (biso i) (\g -> g (coe biso left true i))) right) *
+    path (\i -> f B (\g -> g (E-elim (false = true) (g true) @ i)))

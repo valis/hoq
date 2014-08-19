@@ -40,12 +40,9 @@ ppSyntax ctx t@PathImp [_,t2,t3] = ppTermPrec (prec t + 1) ctx t2 <+> equals <+>
 ppSyntax ctx t@At (_:_:t3:t4:ts) = bparens (not $ null ts)
     (ppTermPrec (prec t) ctx t3 <+> text "@" <+> ppTermPrec (prec t + 1) ctx t4) <+> ppList ctx ts
 ppSyntax ctx t@(Name (Infix ft _) n) (t1:t2:ts) =
-    bparens (not $ null ts) (ppTermPrec (opFixity InfixL ft $ prec t) ctx t1 <+> text (case n of
-        Ident s -> "`" ++ s ++ "`"
-        Operator s -> s) <+> ppTermPrec (opFixity InfixR ft $ prec t) ctx t2) <+> ppList ctx ts
-ppSyntax ctx (Name _ n) ts = (case n of
-    Ident s -> text s
-    Operator s -> parens $ text s) <+> ppList ctx ts
+    bparens (not $ null ts) (ppTermPrec (opFixity InfixL ft $ prec t) ctx t1 <+> text (nameToInfix n)
+        <+> ppTermPrec (opFixity InfixR ft $ prec t) ctx t2) <+> ppList ctx ts
+ppSyntax ctx (Name _ n) ts = text (nameToPrefix n) <+> ppList ctx ts
 ppSyntax ctx (Case pats) (expr:terms) = hang (text "case" <+> ppTermCtx ctx expr <+> text "of") 4 $ vcat $
     map (\(pat,term) -> ppTermCtx ctx (bimap (Name Prefix . snd) text pat) <+> arrow <+>
         ppBound 0 ctx (bifoldMap (const []) return pat) term) (zip pats terms)

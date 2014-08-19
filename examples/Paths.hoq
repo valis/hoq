@@ -1,5 +1,5 @@
 infixr 5 $
-($) : {A : Type} {B : A -> Type} -> ((a : A) -> B a) -> (a : A) -> B a
+($) : {A B : Type} -> (A -> B) -> A -> B
 ($) _ _ f a = f a
 
 idp : {A : Type} {a : A} -> a = a

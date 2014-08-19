@@ -51,7 +51,7 @@ typeCheckDataType p@(pos, dt) params cons conds = mdo
                 throwErrors $ checkTermination (Left i) pos (map (first snd) rtpats) scope
                 return $ Just (conName, (rtpats, scope))
             _ -> do
-                warn [notInScope pos "data constructor" (getStr con)]
+                warn [notInScope pos "data constructor" (nameToString con)]
                 return Nothing
     lift $ replaceDataType dt lcons $ Closed $ Type (vacuous $ replaceSort dtTerm mk) mk
     forM_ cons' $ \(PIdent pos _, (_, conds, con), _) -> warn $

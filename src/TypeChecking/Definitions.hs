@@ -17,10 +17,11 @@ import TypeChecking.Monad
 typeCheckDefs :: MonadFix m => [Def] -> TCM m ()
 typeCheckDefs [] = return ()
 typeCheckDefs (DefImport{} : defs) = typeCheckDefs defs
+typeCheckDefs (DefFixity{} : defs) = typeCheckDefs defs
 typeCheckDefs (DefType p@(pos, name) ty : defs) =
     case span (theSameAs name) defs of
         ([],_) -> do
-            warn [Error Other $ emsgLC pos ("Missing a realization of function " ++ show (getStr name)) enull]
+            warn [Error Other $ emsgLC pos ("Missing a realization of function " ++ show (nameToString name)) enull]
             typeCheckDefs defs
         (defs1,defs2) -> do
             typeCheckFunction p ty (map (\d -> case d of

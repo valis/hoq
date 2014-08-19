@@ -9,4 +9,6 @@ import REPL
 main :: IO ()
 main = do
     args <- getArgs
-    runScopeT $ mapM_ loadFile args >> repl
+    runScopeT $ do
+        tabs <- mapM loadFile args
+        repl (concat tabs)

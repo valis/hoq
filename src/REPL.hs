@@ -11,6 +11,7 @@ import Text.PrettyPrint
 import qualified Data.ByteString.Char8 as C
 import Data.Bifunctor
 
+import Syntax
 import Semantics
 import Syntax.Parser
 import Syntax.PrettyPrinter
@@ -20,25 +21,25 @@ import TypeChecking.Expressions
 import TypeChecking.Expressions.Utils
 import Normalization
 
-ep :: NF -> String -> ScopeT IO ()
-ep mode str = do
+ep :: [(Name,Fixity)] -> NF -> String -> ScopeT IO ()
+ep tab mode str = do
     mres <- runWarnT $ do
-        term <- pExpr (C.pack str)
+        term <- pExpr tab (C.pack str)
         (term',_) <- typeCheck term Nothing
         return term'
     liftIO $ case mres of
         ([], Just term) -> putStrLn $ render $ ppTerm $ first syntax (nf mode term)
         (errs, _)       -> mapM_ (hPutStrLn stderr . erender . errorMsg) errs
 
-processCmd :: String -> String -> ScopeT IO ()
-processCmd "quit" _   = liftIO exitSuccess
-processCmd "nf"   str = ep NF str
-processCmd "step" str = ep Step str
-processCmd "whnf" str = ep WHNF str
-processCmd cmd _ = liftIO $ hPutStrLn stderr $ "Unknown command " ++ cmd
+processCmd :: [(Name,Fixity)] -> String -> String -> ScopeT IO ()
+processCmd _ "quit" _   = liftIO exitSuccess
+processCmd tab "nf"   str = ep tab NF str
+processCmd tab "step" str = ep tab Step str
+processCmd tab "whnf" str = ep tab WHNF str
+processCmd _ cmd _ = liftIO $ hPutStrLn stderr $ "Unknown command " ++ cmd
 
-repl :: ScopeT IO ()
-repl = go ""
+repl :: [(Name,Fixity)] -> ScopeT IO ()
+repl tab = go ""
   where
     go last = do
         mline <- liftIO $ readline "> "
@@ -48,5 +49,5 @@ repl = go ""
                 ("",_)      -> go last
                 (c:cmd,line') -> do
                     when (line /= last) $ liftIO (addHistory line)
-                    if c == ':' then processCmd cmd line' else ep NF line
+                    if c == ':' then processCmd tab cmd line' else ep tab NF line
                     go line

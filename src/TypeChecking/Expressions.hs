@@ -155,8 +155,8 @@ typeCheckCtx' _ _ _ = error "typeCheckCtx"
 typeCheckName :: (Monad m, Eq a) => Context a -> Posn -> Fixity -> Name -> [Term (Posn, Syntax) Void]
     -> Maybe (Type Semantics (Either (Int,Posn) a)) -> TCM m (Term Semantics a, Type Semantics a, [((Int, Posn), Term Semantics a)])
 typeCheckName ctx pos ft var ts mty = do
-    when (getStr var == "_") $ throwError [inferExprErrorMsg pos]
-    eres <- case lookupCtx (getStr var) ctx of
+    when (nameToString var == "_") $ throwError [inferExprErrorMsg pos]
+    eres <- case lookupCtx (nameToString var) ctx of
         Just r -> return (Left r)
         Nothing -> do
             let mdt = case mty of
@@ -164,7 +164,7 @@ typeCheckName ctx pos ft var ts mty = do
                         _ -> Nothing
             mt <- lift $ getEntry var mdt
             case mt of
-                [] -> liftM Right (typeCheckKeyword ctx pos (getStr var) ts mty)
+                [] -> liftM Right (typeCheckKeyword ctx pos (nameToString var) ts mty)
                 [(s, ty)] ->
                     let s' = case syntax s of
                                 Name ft' _ | ft == ft'  -> s
@@ -172,7 +172,7 @@ typeCheckName ctx pos ft var ts mty = do
                     in case sequenceA ty of
                         Left (_,p) -> throwError [inferExprErrorMsg p]
                         Right ty' -> return $ Left (capply s', ty')
-                _ -> throwError [Error Other $ emsgLC pos ("Ambiguous identifier: " ++ show (getStr var)) enull]
+                _ -> throwError [Error Other $ emsgLC pos ("Ambiguous identifier: " ++ show (nameToString var)) enull]
     case eres of
         Left (te, ty) -> do
             (tes, Type ty' k', tab) <- typeCheckApps pos ctx (map Left ts) ty mty

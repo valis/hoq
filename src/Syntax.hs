@@ -4,7 +4,8 @@ module Syntax
     , Clause(..), Con(..)
     , Import, Def(..), Tele(..)
     , Infix(..), Fixity(..)
-    , Posn, Name(..), PName, getStr
+    , Posn, Name(..), PName
+    , nameToString, nameToInfix, nameToPrefix
     , module Syntax.Term
     ) where
 
@@ -24,15 +25,12 @@ type Posn = (Int, Int)
 data Name = Ident String | Operator String deriving Eq
 type PName = (Posn, Name)
 
-getStr :: Name -> String
-getStr (Ident s) = s
-getStr (Operator s) = s
-
 data Def
     = DefType PName RawExpr
     | DefFun PName [Term PName Void] (Maybe RawExpr)
     | DefData PName [Tele] [Con] [Clause]
     | DefImport Import
+    | DefFixity Posn Infix Int [Name]
 
 data Syntax
     = Lam [String]
@@ -58,3 +56,15 @@ instance Show Infix where
 instance Show Fixity where
     show (Infix ia p) = show ia ++ " " ++ show p
     show Prefix = "prefix"
+
+nameToString :: Name -> String
+nameToString (Ident s) = s
+nameToString (Operator s) = s
+
+nameToInfix :: Name -> String
+nameToInfix (Ident s) = "`" ++ s ++ "`"
+nameToInfix (Operator s) = s
+
+nameToPrefix :: Name -> String
+nameToPrefix (Ident s) = s
+nameToPrefix (Operator s) = "(" ++ s ++ ")"
