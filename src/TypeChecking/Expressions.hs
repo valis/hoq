@@ -322,7 +322,7 @@ actExpType w ctx act exp pos = do
         exp' = nf NF exp
         (mo,(l1,l2)) = pcmpTerms act' exp'
         l = if w then l2 else l1
-    unless (useful l || mo == Just EQ || mo == Just LT) $
+    unless (mo == Just EQ || mo == Just LT) $
         throwError [Error TypeMismatch $ emsgLC pos "" $ pretty "Expected type:" <+> prettyOpen' ctx exp'
                                                       $$ pretty "Actual type:"   <+> prettyOpen' ctx act']
     return l
@@ -339,7 +339,7 @@ typeCheckApps pos mname ctx allTerms ty mety = go 0 [] [] (map (\t -> (Explicit,
         Type (nf WHNF $ instantiate1 (cvar $ Left (Argument n pos' mname)) $ snd $ dropOnePi p a b) k2
     go n acc rest ((e1,term):terms) (Type (Apply p@(Semantics (S.Pi e2 _) (V.Pi k1 k2)) [a,b]) _) | e1 == e2 = do
         mres <- case term of
-                    Left t -> let catchErrs = catchErrorType [Inference,TypeMismatch]
+                    Left t -> let catchErrs = catchErrorType [Inference]
                               in liftM (\(a,_,c) -> Right (a,c)) (typeCheckCtx' ctx t $ Just $ Type (nf WHNF a) k1)
                                     `catchErrs` (return . Left)
                     Right t -> return $ Right (t, [])
@@ -364,7 +364,7 @@ typeCheckApps pos mname ctx allTerms ty mety = go 0 [] [] (map (\t -> (Explicit,
                                         (left:_, _)  -> throwError left
         in case mety of
             Just (Type ety _) -> do
-                tab <- catchErrorType [TypeMismatch] (actExpType False ctx aty ety pos) $ \_ -> return []
+                tab <- actExpType False ctx aty ety pos
                 if useful tab
                 then go 0 [] [] (replaceTerms (reverse rest) tab) nty
                 else do

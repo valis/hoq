@@ -41,8 +41,10 @@ instance Traversable (Type p) where
 cmpTerms :: Eq a => Term Semantics (Either k a) -> Term Semantics (Either n a)
     -> (Bool, ([(k, Term Semantics a)], [(n, Term Semantics a)]))
 cmpTerms (Var (Right a) as) (Var (Right a') as') = if a == a' then cmpTermsList as as' else (False, ([],[]))
-cmpTerms (Var (Left k) []) t' = (False, (case sequenceA t' of { Left{} -> []; Right r -> [(k,r)] }, []))
-cmpTerms t (Var (Left k) []) = (False, ([], case sequenceA t of { Left{} -> []; Right r -> [(k,r)] }))
+cmpTerms (Var (Left k) []) t' = (True, (case sequenceA t' of { Left{} -> []; Right r -> [(k,r)] }, []))
+cmpTerms t (Var (Left k) []) = (True, ([], case sequenceA t of { Left{} -> []; Right r -> [(k,r)] }))
+cmpTerms (Var Left{} _) _ = (True, ([], []))
+cmpTerms _ (Var Left{} _) = (True, ([], []))
 cmpTerms (Lambda t) (Lambda t') = flowerResult $ cmpTerms (fmap sequenceA t) (fmap sequenceA t')
 cmpTerms (Apply (Semantics (S.Lam (_:vs)) Lam) [Lambda t]) (Apply (Semantics (S.Lam (_:vs')) Lam) [Lambda t']) =
     flowerResult $ cmpTerms (Apply (Semantics (S.Lam vs) Lam) [fmap sequenceA t]) (Apply (Semantics (S.Lam vs') Lam) [fmap sequenceA t'])
@@ -59,7 +61,33 @@ cmpTerms (Apply (Semantics _ (Con PCon)) [Apply (Semantics _ Lam) [Lambda (Apply
 cmpTerms t (Apply (Semantics _ (Con PCon)) [Apply (Semantics _ Lam) [Lambda (Apply (Semantics _ At) [_, _, t', Var Bound []])]]) =
     flowerResult $ cmpTerms (fmap (sequenceA . Free) t) (fmap sequenceA t')
 cmpTerms (Apply (Semantics _ At) (_:_:ts)) (Apply (Semantics _ At) (_:_:ts')) = cmpTermsList ts ts'
-cmpTerms (Apply s ts) (Apply s' ts') = if s == s' then cmpTermsList ts ts' else (False,([],[]))
+cmpTerms (Apply s ts) (Apply s' ts') = if s == s'
+    then cmpTermsList ts ts'
+    else (not (isInj $ value s) && hasLefts ts || not (isInj $ value s') && hasLefts ts', ([],[]))
+  where
+    isInj :: Value t -> Bool
+    isInj Lam = True
+    isInj Pi{} = True
+    isInj (Con PCon{}) = True
+    isInj (Con ICon{}) = True
+    isInj (Con (DCon _ _ (PatEval []))) = True
+    isInj (Con DCon{}) = False
+    isInj CCon = True
+    isInj FunCall{} = False
+    isInj Universe{} = True
+    isInj DataType{} = True
+    isInj Interval{} = True
+    isInj Path{} = True
+    isInj At{} = False
+    isInj Coe{} = False
+    isInj Iso{} = False
+    isInj Squeeze{} = False
+    isInj Case{} = False
+    
+    hasLefts :: [Term Semantics (Either k a)] -> Bool
+    hasLefts = any $ \t -> case sequenceA t of
+        Left{} -> True
+        Right{} -> False
 cmpTerms _ _ = (False,([],[]))
 
 cmpTermsList :: Eq a => [Term Semantics (Either k a)] -> [Term Semantics (Either n a)]
