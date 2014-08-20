@@ -102,7 +102,7 @@ typeCheckCtx' ctx (Apply (pos, PathImp) (a1:a2:ts)) Nothing = do
     unless (null ts) $ warn [argsErrorMsg pos "A type"]
     (r1, Type t1 k) <- typeCheckCtx ctx a1 Nothing
     (r2, _) <- typeCheckCtx ctx a2 $ Just $ Type (nf WHNF t1) k
-    return (Apply (Semantics PathImp (Path k)) [Apply (Semantics (S.Lam ["_"]) V.Lam)
+    return (Apply (pathImp k) [Apply (Semantics (S.Lam ["_"]) V.Lam)
             [Lambda $ fmap Free t1], r1, r2], Type (universe $ sortPred k) $ succ $ sortPred k, [])
 typeCheckCtx' ctx (Apply (pos, S.At) (b:c:ts)) mty = do
     (r1, Type t1 k) <- typeCheckCtx ctx b Nothing
@@ -227,12 +227,12 @@ typeCheckKeyword ctx pos "path" (a:as) mty = do
     unless (null as) $ warn [argsErrorMsg pos "A path"]
     case mty of
         Nothing -> do
-            (te, Type ty k, _) <- typeCheckLambda ctx a intType
-            return (te, Type (Apply (pathImp k) [ty, apps te [iCon ILeft], apps te [iCon IRight]]) k, [])
+            (te, Type _ k, (_, ty)) <- typeCheckLambda ctx a intType
+            return (te, Type (Apply (pathImp k) [Apply (Semantics (S.Lam ["_"]) V.Lam) [Lambda ty], apps te [iCon ILeft], apps te [iCon IRight]]) k, [])
         Just (Type (Var (Left kp) _) _) -> do
-            (te, Type ty k, _) <- typeCheckLambda ctx a intType
-            let ty = Apply (pathImp k) [ty, apps te [iCon ILeft], apps te [iCon IRight]]
-            return (te, Type ty k, [(kp,ty)])
+            (te, Type _ k, (_, ty)) <- typeCheckLambda ctx a intType
+            let ty' = Apply (pathImp k) [Apply (Semantics (S.Lam ["_"]) V.Lam) [Lambda ty], apps te [iCon ILeft], apps te [iCon IRight]]
+            return (te, Type ty' k, [(kp,ty')])
         Just (Type ety@(Apply (Semantics _ (Path k1)) [t1,_,_]) k) -> do
             let sem = Semantics (S.Pi Explicit ["i"]) $ V.Pi (TypeK NoLevel) k1
                 aty = Apply sem [interval, Lambda $ apps (fmap Free t1) [bvar]]
