@@ -1,6 +1,13 @@
 -- Pi types
 id : (A : Type) -> A -> A
-id A a = a
+id _ a = a
+
+-- Implicit arguments
+id' : {A : Type} -> A -> A
+id' _ a = a
+
+test : (A : Type) -> (A -> A) -> (A -> A)
+test _ f = id' f
 
 -- Universes
 -- Type and Type0 are synonyms

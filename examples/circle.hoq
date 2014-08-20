@@ -84,9 +84,34 @@ decode-encode-base (positive zero) = idp
 decode-encode-base (positive (suc x)) =
     coe-comp (wind (positive x)) (path loop) (positive zero) * map succ (decode-encode-base (positive x))
 decode-encode-base (negative (suc x)) =
-     coe-comp (wind (negative x)) (inv (path loop)) (positive zero) *
-    (coe-inv (path loop) (coe (\i -> code (wind (negative x) @ i)) left (positive zero) right) *
-     map pred (decode-encode-base (negative x)))
+    
+    encode (wind (negative (suc x)))
+    
+  ==< idp >==
+    
+    coe (\i -> code (wind (negative x) * inv (path loop) @ i)) left (positive zero) right
+    
+  ==< coe-comp (wind (negative x)) (inv (path loop)) (positive zero) >==
+    
+    coe (\i -> code (inv (path loop) @ i)) left (coe (\i -> code (wind (negative x) @ i)) left (positive zero) right) right
+    
+  ==< coe-inv (path loop) (coe (\i -> code (wind (negative x) @ i)) left (positive zero) right) >==
+    
+    coe (\i -> code (loop i)) right (coe (\i -> code (wind (negative x) @ i)) left (positive zero) right) left
+    
+  ==< idp >==
+    
+    pred (encode (wind (negative x)))
+    
+  ==< map pred (decode-encode-base (negative x)) >==
+    
+    pred (negative x)
+    
+  ==< idp >==
+    
+    negative (suc x)
+    
+  !qed
 
 Prop-Contr : {A : Prop} (a a' : A) -> a = a'
 Prop-Contr _ _ _ = contr

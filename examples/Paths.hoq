@@ -22,3 +22,16 @@ inv _ a _ p = transport (\x -> x = a) p idp
 
 inv-comp : {A : Type} {a a' : A} (p : a = a') -> inv p * p = idp
 inv-comp _ _ _ p = J (\_ q -> inv q * q = idp) idp p
+
+data QED = qed
+
+(!) : {A : Type} -> (a : A) -> QED -> a = a
+(!) _ _ _ = idp
+
+infix 3 ==<
+(==<) : {A : Type} (a : A) {a' : A} -> a = a' -> a = a'
+(==<) _ _ _ p = p
+
+infixr 2 >==
+(>==) : {A : Type} {a a' a'' : A} -> a = a' -> a' = a'' -> a = a''
+(>==) _ _ _ _ = (*)
