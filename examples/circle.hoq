@@ -44,7 +44,7 @@ encode : {x : Circle} -> base = x -> code x
 encode _ p = coe (\i -> code (p @ i)) left (positive zero) right
 
 assoc : (p q r : base = base) -> (p * q) * r = p * (q * r)
-assoc p q r = J (\x s -> (p * q) * s = p * (q * s)) idp r -- TODO: remove r
+assoc p q = J (\x s -> (p * q) * s = p * (q * s)) idp
 
 map : {A B : Type} (f : A -> B) -> {a a' : A} -> a = a' -> f a = f a'
 map _ _ f a _ p = transport (\x -> f a = f x) p idp
@@ -67,7 +67,7 @@ decode (loop i) =
     right @ i
 
 encode-decode : {x : Circle} (p : base = x) -> decode x (encode p) = p
-encode-decode _ p = J (\x p -> decode x (encode p) = p) idp p -- TODO: remove p
+encode-decode _ = J (\x p -> decode x (encode p) = p) idp
 
 coe-comp : (p q : base = base) (z : Z) ->
     coe (\i -> code (p * q @ i)) left z right =
@@ -76,8 +76,8 @@ coe-comp p q z = J (\x s -> coe (\i -> code (p * s @ i)) left z right =
     coe (\i -> code (s @ i)) left (coe (\i -> code (p @ i)) left z right) right) idp q
 
 coe-inv : (p : base = base) (z : Z) -> coe (\i -> code (inv p @ i)) left z right = coe (\i -> code (p @ i)) right z left
-coe-inv p = J (\x s -> (y : code x) ->
-    coe (\i -> code (inv s @ i)) left y right = coe (\i -> code (s @ i)) right y left) (\_ -> idp) p -- TODO: remove p
+coe-inv = J (\x s -> (y : code x) ->
+    coe (\i -> code (inv s @ i)) left y right = coe (\i -> code (s @ i)) right y left) (\_ -> idp)
 
 decode-encode-base : (z : Z) -> encode (wind z) = z
 decode-encode-base (positive zero) = idp
@@ -101,4 +101,4 @@ decode-encode : (x : Circle) (z : code x) -> encode (decode x z) = z
 decode-encode = Circle-elim-Prop (\x -> (z : code x) -> encode (decode x z) = z) decode-encode-base
 
 Circle-loop-space-is-Z : (base = base) = Z
-Circle-loop-space-is-Z = path (iso (base = base) Z (\p -> encode p) (decode base) (\p -> encode-decode p) (decode-encode base)) -- TODO: remove p's
+Circle-loop-space-is-Z = path (iso (base = base) Z encode (decode base) encode-decode (decode-encode base))
