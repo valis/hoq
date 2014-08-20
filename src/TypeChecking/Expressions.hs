@@ -40,7 +40,7 @@ sortPred k = k
 
 prettyOpen' :: Ctx String (Type Semantics) Void a -> Term Semantics (Either k a) -> EDoc (Term Syntax)
 prettyOpen' ctx term = epretty $ fmap (pretty . either id absurd) $ close ctx $
-    first syntax term >>= fmap Right . either (const $ capply $ Name Prefix $ Ident "_") return
+    first syntax term >>= fmap Right . either (const $ capply $ Name Prefix $ Ident "?") return
 
 typeCheck :: Monad m => Term (Posn, Syntax) Void -> Maybe (Type Semantics Void) -> TCM m (Term Semantics Void, Type Semantics Void)
 typeCheck = typeCheckCtx Nil
@@ -109,7 +109,7 @@ typeCheckCtx' ctx (Apply (pos, S.At) (b:c:ts)) mty = do
     (r2, _) <- typeCheckCtx ctx c (Just intType)
     case nf WHNF t1 of
         Apply (Semantics _ Path{}) [a,b',c'] -> do
-            (tes, ty, tab) <- typeCheckApps pos (Just $ Operator "@") ctx (map Left ts) (Type (apps a [r2]) k) mty
+            (tes, ty, tab) <- typeCheckApps pos (Just $ Operator "@") ctx ts (Type (apps a [r2]) k) mty
             return (Apply (Semantics S.At V.At) (b':c':r1:r2:tes), ty, tab)
         t1' -> throwError [Error TypeMismatch $ emsgLC pos "" $ pretty "Expected type: Path"
                                                              $$ pretty "Actual type:" <+> prettyOpen ctx t1']
@@ -134,7 +134,7 @@ typeCheckCtx' ctx (Apply (pos, (S.Case (pat:pats))) (expr:terms)) mty = do
     patsAndTerms <- mapM (liftM (\(p,t,_,_) -> (p,t)) . typeCheckClause (Just $ nfType WHNF $ fmap Right type1')) (zip pats terms1)
     (terms2', ty, tab2) <- if null terms2
         then return ([], type1', [])
-        else typeCheckApps pos Nothing ctx (map Left terms2) type1' mty
+        else typeCheckApps pos Nothing ctx terms2 type1' mty
     let (pats',terms1') = unzip patsAndTerms
         sem = Semantics (S.Case $ map (first $ \(s,_) -> ((0,0), Ident s)) $ pat':pats') $ V.Case (pat':pats')
         terms' = term1' : terms1' ++ terms2'
@@ -150,7 +150,7 @@ typeCheckCtx' ctx (Apply (pos, (S.Case (pat:pats))) (expr:terms)) mty = do
     isStationary t = Just t
 typeCheckCtx' ctx te (Just (Type ty _)) = do
     (te', Type ty' k') <- typeCheckCtx ctx te Nothing
-    tab <- cmpTypes ActExp ctx ty' ty (termPos te)
+    tab <- actExpType True ctx (fmap Right ty') ty (termPos te)
     return (te', Type ty' k', tab)
 typeCheckCtx' _ _ _ = error "typeCheckCtx"
 
@@ -177,7 +177,7 @@ typeCheckName ctx pos ft var ts mty = do
                 _ -> throwError [Error Other $ emsgLC pos ("Ambiguous identifier: " ++ show (nameToString var)) enull]
     case eres of
         Left (te, ty) -> do
-            (tes, ty', tab) <- typeCheckApps pos (Just var) ctx (map Left ts) ty mty
+            (tes, ty', tab) <- typeCheckApps pos (Just var) ctx ts ty mty
             return (apps te tes, ty', tab)
         Right res -> return res
 
@@ -245,7 +245,7 @@ typeCheckKeyword ctx pos "path" (a:as) mty = do
                                 Lambda{} -> Apply (Semantics (S.Lam ["i"]) V.Lam) [tb]
                                 _ -> Apply (Semantics (S.Lam ["_"]) V.Lam) [Lambda $ fmap Free tb]
                         aty = Apply (pathImp k1) [tb', apps r [iCon ILeft], apps r [iCon IRight]]
-                    tab2 <- cmpTypes ActExp ctx aty ety pos
+                    tab2 <- actExpType True ctx (fmap Right aty) ety pos
                     return (path [r], Type aty k, tab1 ++ tab2)
                 _ -> error "typeCheckKeyword: path"
         Just (Type ty _) -> throwError [Error TypeMismatch $ emsgLC pos "" $ pretty "Expected type:" <+> prettyOpen' ctx ty
@@ -269,7 +269,7 @@ typeCheckKeyword ctx pos "coe" (a1:as) Nothing = do
                         [] -> return (Apply coe [r1,r2,r3], Type res k, [])
                         a4:as3 -> do
                             (r4, _) <- typeCheckCtx ctx a4 (Just intType)
-                            (tes, ty, _) <- typeCheckApps pos Nothing ctx (map Left as3) (Type (apps r1 [r4]) k) Nothing
+                            (tes, ty, _) <- typeCheckApps pos Nothing ctx as3 (Type (apps r1 [r4]) k) Nothing
                             return (Apply coe $ [r1,r2,r3,r4] ++ tes, ty, [])
 typeCheckKeyword ctx pos "iso" (a1:a2:a3:a4:a5:a6:as) Nothing = do
     (r1, Type t1 _) <- typeCheckCtx ctx a1 Nothing
@@ -311,34 +311,28 @@ typeCheckKeyword ctx pos "squeeze" as Nothing =
         _ -> throwError [argsErrorMsg pos "squeeze _ _"]
 typeCheckKeyword ctx pos var ts (Just (Type ty _)) = do
     (te', Type ty' k', _) <- typeCheckKeyword ctx pos var ts Nothing
-    tab <- cmpTypes ActExp ctx ty' ty pos
+    tab <- actExpType True ctx (fmap Right ty') ty pos
     return (te', Type ty' k', tab)
 typeCheckKeyword _ pos var _ _ = throwError [notInScope pos "" var]
 
-data CmpTypes = ActExp | ExpAct deriving Eq
+actExpType :: (Monad m, Eq a) => Bool -> Context a -> Term Semantics (Either Argument a)
+    -> Term Semantics (Either Argument a) -> Posn -> EDocM m [(Argument, Term Semantics a)]
+actExpType w ctx act exp pos = do
+    let act' = nf NF act
+        exp' = nf NF exp
+        (mo,(l1,l2)) = pcmpTerms act' exp'
+        l = if w then l2 else l1
+    unless (useful l || mo == Just EQ || mo == Just LT) $
+        throwError [Error TypeMismatch $ emsgLC pos "" $ pretty "Expected type:" <+> prettyOpen' ctx exp'
+                                                      $$ pretty "Actual type:"   <+> prettyOpen' ctx act']
+    return l
 
-cmpTypes :: (Monad m, Eq a) => CmpTypes -> Context a -> Term Semantics a -> Term Semantics (Either Argument a) -> Posn
-    -> EDocM m [(Argument, Term Semantics a)]
-cmpTypes d ctx t1 t2 pos = do
-    let t1' = nf NF t1
-        t2' = nf NF t2
-        (act,exp) = if d == ActExp
-            then (prettyOpen  ctx t1', prettyOpen' ctx t2')
-            else (prettyOpen' ctx t2', prettyOpen  ctx t1')
-        (mo,l) = pcmpTerms t1' t2'
-        l' = rights $ map (\(k,mt) -> maybe (Left k) (\t -> Right (k,t)) mt) l
-    unless (useful l' || mo == Just EQ || mo == Just (if d == ActExp then LT else GT)) $
-        warn [Error TypeMismatch $ emsgLC pos "" $ pretty "Expected type:" <+> exp
-                                                $$ pretty "Actual type:"   <+> act]
-    return l'
-
-typeCheckApps :: (Monad m, Eq a) => Posn -> Maybe Name -> Context a -> [Either (Term (Posn, Syntax) Void) (Term Semantics a)]
+typeCheckApps :: (Monad m, Eq a) => Posn -> Maybe Name -> Context a -> [Term (Posn, Syntax) Void]
     -> Type Semantics a -> Maybe (Type Semantics (Either Argument a))
     -> TCM m ([Term Semantics a], Type Semantics a, [(Argument, Term Semantics a)])
-typeCheckApps pos mname ctx allTerms ty mety = go 0 [] [] (map (\t -> (Explicit, t)) allTerms) nty
+typeCheckApps pos mname ctx allTerms ty mety = go 0 [] [] (map (\t -> (Explicit, Left t)) allTerms) nty
   where
     nty = nfType WHNF (fmap Right ty)
-    mety' = fmap (\(Type t _) -> either (const $ Left t) Right $ sequenceA t) mety
     
     go n acc rest ((e1, term@(Left (Apply (pos', Name _ (Ident "_")) []))) : terms) (Type (Apply p@(Semantics (S.Pi e2 _) (V.Pi _ k2)) [a,b]) _) | e1 == e2 =
         go (n + 1) (Left (inferArgErrorMsg $ Argument n pos' mname) : acc) ((e1,term):rest) terms $
@@ -365,23 +359,18 @@ typeCheckApps pos mname ctx allTerms ty mety = go 0 [] [] (map (\t -> (Explicit,
     go _ acc rest [] (Type aty k) =
         let checkAty = case sequenceA aty of
                         Left kp -> throwError (inferArgErrorMsg kp)
-                        Right aty' -> do
-                            acc' <- checkAcc
-                            return (acc', Type aty' k, [])
-            checkAcc = case partitionEithers (reverse acc) of
-                        ([],rights) -> return rights
-                        (left:_,_)  -> throwError left
-        in case mety' of
-            Just (Right ety) -> do
-                tab <- cmpTypes ExpAct ctx ety aty pos
+                        Right aty' -> case partitionEithers (reverse acc) of
+                                        ([], rights) -> return (rights, Type aty' k, [])
+                                        (left:_, _)  -> throwError left
+        in case mety of
+            Just (Type ety _) -> do
+                tab <- catchErrorType [TypeMismatch] (actExpType False ctx aty ety pos) $ \_ -> return []
                 if useful tab
-                    then go 0 [] [] (replaceTerms (reverse rest) tab) nty
-                    else checkAty
-            Just (Left ety) -> do
-                (_, Type aty' k', _) <- checkAty
-                tab <- cmpTypes ActExp ctx aty' ety pos
-                acc' <- checkAcc
-                return (acc', Type aty' k', tab)
+                then go 0 [] [] (replaceTerms (reverse rest) tab) nty
+                else do
+                    (acc', Type aty' k', _) <- checkAty
+                    tab' <- actExpType True ctx (fmap Right aty') ety pos
+                    return (acc', Type aty' k', tab')
             Nothing -> checkAty
     go _ _ _ _ (Type (Var (Left kp) _) _) = throwError (inferArgErrorMsg kp)
     go _ _ _ _ (Type ty _) = throwError [Error TypeMismatch $ emsgLC pos "" $ pretty "Expected pi type"

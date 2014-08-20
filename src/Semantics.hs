@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances #-}
-    
+
 module Semantics
     ( Semantics(..), Type(..)
     , SCon, SValue, SEval
@@ -12,6 +12,7 @@ module Semantics
 import Prelude.Extras
 import Data.Foldable(Foldable(..))
 import Data.Traversable(Traversable,traverse,sequenceA,fmapDefault,foldMapDefault)
+import Data.Bifunctor
 
 import Syntax.Term
 import qualified Syntax as S
@@ -37,72 +38,76 @@ instance Foldable (Type p) where foldMap = foldMapDefault
 instance Traversable (Type p) where
     traverse f (Type t k) = fmap (\t' -> Type t' k) (traverse f t)
 
-cmpTerms :: Eq a => Term Semantics a -> Term Semantics (Either k a) -> (Bool, [(k, Maybe (Term Semantics a))])
-cmpTerms (Var a as) (Var (Right a') as') = if a == a' then cmpTermsList as as' else (False, [])
-cmpTerms t (Var (Left k) []) = (False, [(k, Just t)])
-cmpTerms _ (Var (Left k) _) = (False, [(k, Nothing)])
-cmpTerms (Lambda t) (Lambda t') = fmap lowerResult $ cmpTerms t (fmap sequenceA t')
+cmpTerms :: Eq a => Term Semantics (Either k a) -> Term Semantics (Either n a)
+    -> (Bool, ([(k, Term Semantics a)], [(n, Term Semantics a)]))
+cmpTerms (Var (Right a) as) (Var (Right a') as') = if a == a' then cmpTermsList as as' else (False, ([],[]))
+cmpTerms (Var (Left k) []) t' = (False, (case sequenceA t' of { Left{} -> []; Right r -> [(k,r)] }, []))
+cmpTerms t (Var (Left k) []) = (False, ([], case sequenceA t of { Left{} -> []; Right r -> [(k,r)] }))
+cmpTerms (Lambda t) (Lambda t') = flowerResult $ cmpTerms (fmap sequenceA t) (fmap sequenceA t')
 cmpTerms (Apply (Semantics (S.Lam (_:vs)) Lam) [Lambda t]) (Apply (Semantics (S.Lam (_:vs')) Lam) [Lambda t']) =
-    fmap lowerResult $ cmpTerms (Apply (Semantics (S.Lam vs) Lam) [t]) (Apply (Semantics (S.Lam vs') Lam) [fmap sequenceA t'])
+    flowerResult $ cmpTerms (Apply (Semantics (S.Lam vs) Lam) [fmap sequenceA t]) (Apply (Semantics (S.Lam vs') Lam) [fmap sequenceA t'])
 cmpTerms (Apply (Semantics (S.Lam (_:vs)) Lam) [Lambda t]) t' =
-    fmap lowerResult $ cmpTerms (Apply (Semantics (S.Lam vs) Lam) [t]) (apps (fmap (sequenceA . Free) t') [fmap Right bvar])
+    flowerResult $ cmpTerms (Apply (Semantics (S.Lam vs) Lam) [fmap sequenceA t]) (apps (fmap (sequenceA . Free) t') [fmap Right bvar])
 cmpTerms (Apply (Semantics _ Lam) [t]) t' = cmpTerms t t'
 cmpTerms t (Apply (Semantics (S.Lam (_:vs')) Lam) [Lambda t']) =
-    fmap lowerResult $ cmpTerms (apps (fmap Free t) [bvar]) (Apply (Semantics (S.Lam vs') Lam) [fmap sequenceA t'])
+    flowerResult $ cmpTerms (apps (fmap (sequenceA . Free) t) [fmap Right bvar]) (Apply (Semantics (S.Lam vs') Lam) [fmap sequenceA t'])
 cmpTerms t (Apply (Semantics _ Lam) [t']) = cmpTerms t t'
-cmpTerms t@(Apply (Semantics _ Pi{}) _) t'@(Apply (Semantics _ Pi{}) _) =
-    let (mo,l) = pcmpTerms t t'
-    in (mo == Just EQ, l)
+cmpTerms t@(Apply (Semantics _ Pi{}) _) t'@(Apply (Semantics _ Pi{}) _) = first (== Just EQ) (pcmpTerms t t')
 cmpTerms (Apply (Semantics _ (Con PCon)) ts) (Apply (Semantics _ (Con PCon)) ts') = cmpTermsList ts ts'
 cmpTerms (Apply (Semantics _ (Con PCon)) [Apply (Semantics _ Lam) [Lambda (Apply (Semantics _ At) [_, _, t, Var Bound []])]]) t' =
-    fmap lowerResult $ cmpTerms t (fmap (sequenceA . Free) t')
+    flowerResult $ cmpTerms (fmap sequenceA t) (fmap (sequenceA . Free) t')
 cmpTerms t (Apply (Semantics _ (Con PCon)) [Apply (Semantics _ Lam) [Lambda (Apply (Semantics _ At) [_, _, t', Var Bound []])]]) =
-    fmap lowerResult $ cmpTerms (fmap Free t) (fmap sequenceA t')
+    flowerResult $ cmpTerms (fmap (sequenceA . Free) t) (fmap sequenceA t')
 cmpTerms (Apply (Semantics _ At) (_:_:ts)) (Apply (Semantics _ At) (_:_:ts')) = cmpTermsList ts ts'
-cmpTerms (Apply s ts) (Apply s' ts') = if s == s' then cmpTermsList ts ts' else (False,[])
-cmpTerms _ _ = (False, [])
+cmpTerms (Apply s ts) (Apply s' ts') = if s == s' then cmpTermsList ts ts' else (False,([],[]))
+cmpTerms _ _ = (False,([],[]))
 
-cmpTermsList :: Eq a => [Term Semantics a] -> [Term Semantics (Either k a)] -> (Bool, [(k, Maybe (Term Semantics a))])
-cmpTermsList as as' =
-    let (bs,rs) = unzip (zipWith cmpTerms as as')
-    in (and bs, concat rs)
+cmpTermsList :: Eq a => [Term Semantics (Either k a)] -> [Term Semantics (Either n a)]
+    -> (Bool, ([(k, Term Semantics a)], [(n, Term Semantics a)]))
+cmpTermsList as as' = bimap and (bimap concat concat . unzip) $ unzip (zipWith cmpTerms as as')
 
-lowerResult :: [(k, Maybe (Term Semantics (Scoped a)))] -> [(k, Maybe (Term Semantics a))]
-lowerResult = map $ \(k,mt) -> (k, mt >>= \t -> case sequenceA t of
-    Free t' -> return t'
-    Bound -> Nothing)
+flowerResult :: (b, ([(k, Term Semantics (Scoped a))], [(n, Term Semantics (Scoped a))]))
+    -> (b, ([(k, Term Semantics a)], [(n, Term Semantics a)]))
+flowerResult (b, (t1,t2)) = (b, (lowerResult t1, lowerResult t2))
 
-pcmpTerms :: Eq a => Term Semantics a -> Term Semantics (Either k a) -> (Maybe Ordering, [(k, Maybe (Term Semantics a))])
+lowerResult :: [(k, Term Semantics (Scoped a))] -> [(k, Term Semantics a)]
+lowerResult ts = ts >>= \(k,t) -> case sequenceA t of
+    Free t' -> [(k,t')]
+    Bound -> []
+
+pcmpTerms :: Eq a => Term Semantics (Either k a) -> Term Semantics (Either n a)
+    -> (Maybe Ordering, ([(k, Term Semantics a)], [(n, Term Semantics a)]))
 pcmpTerms (Apply (Semantics (S.Pi e vs) p@Pi{}) [a, b@Lambda{}]) (Apply (Semantics (S.Pi e' vs') p'@Pi{}) [a', b'@Lambda{}]) =
-    contraCovariant (pcmpTerms a a') (go vs a b vs' a' b')
+    fcontraCovariant (pcmpTerms a a') (go vs a b vs' a' b')
   where
-    go :: Eq a => [String] -> Term Semantics a -> Term Semantics a
-               -> [String] -> Term Semantics (Either k a) -> Term Semantics (Either k a)
-               -> (Maybe Ordering, [(k, Maybe (Term Semantics a))])
-    go (_:vs) a (Lambda b) (_:vs') a' (Lambda b') =
-        fmap lowerResult $ go vs (fmap Free a) b vs' (fmap (sequenceA . Free) a') (fmap sequenceA b')
+    go :: Eq a => [String] -> Term Semantics (Either k a) -> Term Semantics (Either k a)
+               -> [String] -> Term Semantics (Either n a) -> Term Semantics (Either n a)
+               -> (Maybe Ordering, ([(k, Term Semantics a)], [(n, Term Semantics a)]))
+    go (_:vs) a (Lambda b) (_:vs') a' (Lambda b') = flowerResult $
+        go vs (fmap (sequenceA . Free) a) (fmap sequenceA b) vs' (fmap (sequenceA . Free) a') (fmap sequenceA b')
     go vs a b@Lambda{} _ _ b' = pcmpTerms (Apply (Semantics (S.Pi e vs) p) [a, b]) b'
     go _ _ b vs' a' b'@Lambda{} = pcmpTerms b $ Apply (Semantics (S.Pi e' vs') p') [a', b']
     go _ _ b _ _ b' = pcmpTerms b b'
 pcmpTerms (Apply (Semantics S.Pi{} p@Pi{}) [a, Lambda b]) (Apply (Semantics S.Pi{} p'@Pi{}) [a', b']) =
-    contraCovariant (pcmpTerms a a') $ fmap lowerResult $ pcmpTerms b $ fmap (sequenceA . Free) b'
+    fcontraCovariant (pcmpTerms a a') $ flowerResult $ pcmpTerms (fmap sequenceA b) (fmap (sequenceA . Free) b')
 pcmpTerms (Apply (Semantics _ Pi{}) [a, b]) (Apply (Semantics _ Pi{}) [a', Lambda b']) =
-    contraCovariant (pcmpTerms a a') $ fmap lowerResult $ pcmpTerms (fmap Free b) (fmap sequenceA b')
+    fcontraCovariant (pcmpTerms a a') $ flowerResult $ pcmpTerms (fmap (sequenceA . Free) b) (fmap sequenceA b')
 pcmpTerms (Apply (Semantics _ Pi{}) [a, b]) (Apply (Semantics _ Pi{}) [a', b']) =
-    contraCovariant (pcmpTerms a a') (pcmpTerms b b')
-pcmpTerms (Apply (Semantics _ (Universe k)) _) (Apply (Semantics _ (Universe k')) _) = (pcompare k k', [])
-pcmpTerms t t' =
-    let (b,l) = cmpTerms t t'
-    in (if b then Just EQ else Nothing, l)
+    fcontraCovariant (pcmpTerms a a') (pcmpTerms b b')
+pcmpTerms (Apply (Semantics _ (Universe k)) _) (Apply (Semantics _ (Universe k')) _) = (pcompare k k', ([], []))
+pcmpTerms t t' = first (\b -> if b then Just EQ else Nothing) (cmpTerms t t')
 
-contraCovariant :: (Maybe Ordering, [w]) -> (Maybe Ordering, [w]) -> (Maybe Ordering, [w])
-contraCovariant (Just LT, la) (Just r, lb) | r == EQ || r == GT = (Just GT, la ++ lb)
-contraCovariant (Just EQ, la) (Just r, lb)                      = (Just r,  la ++ lb)
-contraCovariant (Just GT, la) (Just r, lb) | r == LT || r == EQ = (Just LT, la ++ lb)
-contraCovariant (_, la) (_, lb)                                 = (Nothing, la ++ lb)
+contraCovariant :: Maybe Ordering -> Maybe Ordering -> Maybe Ordering
+contraCovariant (Just LT) (Just r) | r == EQ || r == GT = Just GT
+contraCovariant (Just EQ) (Just r)                      = Just r
+contraCovariant (Just GT) (Just r) | r == LT || r == EQ = Just LT
+contraCovariant _ _                                     = Nothing
+
+fcontraCovariant :: (Maybe Ordering, ([u],[v])) -> (Maybe Ordering, ([u],[v])) -> (Maybe Ordering, ([u],[v]))
+fcontraCovariant (mo1,(us1,vs1)) (mo2,(us2,vs2)) = (contraCovariant mo1 mo2, (us1 ++ us2, vs1 ++ vs2))
 
 instance Eq a => Eq (Term Semantics a) where
-    t == t' = fst $ cmpTerms t (fmap Right t')
+    t == t' = fst $ cmpTerms (fmap Right t) (fmap Right t')
 
 instance Eq1 (Term Semantics) where (==#) = (==)
 
@@ -110,7 +115,7 @@ instance Eq a => Eq (Type Semantics a) where
     Type t _ == Type t' _ = t == t'
 
 instance Eq a => POrd (Term Semantics a) where
-    pcompare t t' = fst $ pcmpTerms t (fmap Right t')
+    pcompare t t' = fst $ pcmpTerms (fmap Right t) (fmap Right t')
 
 dropOnePi :: Semantics -> Term Semantics a -> Term Semantics a -> (String, Term Semantics (Scoped a))
 dropOnePi (Semantics (S.Pi _ [v]) _) a (Lambda b) = (v, b)
