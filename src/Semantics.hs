@@ -9,7 +9,6 @@ module Semantics
     , module Syntax.Term
     ) where
 
-import Prelude.Extras
 import Data.Foldable(Foldable(..))
 import Data.Traversable(Traversable,traverse,sequenceA,fmapDefault,foldMapDefault)
 import Data.Bifunctor
@@ -136,8 +135,6 @@ fcontraCovariant (mo1,(us1,vs1)) (mo2,(us2,vs2)) = (contraCovariant mo1 mo2, (us
 
 instance Eq a => Eq (Term Semantics a) where
     t == t' = fst $ cmpTerms (fmap Right t) (fmap Right t')
-
-instance Eq1 (Term Semantics) where (==#) = (==)
 
 instance Eq a => Eq (Type Semantics a) where
     Type t _ == Type t' _ = t == t'
