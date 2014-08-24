@@ -25,6 +25,7 @@ $operator   = [\~\!\@\#\$\%\^\&\*\-\+\=\|\?\<\>\,\.\/\:\;\[\]\{\}]
 @mcomm      = "{-" ([$any # \-] | \- [$any # \}])* "-}"
 @skip       = $white | @lcomm | @mcomm
 @newline    = \n @skip*
+@where      = "where" @skip*
 @with       = "with" @skip*
 @of         = "of" @skip*
 @import     = "import" $white+ @ident ("." @ident)*
@@ -38,9 +39,12 @@ $operator   = [\~\!\@\#\$\%\^\&\*\-\+\=\|\?\<\>\,\.\/\:\;\[\]\{\}]
 @import         { \_ s -> TokImport $ breaks '.' $
                     dropWhile (\c -> not (isAlpha c) && c /= '_') (drop 6 s)        }
 "data"          { \_ _ -> TokData                                                   }
+"record"        { \_ _ -> TokRecord                                                 }
+"constructor"   { \_ _ -> TokConstructor                                            }
 "case"          { \p _ -> TokCase p                                                 }
 @of             { \_ _ -> TokOf 0                                                   }
 @with           { \_ _ -> TokWith 0                                                 }
+@where          { \_ _ -> TokWhere 0                                                }
 \\              { \p _ -> TokLam p                                                  }
 \(              { \p _ -> TokLParen p                                               }
 \:              { \_ _ -> TokColon                                                  }
@@ -69,6 +73,9 @@ data Token
     | TokLParen !Posn
     | TokImport ![String]
     | TokData
+    | TokRecord
+    | TokConstructor
+    | TokWhere !Int
     | TokCase !Posn
     | TokOf !Int
     | TokColon
@@ -136,6 +143,7 @@ alexScanTokens cont = go
                 else do
                     warn [(pos, "Misplaced '}'")]
                     go inp'
+            TokWhere{} -> cont (TokWhere c) inp'
             TokWith{} -> cont (TokWith c) inp'
             TokOf{} -> cont (TokOf c) inp'
             tok -> cont tok inp'

@@ -77,6 +77,11 @@ fixFixityDef tab (DefData name params cons clauses) = do
     cons' <- forM cons $ \(ConDef con teles) -> liftM (ConDef con) $ forM teles (fixFixityTele tab)
     clauses' <- forM clauses $ \(Clause name pats expr) -> liftM (Clause name pats) (fixFixity tab expr)
     return (DefData name params' cons' clauses')
+fixFixityDef tab (DefRecord name params mcon fields clauses) = do
+    params' <- forM params (fixFixityTele tab)
+    fields' <- forM fields $ \(Field name expr) -> liftM (Field name) (fixFixity tab expr)
+    clauses' <- forM clauses $ \(Clause name pats expr) -> liftM (Clause name pats) (fixFixity tab expr)
+    return (DefRecord name params' mcon fields' clauses')
 fixFixityDef _ d@DefImport{} = return d
 fixFixityDef _ d@DefFixity{} = return d
 

@@ -2,7 +2,10 @@ import Paths
 
 data Nat = zero | suc Nat
 
-data Sigma (A : Type) (B : A -> Type) = pair (a : A) (B a)
+record Sigma (A : Type) (B : A -> Type) where
+    constructor pair
+    proj1 : A
+    proj2 : B proj1
 
 proj1 : (A : Type) (B : A -> Type) -> Sigma A B -> A
 proj1 _ _ (pair a _) = a

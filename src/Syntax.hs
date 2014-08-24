@@ -1,7 +1,7 @@
 module Syntax
     ( Syntax(..), Explicit(..)
     , RawExpr, PIdent(..)
-    , Clause(..), Con(..)
+    , Clause(..), Con(..), Field(..)
     , Import, Def(..), Tele(..)
     , Infix(..), Fixity(..)
     , Posn, Name(..), PName
@@ -17,7 +17,9 @@ data PIdent = PIdent { getPos :: Posn, getName :: String }
 data Clause = Clause PName [Term PName Void] RawExpr
 type Import = [String]
 data Tele = VarsTele [PIdent] RawExpr | TypeTele RawExpr
-data Con = ConDef PIdent [Tele]
+data Con = ConDef PName [Tele]
+data Field = Field PIdent RawExpr
+
 data Infix = InfixL | InfixR | InfixNA deriving Eq
 data Fixity = Infix Infix Int | Prefix deriving Eq
 
@@ -29,6 +31,7 @@ data Def
     = DefType PName RawExpr
     | DefFun PName [Term PName Void] (Maybe RawExpr)
     | DefData PName [Tele] [Con] [Clause]
+    | DefRecord PName [Tele] (Maybe PName) [Field] [Clause]
     | DefImport Import
     | DefFixity Posn Infix Int [Name]
 

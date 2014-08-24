@@ -146,4 +146,20 @@ Circle-elim' : (P : Circle -> Type) (b : P base) -> transport Circle P base base
 Circle-elim' P b t base     = b
 Circle-elim' P b t (loop i) = 
     coe  (\j -> Path (\k -> P (loop k)) b (t @ j)) left
-    (path (\j -> coe (\k -> P (loop k)) left b j)) right @ i
+    (path (coe (\k -> P (loop k)) left b)) right @ i
+
+-- Records
+record Sigma (A : Type) (B : A -> Type) where
+    constructor pair -- Constructor can be omitted
+    proj1 : A
+    proj2 : B proj1
+
+-- We can define path types using records with conditions
+-- The only difference between this definition and the built-in one is
+-- that this one does not work well with Set, Prop, and Contr.
+record Path' (A : I -> Type) (a : A left) (a' : A right) where
+    constructor path'
+    at : (i : I) -> A i
+  with
+    at left  = a
+    at right = a'

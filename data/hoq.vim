@@ -6,7 +6,7 @@ endif
 
 syn keyword hoqKeyword         import case of infix infixl infixr
 syn keyword hoqConstructor     left right path coe iso squeeze contr
-syn keyword hoqType            data I Path with Contr Prop
+syn keyword hoqType            data I Path with Contr Prop record fields constructor where
 syn match   hoqLineComment     "---*\([^-!#$%&\*\+./<=>\?@\\^|~].*\)\?$"
 syn region  hoqBlockComment    start="{-"  end="-}" contains=hoqBlockComment
 syn match   hoqNumber          "\<[0-9]\+\>"

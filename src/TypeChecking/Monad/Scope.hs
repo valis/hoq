@@ -21,7 +21,7 @@ import Semantics.Value
 data ScopeState = ScopeState
     { functions    :: [(Name, (Semantics, Closed (Type Semantics)))]
     , dataTypes    :: [(Name, (Semantics, Closed (Type Semantics)))]
-    , constructors :: [((Name, ID), (Semantics, Closed (Type Semantics)))]
+    , constructors :: [((Name, ID), (Semantics, [[SEval]], Closed (Type Semantics)))]
     , counter      :: ID
     }
 
@@ -77,10 +77,10 @@ lookupDelete a' ((a,b):xs) | a == a' = Just (b, xs)
 
 addConstructor :: Monad m => Name -> ID -> Int -> Int -> SEval -> Closed (Type Semantics) -> ScopeT m ()
 addConstructor con dt i n e ty = ScopeT $ modify $ \scope -> scope
-    { constructors = ((con, dt), (Semantics (Name Prefix con) (Con $ DCon i n e), ty)) : constructors scope
+    { constructors = ((con, dt), (Semantics (Name Prefix con) (Con $ DCon i n e), [], ty)) : constructors scope
     }
 
-getConstructor :: Monad m => Name -> Maybe ID -> ScopeT m [(Semantics, Closed (Type Semantics))]
+getConstructor :: Monad m => Name -> Maybe ID -> ScopeT m [(Semantics, [[SEval]], Closed (Type Semantics))]
 getConstructor con (Just dt) = ScopeT $ liftM (maybeToList . lookup (con, dt) . constructors) get
 getConstructor con Nothing   = ScopeT $ liftM (map snd . filter (\((c,_),_) -> con == c) . constructors) get
 
@@ -90,7 +90,7 @@ getEntry v dt = ScopeT $ do
     scope <- get
     let dts = if isNothing dt then maybeToList $ lookup v $ dataTypes scope else []
     return $ map (\(s,t) -> (s, open t)) (maybeToList (lookup v $ functions scope) ++ dts)
-            ++ if null dts then (map (\(s, Closed (Type t l)) -> (s, Type (apps t (maybe [] snd dt)) l)) cons) else []
+            ++ if null dts then (map (\(s, _, Closed (Type t l)) -> (s, Type (apps t (maybe [] snd dt)) l)) cons) else []
 
 runScopeT :: Monad m => ScopeT m a -> m a
 runScopeT (ScopeT f) = evalStateT f $ ScopeState [] [] [] 0

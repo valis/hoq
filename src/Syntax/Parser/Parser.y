@@ -24,27 +24,30 @@ import TypeChecking.Monad.Warn
 %lexer { alexScanTokens } { TokEOF }
 
 %token
-    PIdent      { TokIdent    $$    }
-    Import      { TokImport   $$    }
-    Operator    { TokOperator $$    }
-    Infix       { TokInfix    $$    }
-    Integer     { TokInteger  $$    }
-    '\\'        { TokLam      $$    }
-    '('         { TokLParen   $$    }
-    'case'      { TokCase     $$    }
-    'of'        { TokOf       $$    }
-    'data'      { TokData           }
-    ':'         { TokColon          }
-    '='         { TokEquals         }
-    '{'         { TokLBrace   $$    }
-    '}'         { TokRBrace         }
-    ';'         { TokSemicolon      }
-    ')'         { TokRParen         }
-    '|'         { TokPipe           }
-    '@'         { TokAt             }
-    '`'         { TokApos           }
-    '->'        { TokArrow          }
-    'with'      { TokWith     $$    }
+    PIdent          { TokIdent    $$    }
+    Import          { TokImport   $$    }
+    Operator        { TokOperator $$    }
+    Infix           { TokInfix    $$    }
+    Integer         { TokInteger  $$    }
+    '\\'            { TokLam      $$    }
+    '('             { TokLParen   $$    }
+    'case'          { TokCase     $$    }
+    'of'            { TokOf       $$    }
+    'data'          { TokData           }
+    'record'        { TokRecord         }
+    'constructor'   { TokConstructor    }
+    'where'         { TokWhere    $$    }
+    ':'             { TokColon          }
+    '='             { TokEquals         }
+    '{'             { TokLBrace   $$    }
+    '}'             { TokRBrace         }
+    ';'             { TokSemicolon      }
+    ')'             { TokRParen         }
+    '|'             { TokPipe           }
+    '@'             { TokAt             }
+    '`'             { TokApos           }
+    '->'            { TokArrow          }
+    'with'          { TokWith     $$    }
 
 %%
 
@@ -67,6 +70,10 @@ with :: { () }
     : 'with' '{'    {% \_ -> lift $ modify (NoLayout  :) }
     | 'with' error  {% \_ -> lift $ modify (Layout $1 :) }
 
+where :: { () }
+    : 'where' '{'   {% \_ -> lift $ modify (NoLayout  :) }
+    | 'where' error {% \_ -> lift $ modify (Layout $1 :) }
+
 of :: { () }
     : 'of' '{'      {% \_ -> lift $ modify (NoLayout  :) }
     | 'of' error    {% \_ -> lift $ modify (Layout $1 :) }
@@ -76,8 +83,9 @@ Def :: { Def }
     | Name Patterns '=' Expr                            { DefFun $1 (reverse $2) (Just $4)                  }
     | Name Patterns                                     { DefFun $1 (reverse $2) Nothing                    }
     | 'data' Name Teles                                 { DefData $2 (reverse $3) [] []                     }
-    | 'data' Name Teles '=' Cons                        { DefData $2 (reverse $3) (reverse $5) []           }
-    | 'data' Name Teles '=' Cons with FunClauses '}'    { DefData $2 (reverse $3) (reverse $5) (reverse $7) }
+    | 'data' Name Teles '=' Cons MaybeFunClauses        { DefData $2 (reverse $3) (reverse $5) $6           }
+    | 'record' Name Teles where
+        MaybeConstructor Fields '}' MaybeFunClauses     { DefRecord $2 (reverse $3) $5 (reverse $6) $8      }
     | Infix Integer InfixOps                            { DefFixity (fst $1) (snd $1) (snd $2) (map snd $3) }
     | Import                                            { DefImport $1 }
 
@@ -87,22 +95,39 @@ Defs :: { [Def] }
     | Defs ';'      { $1    }
     | Defs ';' Def  { $3:$1 }
 
+MaybeConstructor :: { Maybe PName }
+    : {- empty -}               { Nothing   }
+    | 'constructor' Name ';'    { Just $2   }
+
+Fields :: { [Field] }
+    : {- empty -}       { []    }
+    | Field             { [$1]  }
+    | Fields ';'        { $1    }
+    | Fields ';' Field  { $3:$1 }
+
+Field :: { Field }
+    : PIdent ':' Expr { Field $1 $3 }
+
+MaybeFunClauses :: { [Clause] }
+    : {- empty -}           { []            }
+    | with FunClauses '}'   { reverse $2    }
+
 FunClauses :: { [Clause] }
     : Name Patterns '=' Expr                { [Clause $1 (reverse $2) $4]       }
     | FunClauses ';'                        { $1                                }
     | FunClauses ';' Name Patterns '=' Expr { Clause $3 (reverse $4) $6 : $1    }
 
 Pattern :: { Term PName Void }
-    : PIdent                    { Apply (getPos $1, Ident $ getName $1) []              }
-    | '(' ')'                   { Apply ($1, Operator "") []                            }
-    | '(' PIdent Patterns ')'   { Apply (getPos $2, Ident $ getName $2) (reverse $3)    }
+    : Name                  { Apply (fst $1, snd $1) []             }
+    | '(' ')'               { Apply ($1, Operator "") []            }
+    | '(' Name Patterns ')' { Apply (fst $2, snd $2) (reverse $3)   }
 
 Patterns :: { [Term PName Void] }
     : {- empty -}       { []    }
     | Patterns Pattern  { $2:$1 }
 
 Con :: { Con }
-    : PIdent Teles  { ConDef $1 (reverse $2) } 
+    : Name Teles  { ConDef $1 (reverse $2) } 
 
 Cons :: { [Con] }
     : Con           { [$1]  } 
