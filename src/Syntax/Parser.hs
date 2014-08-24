@@ -86,5 +86,5 @@ fixFixityDef _ d@DefImport{} = return d
 fixFixityDef _ d@DefFixity{} = return d
 
 fixFixityTele :: Monad m => [(Name,Fixity)] -> Tele -> WarnT [Error] m Tele
-fixFixityTele tab (VarsTele vars expr) = liftM (VarsTele vars) (fixFixity tab expr)
-fixFixityTele tab (TypeTele      expr) = liftM  TypeTele       (fixFixity tab expr)
+fixFixityTele tab (VarsTele e vars expr) = liftM (VarsTele e vars) (fixFixity tab expr)
+fixFixityTele tab (TypeTele e      expr) = liftM (TypeTele e     ) (fixFixity tab expr)

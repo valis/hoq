@@ -16,7 +16,7 @@ import Syntax.Term
 data PIdent = PIdent { getPos :: Posn, getName :: String }
 data Clause = Clause PName [Term PName Void] RawExpr
 type Import = [String]
-data Tele = VarsTele [PIdent] RawExpr | TypeTele RawExpr
+data Tele = VarsTele Explicit [PIdent] RawExpr | TypeTele Explicit RawExpr
 data Con = ConDef PName [Tele]
 data Field = Field PIdent RawExpr
 

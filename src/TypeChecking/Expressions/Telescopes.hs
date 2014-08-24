@@ -28,19 +28,19 @@ extendCtx (x:xs) ctx t = extendCtx xs (Snoc ctx x t) (fmap Free t)
 typeCheckTelescope :: (Monad m, Eq a) => Ctx String (Type Semantics) Void a -> [Tele] -> Term Semantics a
     -> TCM m (SomeEq (Ctx String (Type Semantics) Void), Type Semantics a)
 typeCheckTelescope ctx [] term = return (SomeEq ctx, Type term $ Set NoLevel)
-typeCheckTelescope ctx (VarsTele vars expr : tele) term = do
+typeCheckTelescope ctx (VarsTele e vars expr : tele) term = do
     (r1, Type t1 _) <- typeCheckCtx ctx expr Nothing
     k1 <- checkIsType ctx (termPos expr) (nf WHNF t1)
     case extendCtx (map getName vars) Nil (Type r1 k1) of
         SomeEq ctx' -> do
             (rctx, Type r2 k2) <- typeCheckTelescope (ctx +++ ctx') tele $ fmap (liftBase ctx') term
-            let sem = Semantics (S.Pi Explicit $ reverse $ ctxVars ctx') (V.Pi k1 k2)
+            let sem = Semantics (S.Pi e $ reverse $ ctxVars ctx') (V.Pi k1 k2)
             return (rctx, Type (Apply sem [r1, abstractTerm ctx' r2]) $ dmax k1 k2)
-typeCheckTelescope ctx (TypeTele expr : tele) term = do
+typeCheckTelescope ctx (TypeTele e expr : tele) term = do
     (r1, Type t1 _) <- typeCheckCtx ctx expr Nothing
     k1 <- checkIsType ctx (termPos expr) (nf WHNF t1)
     (rctx, Type r2 k2) <- typeCheckTelescope ctx tele term
-    return (rctx, Type (Apply (Semantics (S.Pi Explicit []) $ V.Pi k1 k2) [r1,r2]) $ dmax k1 k2)
+    return (rctx, Type (Apply (Semantics (S.Pi e []) $ V.Pi k1 k2) [r1,r2]) $ dmax k1 k2)
 
 replaceSort :: Term Semantics a -> Sort -> Term Semantics a
 replaceSort (Apply (Semantics p (V.Pi k1 k2)) [a,b]) k = Apply (Semantics p $ V.Pi k1 $ dmax k2 k) [a, replaceSort b k]

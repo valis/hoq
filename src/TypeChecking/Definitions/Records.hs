@@ -18,7 +18,7 @@ typeCheckRecord :: Monad m => PName -> [Tele] -> Maybe PName -> [Field] -> [Clau
 typeCheckRecord recPName@(recPos, recName) params mcon fields clauses = do
     (SomeEq ctx, recType@(Type recTerm _)) <- typeCheckTelescope Nil params $ universe (Set NoLevel)
     recID <- addDataTypeCheck recPName 1 $ Closed (vacuous recType)
-    (_, Type conType conSort) <- typeCheckTelescope ctx (map (\(Field pn e) -> VarsTele [pn] e) fields) $
+    (_, Type conType conSort) <- typeCheckTelescope ctx (map (\(Field pn e) -> VarsTele Explicit [pn] e) fields) $
         Apply (Semantics (Name Prefix recName) $ DataType recID 1) (ctxToVars ctx)
     case findOccurrence recID (nf WHNF conType) of
         Just n | n > 0 -> throwError [Error Other $ emsgLC recPos "Record types cannot be recursive" enull]

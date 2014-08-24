@@ -134,8 +134,10 @@ Cons :: { [Con] }
     | Cons '|' Con  { $3:$1 }
 
 Tele :: { Tele }
-    : Expr5                     { TypeTele $1                                                               }
-    | '(' Exprs ':' Expr ')'    {% \_ -> mapM exprToVar $2 >>= \vars -> return (VarsTele (reverse vars) $4) }
+    : Expr5                     { TypeTele Explicit $1                                                               }
+    | LBrace Expr5 '}'          { TypeTele Implicit $2                                                               }
+    | '(' Exprs ':' Expr ')'    {% \_ -> mapM exprToVar $2 >>= \vars -> return (VarsTele Explicit (reverse vars) $4) }
+    | LBrace Exprs ':' Expr '}' {% \_ -> mapM exprToVar $2 >>= \vars -> return (VarsTele Implicit (reverse vars) $4) }
 
 Teles :: { [Tele] }
     : {- empty -}   { []    }
