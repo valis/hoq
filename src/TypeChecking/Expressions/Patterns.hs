@@ -20,26 +20,32 @@ import Normalization
 data TermInCtx b  = forall a. Eq a => TermInCtx  (Ctx String (Type Semantics) b a) (Term Semantics a)
 data TermsInCtx b = forall a. Eq a => TermsInCtx (Ctx String (Type Semantics) b a) [Term Semantics a] (Type Semantics a)
 
+unexpectedPatternErrorMsg :: Posn -> Ctx String (Type Semantics) Void a -> Term Semantics a -> Error
+unexpectedPatternErrorMsg pos ctx ty = Error TypeMismatch $
+    emsgLC pos "" $ pretty "Unexpected pattern"
+                 $$ pretty "Expected type:" <+> prettyOpen ctx ty
+
 typeCheckPattern :: (Monad m, Eq a) => Ctx String (Type Semantics) Void a -> Type Semantics a
-    -> Term PName b -> TCM m (Bool, Maybe (TermInCtx a), Term (String,SCon) String)
+    -> Term PName b -> TCM m (Bool, Maybe (TermInCtx a), Term (Name,SCon) String)
 typeCheckPattern ctx (Type (Apply (Semantics _ Interval) _) _) (Apply (pos, Ident "left") pats) = do
     unless (null pats) $ warn [tooManyArgs pos]
-    return (False, Just $ TermInCtx Nil $ iCon ILeft, Apply ("left", ICon ILeft) [])
+    return (False, Just $ TermInCtx Nil $ iCon ILeft, Apply (Ident "left", ICon ILeft) [])
 typeCheckPattern ctx (Type (Apply (Semantics _ Interval) _) _) (Apply (pos, Ident "right") pats) = do
     unless (null pats) $ warn [tooManyArgs pos]
-    return (False, Just $ TermInCtx Nil $ iCon IRight, Apply ("right", ICon IRight) [])
+    return (False, Just $ TermInCtx Nil $ iCon IRight, Apply (Ident "right", ICon IRight) [])
 typeCheckPattern ctx (Type (Apply (Semantics _ (DataType _ 0)) _) _) (Apply (_, Operator "") _) =
     return (True, Nothing, Var "_" [])
 typeCheckPattern ctx (Type ty _) (Apply (pos, Operator "") _) =
     throwError [Error Other $ emsgLC pos "" $ pretty "Expected non-empty type:" <+> prettyOpen ctx ty]
 typeCheckPattern ctx _ (Apply (_, Ident "_") []) = return (False, Nothing, Var "_" [])
-typeCheckPattern ctx (Type ty@(Apply (Semantics _ (DataType dt _)) _) k) (Apply (pos, Ident var) []) = do
-    cons <- lift $ getConstructor (Ident var) (Just dt)
-    case cons of
-        (con@(Semantics _ (Con (DCon i n conds))), _, Closed (Type conType _)):_ -> if isDataType conType
+typeCheckPattern ctx (Type ty@(Apply (Semantics _ (DataType dt _)) _) k) (Apply (pos, var) []) = do
+    cons <- lift $ getConstructor var (Just dt)
+    case (cons, var) of
+        ((con@(Semantics _ (Con (DCon i n conds))), _, Closed (Type conType _)):_, _) -> if isDataType conType
             then return (False, Just $ TermInCtx Nil $ capply con, Apply (var, DCon i n conds) [])
-            else throwError [notEnoughArgs pos var]
-        _ -> return (False, Just $ TermInCtx (Snoc Nil var $ Type ty k) bvar, Var var [])
+            else throwError [notEnoughArgs pos $ nameToPrefix var]
+        (_, Ident var') -> return (False, Just $ TermInCtx (Snoc Nil var' $ Type ty k) bvar, Var var' [])
+        _               -> throwError [unexpectedPatternErrorMsg pos ctx ty]
   where
     isDataType :: Term Semantics a -> Bool
     isDataType (Lambda t) = isDataType t
@@ -47,8 +53,8 @@ typeCheckPattern ctx (Type ty@(Apply (Semantics _ (DataType dt _)) _) k) (Apply 
     isDataType _ = False
 typeCheckPattern ctx (Type ty k) (Apply (pos, Ident var) []) =
     return (False, Just $ TermInCtx (Snoc Nil var $ Type ty k) bvar, cvar var)
-typeCheckPattern ctx (Type (Apply (Semantics _ (DataType dt _)) params) _) (Apply (pos, Ident conName) pats) = do
-    cons <- lift $ getConstructor (Ident conName) (Just dt)
+typeCheckPattern ctx (Type (Apply (Semantics _ (DataType dt _)) params) _) (Apply (pos, conName) pats) = do
+    cons <- lift $ getConstructor conName (Just dt)
     case cons of
         (con@(Semantics _ (Con (DCon i n conds))), _, Closed (Type conType k)):_ -> do
             let conType' = Type (nf WHNF $ apps conType params) k
@@ -56,15 +62,13 @@ typeCheckPattern ctx (Type (Apply (Semantics _ (DataType dt _)) params) _) (Appl
             case nf WHNF ty' of
                 Apply (Semantics _ DataType{}) _ ->
                     return (bf, Just $ TermInCtx ctx' (Apply con terms), Apply (conName, DCon i n conds) rtpats)
-                _ -> throwError [notEnoughArgs pos conName]
-        _ -> throwError [notInScope pos "data constructor" conName]
-typeCheckPattern ctx (Type ty _) (Apply (pos, _) _) =
-    throwError [Error TypeMismatch $ emsgLC pos "" $ pretty "Unexpected pattern"
-                                                  $$ pretty "Expected type:" <+> prettyOpen ctx ty]
+                _ -> throwError [notEnoughArgs pos $ nameToPrefix conName]
+        _ -> throwError [notInScope pos "data constructor" $ nameToPrefix conName]
+typeCheckPattern ctx (Type ty _) (Apply (pos, _) _) = throwError [unexpectedPatternErrorMsg pos ctx ty]
 typeCheckPattern _ _ _ = error "typeCheckPattern"
 
 typeCheckPatterns :: (Monad m, Eq a) => Ctx String (Type Semantics) Void a -> Type Semantics a
-    -> [Term PName b] -> TCM m (Bool, TermsInCtx a, [Term (String,SCon) String])
+    -> [Term PName b] -> TCM m (Bool, TermsInCtx a, [Term (Name,SCon) String])
 typeCheckPatterns _ ty [] = return (False, TermsInCtx Nil [] ty, [])
 typeCheckPatterns ctx (Type (Apply p@(Semantics _ (V.Pi k1 k2)) [a, b]) _) (pat:pats) = do
     let a' = Type (nf WHNF a) k1

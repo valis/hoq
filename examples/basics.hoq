@@ -150,7 +150,7 @@ Circle-elim' P b t (loop i) =
 
 -- Records
 record Sigma (A : Type) (B : A -> Type) where
-    constructor pair -- Constructor can be omitted
+    constructor (,) -- Constructor can be omitted
     proj1 : A
     proj2 : B proj1
 

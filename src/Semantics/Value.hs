@@ -6,6 +6,7 @@ module Semantics.Value
     , POrd(..), DOrd(..), lessOrEqual
     ) where
 
+import Syntax(Name)
 import Syntax.Term
 
 data Value t
@@ -22,12 +23,12 @@ data Value t
     | Coe
     | Iso
     | Squeeze
-    | Case [Term (String, Con t) String]
+    | Case [Term (Name, Con t) String]
 
 data Con t = DCon Int Int (Eval t) | PCon | ICon ICon
 data ICon = ILeft | IRight deriving Eq
 
-data Eval t = SynEval t | PatEval [([Term (String, Con t) String], t)]
+data Eval t = SynEval t | PatEval [([Term (Name, Con t) String], t)]
 
 type ID = Int
 data Level = Level Int | NoLevel
