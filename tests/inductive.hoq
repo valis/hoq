@@ -45,6 +45,9 @@ data K = K (K -> K)
 test1 : Set
 test1 = Nat
 
+test1' : Prop
+test1' = Nat
+
 data NotSet = NotSet I
 
 test2 : Set

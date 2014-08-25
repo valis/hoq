@@ -25,9 +25,9 @@ extendCtx :: (Functor t, Eq a) => [s] -> Ctx s t b a -> t a -> SomeEq (Ctx s t b
 extendCtx [] ctx _ = SomeEq ctx
 extendCtx (x:xs) ctx t = extendCtx xs (Snoc ctx x t) (fmap Free t)
 
-typeCheckTelescope :: (Monad m, Eq a) => Ctx String (Type Semantics) Void a -> [Tele] -> Term Semantics a
+typeCheckTelescope :: (Monad m, Eq a) => Ctx String (Type Semantics) Void a -> [Tele] -> Type Semantics a
     -> TCM m (SomeEq (Ctx String (Type Semantics) Void), Type Semantics a)
-typeCheckTelescope ctx [] term = return (SomeEq ctx, Type term $ Set NoLevel)
+typeCheckTelescope ctx [] term = return (SomeEq ctx, term)
 typeCheckTelescope ctx (VarsTele e vars expr : tele) term = do
     (r1, Type t1 _) <- typeCheckCtx ctx expr Nothing
     k1 <- checkIsType ctx (termPos expr) (nf WHNF t1)
@@ -42,10 +42,12 @@ typeCheckTelescope ctx (TypeTele e expr : tele) term = do
     (rctx, Type r2 k2) <- typeCheckTelescope ctx tele term
     return (rctx, Type (Apply (Semantics (S.Pi e []) $ V.Pi k1 k2) [r1,r2]) $ dmax k1 k2)
 
-replaceSort :: Term Semantics a -> Sort -> Term Semantics a
-replaceSort (Apply (Semantics p (V.Pi k1 k2)) [a,b]) k = Apply (Semantics p $ V.Pi k1 $ dmax k2 k) [a, replaceSort b k]
-replaceSort (Lambda t) k = Lambda (replaceSort t k)
-replaceSort _ k = universe k
+replaceSort :: Term Semantics a -> Sort -> Maybe Sort -> Term Semantics a
+replaceSort (Apply (Semantics p (V.Pi k1 k2)) [a,b]) k k' =
+    Apply (Semantics p $ V.Pi k1 $ dmax k2 k) [a, replaceSort b k k']
+replaceSort (Lambda t) k k' = Lambda (replaceSort t k k')
+replaceSort _ _ (Just k') = universe k'
+replaceSort t _ Nothing = t
 
 findOccurrence :: Eq a => ID -> Term Semantics a -> Maybe Int
 findOccurrence dt (Apply (Semantics _ V.Pi{}) [a,b]) =

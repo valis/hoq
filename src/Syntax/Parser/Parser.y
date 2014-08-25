@@ -96,8 +96,8 @@ Defs :: { [Def] }
     | Defs ';' Def  { $3:$1 }
 
 MaybeConstructor :: { Maybe PName }
-    : {- empty -}               { Nothing   }
-    | 'constructor' Name ';'    { Just $2   }
+    : {- empty -}           { Nothing   }
+    | 'constructor' Name    { Just $2   }
 
 Fields :: { [Field] }
     : {- empty -}       { []    }

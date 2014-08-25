@@ -27,10 +27,11 @@ import Normalization
 typeCheckDataType :: MonadFix m => PName -> [Tele] -> [S.Con] -> [Clause] -> TCM m ()
 typeCheckDataType p@(pos, dt) params cons conds = mdo
     let lcons = length cons
-    (SomeEq ctx, dataType@(Type dtTerm _)) <- typeCheckTelescope Nil params $ universe (Set NoLevel)
+    (SomeEq ctx, dataType@(Type dtTerm _)) <- typeCheckTelescope Nil params $ Type (universe Prop) (Set NoLevel)
     dtid <- addDataTypeCheck p lcons $ Closed (vacuous dataType)
     cons' <- forW (zip cons [0..]) $ \(ConDef con@(pos, conName) tele, i) -> do
-        (_, Type conType conSort) <- typeCheckTelescope ctx tele $ Apply (Semantics (Name Prefix dt) $ DataType dtid lcons) (ctxToVars ctx)
+        (_, Type conType conSort) <- typeCheckTelescope ctx tele $
+            Type (Apply (Semantics (Name Prefix dt) $ DataType dtid lcons) $ ctxToVars ctx) Prop
         case findOccurrence dtid (nf WHNF conType) of
             Just n | n > 1 -> throwError [Error Other $ emsgLC pos "Data type is not strictly positive" enull]
             _ -> return ()
@@ -38,9 +39,9 @@ typeCheckDataType p@(pos, dt) params cons conds = mdo
             conTerm = Semantics (Name Prefix conName) $ Con $ DCon i lcons (PatEval conds'')
         return $ Just (con, (i, conds'', conTerm), Type conType conSort)
     let ks = map (\(_, _, Type _ k) -> k) cons'
-        mk = if null ks then Prop else dmaximum ks
-    forM_ cons' $ \(con, (i, cs, _), Type ty k) ->
-        addConstructorCheck con dtid i lcons (PatEval cs) $ Closed $ Type (vacuous $ abstractTerm ctx ty) mk
+        mk = if null ks then Prop else dmaximum $ (if lcons > 1 then Set NoLevel else Prop) : ks
+    forM_ cons' $ \(con, (i, cs, _), Type ty k) -> addConstructorCheck con dtid i lcons (PatEval cs) [] $
+        Closed $ Type (vacuous $ abstractTerm ctx $ replaceSort ty mk Nothing) mk
     conds' <- forW conds $ \(Clause (pos, con) pats expr) ->
         case find (\((_, c), _, _) -> c == con) cons' of
             Just ((_, conName), (i, _, _), ty) -> do
@@ -53,6 +54,6 @@ typeCheckDataType p@(pos, dt) params cons conds = mdo
             _ -> do
                 warn [notInScope pos "data constructor" (nameToString con)]
                 return Nothing
-    lift $ replaceDataType dt lcons $ Closed $ Type (vacuous $ replaceSort dtTerm mk) mk
+    lift $ replaceDataType dt lcons $ Closed $ Type (vacuous $ replaceSort dtTerm (succ mk) $ Just mk) mk
     forM_ cons' $ \((pos, _), (_, conds, con), _) -> warn $
         checkConditions pos Nil (capply con) $ map (\(p, Closed t) -> (p, t)) conds
