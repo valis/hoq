@@ -1,8 +1,7 @@
 module Semantics.Value
-    ( Value(..), Eval(..)
+    ( Value(..), Eval
     , Level(..), level
-    , Con(..), ICon(..)
-    , ID, Sort(..)
+    , ICon(..), ID, Sort(..)
     , POrd(..), DOrd(..), lessOrEqual
     ) where
 
@@ -12,7 +11,9 @@ import Syntax.Term
 data Value t
     = Lam
     | Pi Sort Sort
-    | Con (Con t)
+    | DCon Int Int (Eval t)
+    | PCon
+    | ICon ICon
     | CCon
     | FunCall ID (Eval t)
     | Universe Sort
@@ -23,12 +24,11 @@ data Value t
     | Coe
     | Iso
     | Squeeze
-    | Case [Term (Name, Con t) String]
+    | Case [Term (Name, Int) String]
 
-data Con t = DCon Int Int (Eval t) | PCon | ICon ICon
 data ICon = ILeft | IRight deriving Eq
 
-data Eval t = SynEval t | PatEval [([Term (Name, Con t) String], t)]
+type Eval t = [([Term (Name, Int) String], t)]
 
 type ID = Int
 data Level = Level Int | NoLevel
@@ -37,7 +37,9 @@ data Sort = TypeK Level | Set Level | Prop | Contr deriving Eq
 instance Eq (Value t) where
     Lam == Lam = True
     Pi{} == Pi{} = True
-    Con c == Con c' = c == c'
+    DCon i _ _ == DCon i' _ _ = i == i'
+    PCon == PCon = True
+    ICon c == ICon c' = c == c'
     CCon == CCon = True
     FunCall n _ == FunCall n' _ = n == n'
     Universe k == Universe k' = k == k'
@@ -50,16 +52,10 @@ instance Eq (Value t) where
     Squeeze == Squeeze = True
     Case pats == Case pats' = and (zipWith cmpPats pats pats')
       where
-        cmpPats :: Term (s, Con t) u -> Term (s', Con t) u' -> Bool
+        cmpPats :: Term (s, Int) u -> Term (s', Int) u' -> Bool
         cmpPats Var{} Var{} = True
         cmpPats (Apply (_,c) pats) (Apply (_,c') pats') = c == c' && and (zipWith cmpPats pats pats')
         cmpPats _ _ = False
-    _ == _ = False
-
-instance Eq (Con t) where
-    DCon i _ _ == DCon i' _ _ = i == i'
-    ICon c == ICon c' = c == c'
-    PCon == PCon = True
     _ == _ = False
 
 instance Eq Level where

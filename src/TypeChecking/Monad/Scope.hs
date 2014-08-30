@@ -75,30 +75,40 @@ lookupDelete _ [] = Nothing
 lookupDelete a' ((a,b):xs) | a == a' = Just (b, xs)
                            | otherwise = fmap (\(b',xs') -> (b', (a,b):xs')) (lookupDelete a' xs)
 
-addConstructor :: Monad m => Name -> ID -> Int -> Int -> SEval -> Closed (Type Semantics) -> ScopeT m ()
-addConstructor con dt i n e ty = ScopeT $ modify (updScopeConstructor con dt i n e ty)
+addConstructor :: Monad m => Name -> ID -> Int -> SEval -> Closed (Type Semantics) -> ScopeT m ()
+addConstructor con dt i e ty = ScopeT $ modify (updScopeConstructor con dt i e ty)
 
-updScopeConstructor :: Name -> ID -> Int -> Int -> SEval -> Closed (Type Semantics) -> ScopeState -> ScopeState
-updScopeConstructor con dt i n e ty scope = scope
-    { constructors = ((con, dt), (Semantics (Name Prefix con) $ Con $ DCon i n e, [], ty)) : constructors scope
+updScopeConstructor :: Name -> ID -> Int -> SEval -> Closed (Type Semantics) -> ScopeState -> ScopeState
+updScopeConstructor con dt i e ty scope = scope
+    { constructors = ((con, dt), (Semantics (Name Prefix con) $ DCon i 0 e, [], ty)) : constructors scope
     }
 
-replaceConstructor :: Monad m => Name -> ID -> Int -> Int -> SEval -> Closed (Type Semantics) -> ScopeT m ()
-replaceConstructor con dt i n e ty = ScopeT $ modify $ \scope -> case lookupDelete (con,dt) (constructors scope) of
-    Just (_, constructors') -> updScopeConstructor con dt i n e ty $ scope { constructors = constructors' }
-    _ -> updScopeConstructor con dt i n e ty scope
+replaceConstructor :: Monad m => Name -> ID -> Int -> SEval -> Closed (Type Semantics) -> ScopeT m ()
+replaceConstructor con dt i e ty = ScopeT $ modify $ \scope -> case lookupDelete (con,dt) (constructors scope) of
+    Just (_, constructors') -> updScopeConstructor con dt i e ty $ scope { constructors = constructors' }
+    _ -> updScopeConstructor con dt i e ty scope
 
-getConstructor :: Monad m => Name -> Maybe ID -> ScopeT m [(Semantics, [[SEval]], Closed (Type Semantics))]
-getConstructor con (Just dt) = ScopeT $ liftM (maybeToList . lookup (con, dt) . constructors) get
-getConstructor con Nothing   = ScopeT $ liftM (map snd . filter (\((c,_),_) -> con == c) . constructors) get
+getConstructor :: Monad m => Name -> Maybe (ID, [Term Semantics a])
+    -> ScopeT m [(Term Semantics a, [[SEval]], Type Semantics a)]
+getConstructor con (Just (dt, params)) = ScopeT $ do
+    scope <- get
+    return $ map (\(Semantics syn (DCon i _ e), es, Closed (Type ty k)) ->
+        ( if null e
+            then capply $ Semantics syn (DCon i 0 [])
+            else Apply (Semantics syn $ DCon i (length params) e) params
+        , es, Type (apps ty params) k
+        )) $ maybeToList $ lookup (con, dt) (constructors scope)
+getConstructor con Nothing = ScopeT $ do
+    scope <- get
+    return $ map (\(_, (s, es, Closed ty)) -> (capply s, es, ty)) $ filter (\((c,_),_) -> con == c) (constructors scope)
 
-getEntry :: Monad m => Name -> Maybe (ID, [Term Semantics a]) -> ScopeT m [(Semantics, Type Semantics a)]
+getEntry :: Monad m => Name -> Maybe (ID, [Term Semantics a]) -> ScopeT m [(Term Semantics a, [[SEval]], Type Semantics a)]
 getEntry v dt = ScopeT $ do
-    cons  <- unScopeT $ getConstructor v (fmap fst dt)
+    cons  <- unScopeT $ getConstructor v dt
     scope <- get
     let dts = if isNothing dt then maybeToList $ lookup v $ dataTypes scope else []
-    return $ map (\(s,t) -> (s, open t)) (maybeToList (lookup v $ functions scope) ++ dts)
-            ++ if null dts then (map (\(s, _, Closed (Type t l)) -> (s, Type (apps t (maybe [] snd dt)) l)) cons) else []
+    return $ map (\(s, Closed t) -> (capply s, [],t)) (maybeToList (lookup v $ functions scope) ++ dts)
+            ++ if null dts then cons else []
 
 runScopeT :: Monad m => ScopeT m a -> m a
 runScopeT (ScopeT f) = evalStateT f $ ScopeState [] [] [] 0

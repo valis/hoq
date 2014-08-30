@@ -15,9 +15,9 @@ import TypeChecking.Context
 import TypeChecking.Expressions
 import TypeChecking.Expressions.Utils
 import TypeChecking.Expressions.Patterns
-import TypeChecking.Expressions.Coverage
-import TypeChecking.Expressions.Conditions
-import TypeChecking.Definitions.Termination
+-- import TypeChecking.Expressions.Coverage
+-- import TypeChecking.Expressions.Conditions
+-- import TypeChecking.Definitions.Termination
 import Normalization
 
 typeCheckFunction :: Monad m => PName -> Term (Posn, Syntax) Void
@@ -29,7 +29,7 @@ typeCheckFunction p@(pos, name) ety clauses = do
             u' -> throwError [Error TypeMismatch $ emsgLC (termPos ety) "" $ pretty "Expected a type"
                                                                           $$ pretty "Actual type:" <+> prettyOpen Nil u']
     let cty = Closed $ Type (vacuous ty) k
-    fcid <- addFunctionCheck p (PatEval []) cty
+    fcid <- addFunctionCheck p [] cty
     clausesAndPats <- forW clauses $ \(pos',pats,mexpr) ->  do
         (bf, TermsInCtx ctx _ ty', rtpats) <- typeCheckPatterns Nil (Type (nf WHNF ty) k) pats
         case (bf,mexpr) of
@@ -46,16 +46,18 @@ typeCheckFunction p@(pos, name) ety clauses = do
                 (term, _) <- typeCheckCtx ctx expr $ Just (nfType WHNF ty')
                 let scope = closed (abstractTerm ctx term)
                     rtpats' = map (first snd) rtpats
-                throwErrors $ checkTermination (Right fcid) pos' rtpats' scope
-                return $ Just ((rtpats, scope), (pos', rtpats'))
+                -- throwErrors $ checkTermination (Right fcid) pos' rtpats' scope
+                return $ Just ((map (first $ second patternToInt) rtpats, scope), (pos', rtpats'))
     let clauses' = map fst clausesAndPats
-        eval = PatEval $ map (fmap $ \(Closed scope) -> Closed $ replaceFunCalls fcid fc scope) clauses'
+        eval = map (fmap $ \(Closed scope) -> Closed $ replaceFunCalls fcid fc scope) clauses'
         fc = Closed $ capply $ Semantics (Name Prefix name) (FunCall fcid eval)
     lift $ replaceFunction name eval cty
+    {-
     case checkCoverage (map snd clausesAndPats) of
         Nothing | length clausesAndPats /= length (filter (\(_,_,me) -> isJust me) clauses) -> return ()
         r -> warn (coverageErrorMsg pos r)
     warn $ checkConditions Nil (open fc) $ map (\((p,Closed t),(pos',_)) -> (pos',p,t)) clausesAndPats
+    -}
 
 replaceFunCalls :: ID -> Closed (Term Semantics) -> Term Semantics a -> Term Semantics a
 replaceFunCalls name fc (Var a ts) = Var a $ map (replaceFunCalls name fc) ts

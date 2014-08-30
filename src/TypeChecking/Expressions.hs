@@ -18,8 +18,8 @@ import TypeChecking.Monad
 import TypeChecking.Context
 import TypeChecking.Expressions.Utils
 import TypeChecking.Expressions.Patterns
-import TypeChecking.Expressions.Conditions
-import TypeChecking.Expressions.Coverage
+-- import TypeChecking.Expressions.Conditions
+-- import TypeChecking.Expressions.Coverage
 import Normalization
 
 type Context = Ctx String (Type Semantics) Void
@@ -136,11 +136,14 @@ typeCheckCtx' ctx (Apply (pos, (S.Case (pat:pats))) (expr:terms)) mty = do
         then return ([], type1', [])
         else typeCheckApps pos Nothing ctx terms2 type1' mty
     let (pats',terms1') = unzip patsAndTerms
-        sem = Semantics (S.Case $ map (first $ \(s,_) -> ((0,0), s)) $ pat':pats') $ V.Case (pat':pats')
+        sem = Semantics (S.Case $ map (first $ \(s,_) -> ((0,0), s)) $ pat':pats') $
+            V.Case $ map (first $ second patternToInt) (pat':pats')
         terms' = term1' : terms1' ++ terms2'
+    {-
     warn $ coverageErrorMsg pos $ checkCoverage $ zipWith (\p1 p2 -> (termPos p1, [first snd p2])) (pat:pats) (pat':pats')
     warn $ checkConditions ctx (Lambda $ Apply sem $ bvar : map (fmap Free) terms') $
         map (\(p,t) -> (pos,[p],t)) $ (pat',term1'):patsAndTerms
+    -}
     return (Apply sem $ exprTerm:terms', ty, tab1 ++ tab2)
   where
     isStationary :: Term a b -> Maybe (Term a b)
@@ -161,19 +164,23 @@ typeCheckName ctx pos ft var ts mty = do
     eres <- case lookupCtx (nameToString var) ctx of
         Just r -> return (Left r)
         Nothing -> do
-            let mdt = case mty of
-                        Just (Type (Apply (Semantics _ (DataType dti _)) params) _) -> Just (dti,params)
-                        _ -> Nothing
-            mt <- lift $ getEntry var mdt
+            mt <- case mty of
+                    Just (Type (Apply (Semantics _ (DataType dtID _)) params) _) -> case mapM sequenceA params of
+                        Right params' -> lift $ getEntry var $ Just (dtID, params')
+                        Left kp -> do
+                            mt <- lift $ getEntry var Nothing
+                            if null mt then return [] else throwError (inferArgErrorMsg kp)
+                    _ -> lift $ getEntry var Nothing
             case mt of
                 [] -> liftM Right (typeCheckKeyword ctx pos (nameToString var) ts mty)
-                [(s, ty)] ->
-                    let s' = case syntax s of
-                                Name ft' _ | ft == ft'  -> s
-                                _                       -> s { syntax = Name ft var }
-                    in case sequenceA ty of
-                        Left kp -> throwError (inferArgErrorMsg kp)
-                        Right ty' -> return $ Left (capply s', ty')
+                [(te, _, ty)] ->
+                    let te' = case te of
+                                Apply (Semantics (Name ft' _) _) _ | ft == ft' -> te
+                                Apply (Semantics _ sem) ts -> Apply (Semantics (Name ft var) sem) ts
+                                _ -> te
+                    in case ty of
+                        Type Lambda{} _ -> throwError [inferParamsErrorMsg pos $ nameToPrefix var]
+                        _ -> return $ Left (te', ty)
                 _ -> throwError [Error Other $ emsgLC pos ("Ambiguous identifier: " ++ show (nameToString var)) enull]
     case eres of
         Left (te, ty) -> do

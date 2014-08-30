@@ -21,23 +21,25 @@ nfSemantics :: Eq a => NF -> Semantics -> [Term Semantics a] -> Term Semantics a
 nfSemantics mode (Semantics (S.Lam (_:vs)) Lam) (Lambda a@Lambda{} : t : ts) =
     nfStep mode $ Apply (Semantics (S.Lam vs) Lam) (instantiate1 t a : ts)
 nfSemantics mode (Semantics _ Lam) (Lambda s : t : ts) = nfStep mode $ apps (instantiate1 t s) ts
-nfSemantics mode t@(Semantics _ (Con (DCon _ _ (PatEval conds)))) ts = case instantiateClauses conds ts of
-    Just (t', ts')  -> nfStep mode (apps t' ts')
-    _               -> Apply t (nfs mode ts)
-nfSemantics mode (Semantics _ (FunCall _ (SynEval (Closed t)))) ts = nfStep mode (apps t ts)
-nfSemantics mode t@(Semantics _ (FunCall _ (PatEval clauses))) ts = case instantiateClauses clauses ts of
-    Just (t', ts')  -> nfStep mode (apps t' ts')
-    _               -> Apply t (nfs mode ts)
+nfSemantics mode t@(Semantics _ (DCon _ k conds)) ts =
+    let (params,args) = splitAt k ts
+    in case instantiateClauses (map (\(pats, Closed term) -> (pats, apps term params)) conds) args of
+        Just (t', ts')  -> nfStep mode (apps t' ts')
+        _               -> Apply t (nfs mode ts)
+nfSemantics mode t@(Semantics _ (FunCall _ clauses)) ts =
+    case instantiateClauses (map (\(pats, Closed term) -> (pats, term)) clauses) ts of
+        Just (t', ts')  -> nfStep mode (apps t' ts')
+        _               -> Apply t (nfs mode ts)
 nfSemantics mode t@(Semantics _ At) (t1:t2:t3:t4:ts) = case (nf WHNF t3, nf WHNF t4) of
-    (_, Apply (Semantics _ (Con (ICon ILeft)))  _) -> nfStep mode (apps t1 ts)
-    (_, Apply (Semantics _ (Con (ICon IRight))) _) -> nfStep mode (apps t2 ts)
-    (Apply (Semantics _ (Con PCon)) [t3'], t4')    -> nfStep mode $ apps t3' (t4':ts)
+    (_, Apply (Semantics _ (ICon ILeft))  _) -> nfStep mode (apps t1 ts)
+    (_, Apply (Semantics _ (ICon IRight)) _) -> nfStep mode (apps t2 ts)
+    (Apply (Semantics _ PCon) [t3'], t4')    -> nfStep mode $ apps t3' (t4':ts)
     (t3', t4')                               -> Apply t $ nfs mode (t1:t2:t3':t4':ts)
 nfSemantics mode t@(Semantics _ Coe) (t1:t2:t3:t4:ts) =
     let t1' = nf WHNF t1
         t2' = nf NF t2
         t4' = nf NF t4
-        isICon c (Apply (Semantics _ (Con (ICon c'))) _) = c == c'
+        isICon c (Apply (Semantics _ (ICon c')) _) = c == c'
         isICon _ _ = False
         r = Apply t $ if mode == WHNF then t1':t2':t3:t4':ts else nf mode t1' : t2' : nf mode t3 : t4' : map (nf mode) ts
     in case (t2' == t4' || isStationary t1', isICon ILeft  t2' && isICon IRight t4',
@@ -52,14 +54,14 @@ nfSemantics mode t@(Semantics _ Coe) (t1:t2:t3:t4:ts) =
             _ -> r
         _ -> r
 nfSemantics mode t@(Semantics _ Iso) ts@[t1,t2,_,_,_,_,t7] = case nf WHNF t7 of
-    Apply (Semantics _ (Con (ICon ILeft)))  _ -> nfStep mode t1
-    Apply (Semantics _ (Con (ICon IRight))) _ -> nfStep mode t2
+    Apply (Semantics _ (ICon ILeft))  _ -> nfStep mode t1
+    Apply (Semantics _ (ICon IRight)) _ -> nfStep mode t2
     _                                   -> Apply t (nfs mode ts)
 nfSemantics mode t@(Semantics _ Squeeze) [t1,t2] = case (nf WHNF t1, nf WHNF t2) of
-    (Apply t@(Semantics _ (Con (ICon ILeft)))  _, _)  -> capply t
-    (Apply (Semantics _ (Con (ICon IRight))) _, j)    -> if mode == Step then j else nf mode j
-    (_, Apply t@(Semantics _ (Con (ICon ILeft)))  _)  -> capply t
-    (i, Apply (Semantics _ (Con (ICon IRight))) _)    -> if mode == Step then i else nf mode i
+    (Apply t@(Semantics _ (ICon ILeft))  _, _)  -> capply t
+    (Apply (Semantics _ (ICon IRight)) _, j)    -> if mode == Step then j else nf mode j
+    (_, Apply t@(Semantics _ (ICon ILeft))  _)  -> capply t
+    (i, Apply (Semantics _ (ICon IRight)) _)    -> if mode == Step then i else nf mode i
     (t1',t2')                                   -> Apply t $ nfs mode [t1',t2']
 nfSemantics mode t@(Semantics _ (Case pats)) (term:terms) =
     let (terms1,terms2) = splitAt (length pats) terms
@@ -84,20 +86,26 @@ nfs :: Eq a => NF -> [Term Semantics a] -> [Term Semantics a]
 nfs WHNF terms = terms
 nfs mode terms = map (nf mode) terms
 
-instantiatePat :: Eq a => [Term (s, SCon) t] -> Term Semantics a -> [Term Semantics a] -> Maybe (Term Semantics a, [Term Semantics a])
+getCon :: Term Semantics a -> Maybe (Int, [Term Semantics a])
+getCon (Apply (Semantics _ (ICon ILeft )) terms) = Just (0, terms)
+getCon (Apply (Semantics _ (ICon IRight)) terms) = Just (1, terms)
+getCon (Apply (Semantics _ PCon         ) terms) = Just (0, terms)
+getCon (Apply (Semantics _ (DCon i k _ )) terms) = Just (i, drop k terms)
+getCon _                                         = Nothing
+
+instantiatePat :: Eq a => [Term (s, Int) t] -> Term Semantics a -> [Term Semantics a] -> Maybe (Term Semantics a, [Term Semantics a])
 instantiatePat [] Lambda{} _ = Nothing
 instantiatePat [] term terms = Just (term, terms)
 instantiatePat (Var{} : pats) (Lambda s) (term:terms) = instantiatePat pats (instantiate1 term s) terms
-instantiatePat (Apply (_, con) pats1 : pats) s (term:terms) = case nf WHNF term of
-    Apply (Semantics _ (Con con')) terms1 | con == con' && length pats1 == length terms1 ->
-        instantiatePat (pats1 ++ pats) s (terms1 ++ terms)
+instantiatePat (Apply (_, con) pats1 : pats) s (term:terms) = case getCon (nf WHNF term) of
+    Just (con', terms1) | con == con' && length pats1 == length terms1 -> instantiatePat (pats1 ++ pats) s (terms1 ++ terms)
     _ -> Nothing
 instantiatePat _ _ _ = Nothing
 
-instantiateClauses :: Eq a => [([Term (s, SCon) t], Closed (Term Semantics))]
+instantiateClauses :: Eq a => [([Term (s, Int) t], Term Semantics a)]
     -> [Term Semantics a] -> Maybe (Term Semantics a, [Term Semantics a])
-instantiateClauses clauses terms = msum $ map (\(pats, Closed s) -> instantiatePat pats s terms) clauses
+instantiateClauses clauses terms = msum $ map (\(pats, s) -> instantiatePat pats s terms) clauses
 
-instantiateCaseClauses :: Eq a => [([Term (s, SCon) t], Term Semantics a)]
+instantiateCaseClauses :: Eq a => [([Term (s, Int) t], Term Semantics a)]
     -> [Term Semantics a] -> Maybe (Term Semantics a, [Term Semantics a])
 instantiateCaseClauses clauses terms = msum $ map (\(pats, s) -> instantiatePat pats s terms) clauses

@@ -5,7 +5,6 @@ module TypeChecking.Definitions
 import Data.Void
 
 import Syntax
-import Semantics.Value
 import Syntax.ErrorDoc
 import TypeChecking.Expressions
 import TypeChecking.Expressions.Utils
@@ -30,7 +29,7 @@ typeCheckDefs (DefType p@(pos, name) ty : defs) = case span (theSameAs name) def
         typeCheckDefs defs2
 typeCheckDefs (DefFun p@(pos, name) [] (Just expr) : defs) = do
     (term, ty) <- typeCheck expr Nothing
-    addFunctionCheck p (SynEval $ closed term) $ Closed (vacuous ty)
+    addFunctionCheck p ([([], closed term)]) $ Closed (vacuous ty)
     typeCheckDefs defs
 typeCheckDefs (DefFun (pos, name) [] Nothing : defs) = do
     warn [Error Other $ emsgLC pos "Expected right hand side" enull]

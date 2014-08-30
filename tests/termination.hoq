@@ -66,6 +66,10 @@ test14 : Nat -> I -> zero = zero
 test14 zero _ = path (\_ -> zero)
 test14 (suc n) i = path (\j -> test14 n i @ j)
 
+test14' : Nat -> I -> zero = zero
+test14' zero _ = path (\_ -> zero)
+test14' (suc n) i = path (\j -> test14' zero j @ i)
+
 test15 : Nat -> I -> zero = zero
 test15 zero _ = path (\_ -> zero)
 test15 (suc n) i = path (\j -> test15 (suc n) i @ j)

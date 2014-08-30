@@ -64,7 +64,7 @@ findSuspiciousPairs cs (pat@(Var var _) : pats) =
             TermsInCtx ctx terms -> [TermsInCtx2 ctx (iCon con : terms) (iCon con : ctxToVars ctx)]
 findSuspiciousPairs cs (pat@(Apply (name, con) args) : pats) =
     (case con of
-        DCon _ _ (PatEval conds) -> conds >>= \(cond,_) -> case unifyPatternLists args cond of
+        DCon _ _ conds -> conds >>= \(cond,_) -> case unifyPatternLists args cond of
             Nothing -> []
             Just args' -> [ext0 args $ patternsToTerms args']
         _ -> []) ++

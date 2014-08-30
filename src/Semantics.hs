@@ -2,7 +2,7 @@
 
 module Semantics
     ( Semantics(..), Type(..)
-    , SCon, SValue, SEval
+    , SValue, SEval
     , cmpTerms, pcmpTerms
     , dropOnePi, iCon, universe
     , path, interval
@@ -22,7 +22,6 @@ data Semantics = Semantics
     , value :: SValue
     }
 
-type SCon = Con (Closed (Term Semantics))
 type SValue = Value (Closed (Term Semantics))
 type SEval = Eval (Closed (Term Semantics))
 
@@ -54,10 +53,10 @@ cmpTerms t (Apply (Semantics (S.Lam (_:vs')) Lam) [Lambda t']) =
     flowerResult $ cmpTerms (apps (fmap (sequenceA . Free) t) [fmap Right bvar]) (Apply (Semantics (S.Lam vs') Lam) [fmap sequenceA t'])
 cmpTerms t (Apply (Semantics _ Lam) [t']) = cmpTerms t t'
 cmpTerms t@(Apply (Semantics _ Pi{}) _) t'@(Apply (Semantics _ Pi{}) _) = first (== Just EQ) (pcmpTerms t t')
-cmpTerms (Apply (Semantics _ (Con PCon)) ts) (Apply (Semantics _ (Con PCon)) ts') = cmpTermsList ts ts'
-cmpTerms (Apply (Semantics _ (Con PCon)) [Apply (Semantics _ Lam) [Lambda (Apply (Semantics _ At) [_, _, t, Var Bound []])]]) t' =
+cmpTerms (Apply (Semantics _ PCon) ts) (Apply (Semantics _ PCon) ts') = cmpTermsList ts ts'
+cmpTerms (Apply (Semantics _ PCon) [Apply (Semantics _ Lam) [Lambda (Apply (Semantics _ At) [_, _, t, Var Bound []])]]) t' =
     flowerResult $ cmpTerms (fmap sequenceA t) (fmap (sequenceA . Free) t')
-cmpTerms t (Apply (Semantics _ (Con PCon)) [Apply (Semantics _ Lam) [Lambda (Apply (Semantics _ At) [_, _, t', Var Bound []])]]) =
+cmpTerms t (Apply (Semantics _ PCon) [Apply (Semantics _ Lam) [Lambda (Apply (Semantics _ At) [_, _, t', Var Bound []])]]) =
     flowerResult $ cmpTerms (fmap (sequenceA . Free) t) (fmap sequenceA t')
 cmpTerms (Apply (Semantics _ At) (_:_:ts)) (Apply (Semantics _ At) (_:_:ts')) = cmpTermsList ts ts'
 cmpTerms (Apply s ts) (Apply s' ts') = if s == s'
@@ -67,10 +66,10 @@ cmpTerms (Apply s ts) (Apply s' ts') = if s == s'
     isInj :: Value t -> Bool
     isInj Lam = True
     isInj Pi{} = True
-    isInj (Con PCon{}) = True
-    isInj (Con ICon{}) = True
-    isInj (Con (DCon _ _ (PatEval []))) = True
-    isInj (Con DCon{}) = False
+    isInj PCon = True
+    isInj ICon{} = True
+    isInj (DCon _ _ []) = True
+    isInj DCon{} = False
     isInj CCon = True
     isInj FunCall{} = False
     isInj Universe{} = True
@@ -148,11 +147,11 @@ dropOnePi (Semantics (S.Pi e (v:vs)) s) a (Lambda b) = (v, Apply (Semantics (S.P
 dropOnePi _ _ b = ("_", fmap Free b)
 
 iCon :: ICon -> Term Semantics a
-iCon ILeft  = capply $ Semantics (S.Name S.Prefix $ S.Ident "left")  $ Con (ICon ILeft)
-iCon IRight = capply $ Semantics (S.Name S.Prefix $ S.Ident "right") $ Con (ICon IRight)
+iCon ILeft  = capply $ Semantics (S.Name S.Prefix $ S.Ident "left")  (ICon ILeft)
+iCon IRight = capply $ Semantics (S.Name S.Prefix $ S.Ident "right") (ICon IRight)
 
 path :: [Term Semantics a] -> Term Semantics a
-path = Apply $ Semantics (S.Name S.Prefix $ S.Ident "path") (Con PCon)
+path = Apply $ Semantics (S.Name S.Prefix $ S.Ident "path") PCon
 
 interval :: Term Semantics a
 interval = capply $ Semantics (S.Name S.Prefix $ S.Ident "I") Interval

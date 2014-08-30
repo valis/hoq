@@ -45,7 +45,7 @@ checkNull i t ((pat:pats) : cs) =
                 Apply (DCon _ n _) _ ->
                     let heads = pat : concatMap (\c -> if null c then [] else [head c]) cs
                     in DataType n $ heads >>= \p -> case p of
-                        Apply (DCon i _ (PatEval conds)) _ -> map (\(cond,_) -> (i, map (first snd) cond)) conds
+                        Apply (DCon i _ conds) _ -> map (\(cond,_) -> (i, map (first snd) cond)) conds
                         _ -> []
                 Lambda{} -> error "checkNull"
     in (t2, (pat, pats) : cs', b)
@@ -78,7 +78,7 @@ checkDataTypeClauses n conds clauses = getResults $ flip map [0 .. n-1] $ \j ->
         getPatterns (Apply _ pats) = pats
         getPatterns _              = replicate len $ Var (error "") []
     in map (\(i,(p,ps)) -> (i, getPatterns p ++ ps))
-           (filterWithIndex (\(c,_) -> c == Apply (DCon j n $ PatEval []) [] || c == Var (error "") []) clauses)
+           (filterWithIndex (\(c,_) -> c == Apply (DCon j n []) [] || c == Var (error "") []) clauses)
        ++ (conds >>= \(c,ps) -> if j == c then [(-1, ps)] else [])
   where
     getResults :: [[(Int, [Term (Con t) String])]] -> Result
