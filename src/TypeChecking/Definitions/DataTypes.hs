@@ -44,7 +44,7 @@ typeCheckDataType p@(_, dt) params cons conds = do
                 (term, _) <- typeCheckCtx (ctx +++ ctx') expr $ Just (nfType WHNF ty')
                 let scope = abstractTerm ctx' term
                 throwErrors $ checkTermination (Left i) pos (map (first $ patternToInt . snd) rtpats) ctx scope
-                return $ Just (conName, (pos, map (first $ second patternToInt) rtpats, scope))
+                return $ Just (conName, (pos, rtpats, scope))
             _ -> do
                 warn [notInScope pos "data constructor" (nameToString con)]
                 return Nothing

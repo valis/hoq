@@ -19,7 +19,7 @@ import TypeChecking.Context
 import TypeChecking.Expressions.Utils
 import TypeChecking.Expressions.Patterns
 -- import TypeChecking.Expressions.Conditions
--- import TypeChecking.Expressions.Coverage
+import TypeChecking.Expressions.Coverage
 import Normalization
 
 type Context = Ctx String (Type Semantics) Void
@@ -139,8 +139,8 @@ typeCheckCtx' ctx (Apply (pos, (S.Case (pat:pats))) (expr:terms)) mty = do
         sem = Semantics (S.Case $ map (first $ \(s,_) -> ((0,0), s)) $ pat':pats') $
             V.Case $ map (first $ second patternToInt) (pat':pats')
         terms' = term1' : terms1' ++ terms2'
-    {-
     warn $ coverageErrorMsg pos $ checkCoverage $ zipWith (\p1 p2 -> (termPos p1, [first snd p2])) (pat:pats) (pat':pats')
+    {-
     warn $ checkConditions ctx (Lambda $ Apply sem $ bvar : map (fmap Free) terms') $
         map (\(p,t) -> (pos,[p],t)) $ (pat',term1'):patsAndTerms
     -}

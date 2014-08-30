@@ -3,7 +3,6 @@
 module TypeChecking.Expressions.Patterns
     ( typeCheckPatterns, typeCheckPattern
     , TermsInCtx(..), TermInCtx(..)
-    , Pattern, patternToInt
     ) where
 
 import Data.Void
@@ -20,14 +19,6 @@ import Normalization
 
 data TermInCtx b  = forall a. Eq a => TermInCtx  (Ctx String (Type Semantics) b a) (Term Semantics a)
 data TermsInCtx b = forall a. Eq a => TermsInCtx (Ctx String (Type Semantics) b a) [Term Semantics a] (Type Semantics a)
-
-data Pattern = PatDCon Int Int SEval | PatPCon | PatICon ICon
-
-patternToInt :: Pattern -> Int
-patternToInt (PatDCon i _ _) = i
-patternToInt PatPCon = 0
-patternToInt (PatICon ILeft) = 0
-patternToInt (PatICon IRight) = 1
 
 unexpectedPatternErrorMsg :: Posn -> Ctx String (Type Semantics) Void a -> Term Semantics a -> Error
 unexpectedPatternErrorMsg pos ctx ty = Error TypeMismatch $
@@ -50,7 +41,7 @@ typeCheckPattern ctx _ (Apply (_, Ident "_") []) = return (False, Nothing, Var "
 typeCheckPattern ctx (Type ty@(Apply (Semantics _ (DataType dt n)) params) k) (Apply (pos, var) []) = do
     cons <- lift $ getConstructor var $ Just (dt, params)
     case (cons, var) of
-        ((con@(Apply (Semantics _ (DCon i _ conds)) _), _, Type conType _):_, _) -> if isDataType conType
+        ((con@(Apply (Semantics _ (DCon i _ _)) _), conds, _, Type conType _):_, _) -> if isDataType conType
             then return (False, Just $ TermInCtx Nil con, capply (var, PatDCon i n conds))
             else throwError [notEnoughArgs pos $ nameToPrefix var]
         (_, Ident var') -> return (False, Just $ TermInCtx (Snoc Nil var' $ Type ty k) bvar, cvar var')
@@ -65,7 +56,7 @@ typeCheckPattern ctx (Type ty k) (Apply (pos, Ident var) []) =
 typeCheckPattern ctx (Type (Apply (Semantics _ (DataType dt n)) params) _) (Apply (pos, conName) pats) = do
     cons <- lift $ getConstructor conName $ Just (dt, params)
     case cons of
-        (con@(Apply (Semantics _ (DCon i _ conds)) _), _, conType):_ -> do
+        (con@(Apply (Semantics _ (DCon i _ _)) _), conds, _, conType):_ -> do
             (bf, TermsInCtx ctx' terms (Type ty' _), rtpats) <- typeCheckPatterns ctx (nfType WHNF conType) pats
             case nf WHNF ty' of
                 Apply (Semantics _ DataType{}) _ ->

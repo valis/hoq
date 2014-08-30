@@ -15,7 +15,7 @@ import TypeChecking.Context
 import TypeChecking.Expressions
 import TypeChecking.Expressions.Utils
 import TypeChecking.Expressions.Patterns
--- import TypeChecking.Expressions.Coverage
+import TypeChecking.Expressions.Coverage
 -- import TypeChecking.Expressions.Conditions
 import TypeChecking.Definitions.Termination
 import Normalization
@@ -51,12 +51,10 @@ typeCheckFunction p@(pos, name) ety clauses = do
         eval = map (fmap $ \(Closed scope) -> Closed $ replaceFunCalls fcid fc scope) clauses'
         fc = Closed $ capply $ Semantics (Name Prefix name) (FunCall fcid eval)
     lift $ replaceFunction name eval cty
-    {-
     case checkCoverage (map snd clausesAndPats) of
         Nothing | length clausesAndPats /= length (filter (\(_,_,me) -> isJust me) clauses) -> return ()
         r -> warn (coverageErrorMsg pos r)
-    warn $ checkConditions Nil (open fc) $ map (\((p,Closed t),(pos',_)) -> (pos',p,t)) clausesAndPats
-    -}
+    -- warn $ checkConditions Nil (open fc) $ map (\((p,Closed t),(pos',_)) -> (pos',p,t)) clausesAndPats
 
 replaceFunCalls :: ID -> Closed (Term Semantics) -> Term Semantics a -> Term Semantics a
 replaceFunCalls name fc (Var a ts) = Var a $ map (replaceFunCalls name fc) ts
