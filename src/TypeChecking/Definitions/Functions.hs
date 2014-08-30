@@ -28,7 +28,7 @@ typeCheckFunction p@(pos, name) ety clauses = do
             Apply (Semantics _ (Universe k)) _ -> return k
             u' -> throwError [Error TypeMismatch $ emsgLC (termPos ety) "" $ pretty "Expected a type"
                                                                           $$ pretty "Actual type:" <+> prettyOpen Nil u']
-    let cty = Closed $ Type (vacuous ty) k
+    let cty = closed (Type ty k)
     fcid <- addFunctionCheck p [] cty
     clausesAndPats <- forW clauses $ \(pos',pats,mexpr) ->  do
         (bf, TermsInCtx ctx _ ty', rtpats) <- typeCheckPatterns Nil (Type (nf WHNF ty) k) pats

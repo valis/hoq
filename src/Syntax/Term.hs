@@ -7,7 +7,7 @@ module Syntax.Term
     , Closed(..), closed
     ) where
 
-import Data.Maybe
+import Data.Void
 import Data.Monoid
 import Data.Foldable
 import Data.Traversable
@@ -92,5 +92,5 @@ instantiate1 s t = t >>= \v -> case v of
     Bound   -> s
     Free a  -> return a
 
-closed :: Traversable f => f a -> Closed f
-closed t = Closed $ fromJust $ traverse (const Nothing) t
+closed :: Traversable f => f Void -> Closed f
+closed t = Closed (vacuous t)

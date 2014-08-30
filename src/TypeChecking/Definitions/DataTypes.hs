@@ -5,7 +5,6 @@ module TypeChecking.Definitions.DataTypes
 import Control.Monad
 import Data.List
 import Data.Bifunctor
-import Data.Void
 
 import Syntax as S
 import Semantics
@@ -25,7 +24,7 @@ typeCheckDataType :: Monad m => PName -> [Tele] -> [S.Con] -> [Clause] -> TCM m 
 typeCheckDataType p@(_, dt) params cons conds = do
     let lcons = length cons
     (SomeEq ctx, dataType@(Type dtTerm _)) <- typeCheckTelescope Nil params $ Type (universe Prop) (Set NoLevel)
-    dtID <- addDataTypeCheck p lcons $ Closed (vacuous dataType)
+    dtID <- addDataTypeCheck p lcons (closed dataType)
     cons' <- forW (zip cons [0..]) $ \(ConDef con@(pos, conName) tele, i) -> do
         (_, conType) <- typeCheckTelescope ctx tele $
             Type (Apply (Semantics (Name Prefix dt) $ DataType dtID lcons) $ ctxToVars ctx) Prop
@@ -36,24 +35,24 @@ typeCheckDataType p@(_, dt) params cons conds = do
     let ks = map (\(_, _, Type _ k) -> k) cons'
         mk = dmaximum $ (if lcons > 1 then Set NoLevel else Prop) : ks
     forM_ cons' $ \(con, i, Type ty k) -> addConstructorCheck con dtID i [] $
-        Closed $ Type (vacuous $ abstractTerm ctx $ replaceSort ty mk Nothing) mk
+        closed $ Type (abstractTerm ctx $ replaceSort ty mk Nothing) mk
     conds' <- forW conds $ \(Clause (pos, con) pats expr) ->
         case find (\((_, c), _, _) -> c == con) cons' of
             Just ((_, conName), i, ty) -> do
                 (bf, TermsInCtx ctx' _ ty', rtpats) <- typeCheckPatterns ctx (nfType WHNF ty) pats
                 when bf $ warn [Error Other $ emsgLC pos "Absurd patterns are not allowed in conditions" enull]
                 (term, _) <- typeCheckCtx (ctx +++ ctx') expr $ Just (nfType WHNF ty')
-                let scope = closed (abstractTerm ctx' term)
+                let scope = abstractTerm ctx' term
                 -- throwErrors $ checkTermination (Left i) pos (map (first snd) rtpats) scope
                 return $ Just (conName, (pos, map (first $ second patternToInt) rtpats, scope))
             _ -> do
                 warn [notInScope pos "data constructor" (nameToString con)]
                 return Nothing
-    lift $ replaceDataType dt lcons $ Closed $ Type (vacuous $ replaceSort dtTerm (succ mk) $ Just mk) mk
+    lift $ replaceDataType dt lcons $ closed $ Type (replaceSort dtTerm (succ mk) $ Just mk) mk
     let cons'' = map (\((_, con), i, ty) -> (con, i, ty, map snd $ filter (\(c,_) -> c == con) conds')) cons'
     forM_ cons'' $ \(con, i, Type ty k, conds'') ->
-        lift $ replaceConstructor con dtID i (map (\(_,b,c) -> (b,c)) conds'') $
-            Closed $ Type (vacuous $ abstractTerm ctx $ replaceSort ty mk Nothing) mk
+        lift $ replaceConstructor con dtID i (map (\(_,b,c) -> (b, closed $ abstractTerm ctx c)) conds'') $
+            closed $ Type (abstractTerm ctx $ replaceSort ty mk Nothing) mk
     {-
     forM_ cons'' $ \(con, i, _, conds'') ->
         let conTerm = Semantics (Name Prefix con) $ Con $ DCon i lcons $ map (\(_,b,c) -> (b,c)) conds''
