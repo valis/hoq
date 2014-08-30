@@ -17,7 +17,7 @@ import TypeChecking.Expressions.Utils
 import TypeChecking.Expressions.Patterns
 -- import TypeChecking.Expressions.Coverage
 -- import TypeChecking.Expressions.Conditions
--- import TypeChecking.Definitions.Termination
+import TypeChecking.Definitions.Termination
 import Normalization
 
 typeCheckFunction :: Monad m => PName -> Term (Posn, Syntax) Void
@@ -44,10 +44,9 @@ typeCheckFunction p@(pos, name) ety clauses = do
                 return Nothing
             (False, Just expr) -> do
                 (term, _) <- typeCheckCtx ctx expr $ Just (nfType WHNF ty')
-                let scope = closed (abstractTerm ctx term)
-                    rtpats' = map (first snd) rtpats
-                -- throwErrors $ checkTermination (Right fcid) pos' rtpats' scope
-                return $ Just ((map (first $ second patternToInt) rtpats, scope), (pos', rtpats'))
+                let scope = abstractTerm ctx term
+                throwErrors $ checkTermination (Right fcid) pos' (map (first $ patternToInt . snd) rtpats) Nil scope
+                return $ Just ((map (first $ second patternToInt) rtpats, closed scope), (pos', map (first snd) rtpats))
     let clauses' = map fst clausesAndPats
         eval = map (fmap $ \(Closed scope) -> Closed $ replaceFunCalls fcid fc scope) clauses'
         fc = Closed $ capply $ Semantics (Name Prefix name) (FunCall fcid eval)

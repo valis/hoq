@@ -17,7 +17,7 @@ import TypeChecking.Expressions.Utils
 import TypeChecking.Expressions.Patterns
 -- import TypeChecking.Expressions.Conditions
 import TypeChecking.Expressions.Telescopes
--- import TypeChecking.Definitions.Termination
+import TypeChecking.Definitions.Termination
 import Normalization
 
 typeCheckDataType :: Monad m => PName -> [Tele] -> [S.Con] -> [Clause] -> TCM m ()
@@ -43,7 +43,7 @@ typeCheckDataType p@(_, dt) params cons conds = do
                 when bf $ warn [Error Other $ emsgLC pos "Absurd patterns are not allowed in conditions" enull]
                 (term, _) <- typeCheckCtx (ctx +++ ctx') expr $ Just (nfType WHNF ty')
                 let scope = abstractTerm ctx' term
-                -- throwErrors $ checkTermination (Left i) pos (map (first snd) rtpats) scope
+                throwErrors $ checkTermination (Left i) pos (map (first $ patternToInt . snd) rtpats) ctx scope
                 return $ Just (conName, (pos, map (first $ second patternToInt) rtpats, scope))
             _ -> do
                 warn [notInScope pos "data constructor" (nameToString con)]
