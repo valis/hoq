@@ -139,8 +139,8 @@ typeCheckCtx' ctx (Apply (pos, (S.Case (pat:pats))) (expr:terms)) mty = do
         sem = Semantics (S.Case $ map (first $ \(s,_) -> ((0,0), s)) $ pat':pats') $ V.Case (pat':pats')
         terms' = term1' : terms1' ++ terms2'
     warn $ coverageErrorMsg pos $ checkCoverage $ zipWith (\p1 p2 -> (termPos p1, [first snd p2])) (pat:pats) (pat':pats')
-    warn $ checkConditions pos ctx (Lambda $ Apply sem $ bvar : map (fmap Free) terms') $
-        map (\(p,t) -> ([p],t)) $ (pat',term1'):patsAndTerms
+    warn $ checkConditions ctx (Lambda $ Apply sem $ bvar : map (fmap Free) terms') $
+        map (\(p,t) -> (pos,[p],t)) $ (pat',term1'):patsAndTerms
     return (Apply sem $ exprTerm:terms', ty, tab1 ++ tab2)
   where
     isStationary :: Term a b -> Maybe (Term a b)

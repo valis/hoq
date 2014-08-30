@@ -23,13 +23,13 @@ instance Eq (Term (s, Con t) a) where
     Var{} == Var{} = True
     _ == _ = False
 
-checkConditions :: Eq a => S.Posn -> Ctx String f Void a => Term Semantics a
-    -> [([Term (S.Name,SCon) String], Term Semantics a)] -> [Error]
-checkConditions pos ctx func cs =
-    maybeToList $ msum $ map (\(p, scope) -> fmap (msg ctx) $ checkPatterns func (map fst cs) p scope) cs
+checkConditions :: Eq a => Ctx String f Void a => Term Semantics a
+    -> [(S.Posn, [Term (S.Name,SCon) String], Term Semantics a)] -> [Error]
+checkConditions ctx func cs =
+    maybeToList $ msum $ map (\(pos, p, scope) -> fmap (msg pos ctx) $ checkPatterns func (map (\(_,b,_) -> b) cs) p scope) cs
   where
-    msg :: Ctx String f Void a -> ([String], Term Semantics a, Term Semantics a) -> Error
-    msg ctx (vs, t1, t2) = Error Conditions $ emsgLC pos "Conditions check failed:" $
+    msg :: S.Posn -> Ctx String f Void a -> ([String], Term Semantics a, Term Semantics a) -> Error
+    msg pos ctx (vs, t1, t2) = Error Conditions $ emsgLC pos "Conditions check failed:" $
         scopeToEDoc ctx vs t1 <+> pretty "is not equal to" <+> scopeToEDoc ctx vs t2
     
     scopeToEDoc :: Ctx String f Void a -> [String] -> Term Semantics a -> EDoc (Term S.Syntax)

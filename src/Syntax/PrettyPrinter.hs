@@ -59,7 +59,7 @@ opFixity :: Infix -> Infix -> Int -> Int
 opFixity ft ft' p = if ft == ft' then p else p + 1
 
 ppList :: [String] -> [Term Syntax Doc] -> Doc
-ppList ctx ts = hsep $ map (ppTermPrec 100 ctx) ts
+ppList ctx ts = hsep $ map (ppTermPrec 110 ctx) ts
 
 ppBound :: Int -> [String] -> [String] -> Term Syntax Doc -> Doc
 ppBound p ctx (v:vs) (Lambda t) =
@@ -86,7 +86,7 @@ renameName2 var ctx ctx' = if var `elem` ctx && var `elem` ctx'
     else (var:ctx,var)
 
 prec :: Syntax             -> Int
-prec (Name Prefix _)        = 100
+prec (Name Prefix _)        = 110
 prec (Name (Infix _ p) _)   = p
 prec At                     = 80
 prec PathImp{}              = 70
@@ -95,7 +95,8 @@ prec Lam{}                  = 50
 prec _                      = 0
 
 precTerm :: Term Syntax a -> Int
-precTerm Var{} = 100
-precTerm (Apply Name{} (_:_)) = 90
+precTerm Var{} = 110
+precTerm (Apply Name{} (_:_)) = 100
+precTerm (Apply Null [t]) = precTerm t
 precTerm (Apply s _) = prec s
 precTerm (Lambda t) = precTerm t

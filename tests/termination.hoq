@@ -69,3 +69,9 @@ test14 (suc n) i = path (\j -> test14 n i @ j)
 test15 : Nat -> I -> zero = zero
 test15 zero _ = path (\_ -> zero)
 test15 (suc n) i = path (\j -> test15 (suc n) i @ j)
+
+data List (A : Type) = nil | cons A (List A)
+
+test16 : (A : Type) -> List A -> Nat
+test16 A nil = zero
+test16 A (cons a as) = suc (test16 A as)

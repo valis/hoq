@@ -36,24 +36,24 @@ typeCheckDataType p@(pos, dt) params cons conds = mdo
             Just n | n > 1 -> throwError [Error Other $ emsgLC pos "Data type is not strictly positive" enull]
             _ -> return ()
         let conds'' = map snd $ filter (\(c,_) -> c == conName) conds'
-            conTerm = Semantics (Name Prefix conName) $ Con $ DCon i lcons (PatEval conds'')
+            conTerm = Semantics (Name Prefix conName) $ Con $ DCon i lcons $ PatEval $ map (\(_,b,c) -> (b,c)) conds''
         return $ Just (con, (i, conds'', conTerm), Type conType conSort)
     let ks = map (\(_, _, Type _ k) -> k) cons'
         mk = if null ks then Prop else dmaximum $ (if lcons > 1 then Set NoLevel else Prop) : ks
-    forM_ cons' $ \(con, (i, cs, _), Type ty k) -> addConstructorCheck con dtid i lcons (PatEval cs) [] $
-        Closed $ Type (vacuous $ abstractTerm ctx $ replaceSort ty mk Nothing) mk
-    conds' <- forW conds $ \(Clause (pos, con) pats expr) ->
+    forM_ cons' $ \(con, (i, cs, _), Type ty k) -> addConstructorCheck con dtid i lcons
+        (PatEval $ map (\(_,b,c) -> (b,c)) cs) $ Closed $ Type (vacuous $ abstractTerm ctx $ replaceSort ty mk Nothing) mk
+    conds' <- forW conds $ \(Clause (pos', con) pats expr) ->
         case find (\((_, c), _, _) -> c == con) cons' of
             Just ((_, conName), (i, _, _), ty) -> do
                 (bf, TermsInCtx ctx' _ ty', rtpats) <- typeCheckPatterns ctx (nfType WHNF ty) pats
-                when bf $ warn [Error Other $ emsgLC pos "Absurd patterns are not allowed in conditions" enull]
+                when bf $ warn [Error Other $ emsgLC pos' "Absurd patterns are not allowed in conditions" enull]
                 (term, _) <- typeCheckCtx (ctx +++ ctx') expr $ Just (nfType WHNF ty')
                 let scope = closed (abstractTerm ctx' term)
-                throwErrors $ checkTermination (Left i) pos (map (first snd) rtpats) scope
-                return $ Just (conName, (rtpats, scope))
+                throwErrors $ checkTermination (Left i) pos' (map (first snd) rtpats) scope
+                return $ Just (conName, (pos', rtpats, scope))
             _ -> do
-                warn [notInScope pos "data constructor" (nameToString con)]
+                warn [notInScope pos' "data constructor" (nameToString con)]
                 return Nothing
     lift $ replaceDataType dt lcons $ Closed $ Type (vacuous $ replaceSort dtTerm (succ mk) $ Just mk) mk
-    forM_ cons' $ \((pos, _), (_, conds, con), _) -> warn $
-        checkConditions pos Nil (capply con) $ map (\(p, Closed t) -> (p, t)) conds
+    forM_ cons' $ \(_, (_, conds, con), _) -> warn $
+        checkConditions Nil (capply con) $ map (\(pos', p, Closed t) -> (pos', p, t)) conds
