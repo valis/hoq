@@ -2,7 +2,6 @@ module TypeChecking.Definitions
     ( typeCheckDefs
     ) where
 
-import Control.Monad.Fix
 import Data.Void
 
 import Syntax
@@ -15,7 +14,7 @@ import TypeChecking.Definitions.DataTypes
 import TypeChecking.Definitions.Functions
 import TypeChecking.Monad
 
-typeCheckDefs :: MonadFix m => [Def] -> TCM m ()
+typeCheckDefs :: Monad m => [Def] -> TCM m ()
 typeCheckDefs [] = return ()
 typeCheckDefs (DefImport{} : defs) = typeCheckDefs defs
 typeCheckDefs (DefFixity{} : defs) = typeCheckDefs defs

@@ -5,7 +5,6 @@ module File.Load
 import System.IO
 import System.FilePath
 import Control.Monad
-import Control.Monad.Fix
 import Control.Monad.Trans
 import Control.Monad.State
 import Control.Exception
@@ -19,13 +18,13 @@ import TypeChecking.Expressions.Utils
 import TypeChecking.Definitions
 import TypeChecking.Monad
 
-loadFile :: (MonadIO m, MonadFix m) => String -> ScopeT m [(Name,Fixity)]
+loadFile :: MonadIO m => String -> ScopeT m [(Name,Fixity)]
 loadFile filename = do
     ((errs, _), (_, tab)) <- runStateT (runWarnT $ loadFile' [] filename) ([],[])
     liftIO $ mapM_ (\(fn, err) -> hPutStrLn stderr $ erenderWithFilename fn $ errorMsg err) errs
     return tab
 
-loadFile' :: (MonadIO m, MonadFix m) => [String] -> String
+loadFile' :: MonadIO m => [String] -> String
     -> WarnT [(String,Error)] (StateT ([String],[(Name,Fixity)]) (ScopeT m)) ()
 loadFile' checking filename = do
     mcnt <- liftIO $ fmap Right (B.readFile filename)
@@ -34,7 +33,7 @@ loadFile' checking filename = do
         Right cnt -> parseDefs filename checking cnt
         Left err  -> warn [(filename, Error Other $ emsg err enull)]
 
-parseDefs :: (MonadIO m, MonadFix m) => String -> [String] -> B.ByteString
+parseDefs :: MonadIO m => String -> [String] -> B.ByteString
     -> WarnT [(String,Error)] (StateT ([String],[(Name,Fixity)]) (ScopeT m)) ()
 parseDefs cur checking s = do
     defs <- mapWarnT (map $ \e -> (cur,e)) (pDefs s)

@@ -3,7 +3,7 @@
 module TypeChecking.Monad.Scope
     ( ScopeT, runScopeT
     , addFunction, addConstructor, addDataType
-    , replaceDataType, replaceFunction
+    , replaceDataType, replaceFunction, replaceConstructor
     , getDataType, getFunction
     , getConstructor, getEntry
     ) where
@@ -76,9 +76,17 @@ lookupDelete a' ((a,b):xs) | a == a' = Just (b, xs)
                            | otherwise = fmap (\(b',xs') -> (b', (a,b):xs')) (lookupDelete a' xs)
 
 addConstructor :: Monad m => Name -> ID -> Int -> Int -> SEval -> Closed (Type Semantics) -> ScopeT m ()
-addConstructor con dt i n e ty = ScopeT $ modify $ \scope -> scope
-    { constructors = ((con, dt), (Semantics (Name Prefix con) (Con $ DCon i n e), [], ty)) : constructors scope
+addConstructor con dt i n e ty = ScopeT $ modify (updScopeConstructor con dt i n e ty)
+
+updScopeConstructor :: Name -> ID -> Int -> Int -> SEval -> Closed (Type Semantics) -> ScopeState -> ScopeState
+updScopeConstructor con dt i n e ty scope = scope
+    { constructors = ((con, dt), (Semantics (Name Prefix con) $ Con $ DCon i n e, [], ty)) : constructors scope
     }
+
+replaceConstructor :: Monad m => Name -> ID -> Int -> Int -> SEval -> Closed (Type Semantics) -> ScopeT m ()
+replaceConstructor con dt i n e ty = ScopeT $ modify $ \scope -> case lookupDelete (con,dt) (constructors scope) of
+    Just (_, constructors') -> updScopeConstructor con dt i n e ty $ scope { constructors = constructors' }
+    _ -> updScopeConstructor con dt i n e ty scope
 
 getConstructor :: Monad m => Name -> Maybe ID -> ScopeT m [(Semantics, [[SEval]], Closed (Type Semantics))]
 getConstructor con (Just dt) = ScopeT $ liftM (maybeToList . lookup (con, dt) . constructors) get
