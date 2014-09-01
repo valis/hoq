@@ -82,7 +82,7 @@ addConstructor con dt i e ty = ScopeT $ modify (updScopeConstructor con dt i e t
 
 updScopeConstructor :: Name -> ID -> Int -> PEval -> Closed (Type Semantics) -> ScopeState -> ScopeState
 updScopeConstructor con dt i e ty scope =
-    let dcon = DCon i 0 $ map (first $ map $ first $ second patternToInt) e
+    let dcon = DCon i 0 $ map (first $ map $ first $ patternToInt . snd) e
         ent = (Semantics (Name Prefix con) dcon, map (map (first snd) . fst) e, [], ty)
     in scope { constructors = ((con, dt), ent) : constructors scope }
 

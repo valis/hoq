@@ -13,7 +13,7 @@ import Syntax.ErrorDoc
 import TypeChecking.Context
 import TypeChecking.Expressions.Utils
 
-checkTermination :: Either Int ID -> S.Posn -> [Term Int String] -> Ctx String f b a -> Term Semantics a -> [Error]
+checkTermination :: Either Int ID -> S.Posn -> [Term Int s] -> Ctx String f b a -> Term Semantics a -> [Error]
 checkTermination name pos pats ctx scope = map msg $ case scopeToCtx ctx scope of
     TermInCtx ctx term -> collectFunCalls ctx name term >>= \mts -> case mts of
         TermsInCtx ctx' terms -> if evalState (checkTerms ctx' pats terms) 0 == LT then [] else [pos]
@@ -21,7 +21,7 @@ checkTermination name pos pats ctx scope = map msg $ case scopeToCtx ctx scope o
     msg :: S.Posn -> Error
     msg pos = Error Other $ emsgLC pos "Termination check failed" enull
 
-checkTerm :: Ctx String f b a -> Term Int String -> Term Semantics a -> State Int Ordering
+checkTerm :: Ctx String f b a -> Term Int s -> Term Semantics a -> State Int Ordering
 checkTerm _ (Apply con _) (Apply (Semantics _ (ICon con')) []) | con == iConToInt con' = return EQ
   where
     iConToInt ILeft  = 0
@@ -45,7 +45,7 @@ checkTerm ctx (Apply i pats) term = do
         _ -> return GT
 checkTerm _ _ _ = return GT
 
-checkTerms :: Ctx String f b a -> [Term Int String] -> [Term Semantics a] -> State Int Ordering
+checkTerms :: Ctx String f b a -> [Term Int s] -> [Term Semantics a] -> State Int Ordering
 checkTerms _ [] _ = return EQ
 checkTerms _ _ [] = return EQ
 checkTerms ctx (pat:pats) (term:terms) = do

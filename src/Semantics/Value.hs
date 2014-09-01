@@ -6,7 +6,6 @@ module Semantics.Value
     , Pattern(..), patternToInt
     ) where
 
-import Syntax(Name)
 import Syntax.Term
 
 data Value t
@@ -25,11 +24,11 @@ data Value t
     | Coe
     | Iso
     | Squeeze
-    | Case [Term (Name, Int) String]
+    | Case [Term Int String]
 
 data ICon = ILeft | IRight deriving Eq
 
-type Eval t = [([Term (Name, Int) String], t)]
+type Eval t = [([Term Int String], t)]
 
 type ID = Int
 data Level = Level Int | NoLevel
@@ -53,9 +52,9 @@ instance Eq (Value t) where
     Squeeze == Squeeze = True
     Case pats == Case pats' = and (zipWith cmpPats pats pats')
       where
-        cmpPats :: Term (s, Int) u -> Term (s', Int) u' -> Bool
+        cmpPats :: Term Int u -> Term Int u' -> Bool
         cmpPats Var{} Var{} = True
-        cmpPats (Apply (_,c) pats) (Apply (_,c') pats') = c == c' && and (zipWith cmpPats pats pats')
+        cmpPats (Apply c pats) (Apply c' pats') = c == c' && and (zipWith cmpPats pats pats')
         cmpPats _ _ = False
     _ == _ = False
 

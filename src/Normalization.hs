@@ -93,19 +93,19 @@ getCon (Apply (Semantics _ PCon         ) terms) = Just (0, terms)
 getCon (Apply (Semantics _ (DCon i k _ )) terms) = Just (i, drop k terms)
 getCon _                                         = Nothing
 
-instantiatePat :: Eq a => [Term (s, Int) t] -> Term Semantics a -> [Term Semantics a] -> Maybe (Term Semantics a, [Term Semantics a])
+instantiatePat :: Eq a => [Term Int t] -> Term Semantics a -> [Term Semantics a] -> Maybe (Term Semantics a, [Term Semantics a])
 instantiatePat [] Lambda{} _ = Nothing
 instantiatePat [] term terms = Just (term, terms)
 instantiatePat (Var{} : pats) (Lambda s) (term:terms) = instantiatePat pats (instantiate1 term s) terms
-instantiatePat (Apply (_, con) pats1 : pats) s (term:terms) = case getCon (nf WHNF term) of
+instantiatePat (Apply con pats1 : pats) s (term:terms) = case getCon (nf WHNF term) of
     Just (con', terms1) | con == con' && length pats1 == length terms1 -> instantiatePat (pats1 ++ pats) s (terms1 ++ terms)
     _ -> Nothing
 instantiatePat _ _ _ = Nothing
 
-instantiateClauses :: Eq a => [([Term (s, Int) t], Term Semantics a)]
+instantiateClauses :: Eq a => [([Term Int t], Term Semantics a)]
     -> [Term Semantics a] -> Maybe (Term Semantics a, [Term Semantics a])
 instantiateClauses clauses terms = msum $ map (\(pats, s) -> instantiatePat pats s terms) clauses
 
-instantiateCaseClauses :: Eq a => [([Term (s, Int) t], Term Semantics a)]
+instantiateCaseClauses :: Eq a => [([Term Int t], Term Semantics a)]
     -> [Term Semantics a] -> Maybe (Term Semantics a, [Term Semantics a])
 instantiateCaseClauses clauses terms = msum $ map (\(pats, s) -> instantiatePat pats s terms) clauses

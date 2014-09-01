@@ -137,7 +137,7 @@ typeCheckCtx' ctx (Apply (pos, (S.Case (pat:pats))) (expr:terms)) mty = do
         else typeCheckApps pos Nothing ctx terms2 type1' mty
     let (pats',terms1') = unzip patsAndTerms
         sem = Semantics (S.Case $ map (first $ \(s,_) -> ((0,0), s)) $ pat':pats') $
-            V.Case $ map (first $ second patternToInt) (pat':pats')
+            V.Case $ map (first $ patternToInt . snd) (pat':pats')
         terms' = term1' : terms1' ++ terms2'
     warn $ coverageErrorMsg pos $ checkCoverage $ zipWith (\p1 p2 -> (termPos p1, [first snd p2])) (pat:pats) (pat':pats')
     {-

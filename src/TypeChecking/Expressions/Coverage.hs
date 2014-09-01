@@ -7,7 +7,7 @@ import Data.List
 import Syntax.Term
 import Semantics.Value hiding (Value(..))
 
-data PatternType t = Interval | DataType Int [(Int, [Term Pattern String])] | Path | Unknown
+data PatternType = Interval | DataType Int [(Int, [Term Pattern String])] | Path | Unknown
 
 data OK = OK | Incomplete deriving Eq
 data Result = Result OK [Int]
@@ -26,8 +26,8 @@ checkClauses clauses =
         (Just i, Result Incomplete u) -> Result OK (i:u)
         (_, r) -> r
 
-checkNull :: Int -> PatternType t -> [[Term Pattern String]] ->
-    (PatternType t, [(Term Pattern String, [Term Pattern String])], Maybe Int)
+checkNull :: Int -> PatternType -> [[Term Pattern String]] ->
+    (PatternType, [(Term Pattern String, [Term Pattern String])], Maybe Int)
 checkNull _ t [] = (t, [], Nothing)
 checkNull i t ([] : cs) = (t, [], Just i)
 checkNull i t ((pat:pats) : cs) =
@@ -44,7 +44,7 @@ checkNull i t ((pat:pats) : cs) =
                 Lambda{} -> error "checkNull"
     in (t2, (pat, pats) : cs', b)
 
-checkNonEmptyClauses :: PatternType t -> [(Term Pattern String, [Term Pattern String])] -> Result
+checkNonEmptyClauses :: PatternType -> [(Term Pattern String, [Term Pattern String])] -> Result
 checkNonEmptyClauses _                  []      = Result Incomplete []
 checkNonEmptyClauses Interval           clauses = checkIntervalClauses clauses
 checkNonEmptyClauses (DataType n conds) clauses = checkDataTypeClauses n conds clauses
