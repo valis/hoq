@@ -1,7 +1,8 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, RankNTypes #-}
 
 module TypeChecking.Monad.Scope
     ( ScopeT, runScopeT
+    , ParameterizedClause(..)
     , addFunction, addConstructor, addDataType
     , replaceDataType, replaceFunction, replaceConstructor
     , getDataType, getFunction
@@ -13,17 +14,18 @@ import Control.Monad.Fix
 import Control.Monad.State
 import Control.Applicative
 import Data.Maybe
-import Data.Bifunctor
 
-import Syntax
+import Syntax hiding (Clause)
 import Semantics
 import Semantics.Value
+import Semantics.Pattern(Clause)
 
-type PEval = [([Term (Name, Pattern) String], Closed (Term Semantics))]
+data ParameterizedClause = ParameterizedClause (forall a. [Term Semantics a] -> Clause a)
+
 data ScopeState = ScopeState
     { functions    :: [(Name, (Semantics, Closed (Type Semantics)))]
     , dataTypes    :: [(Name, (Semantics, Closed (Type Semantics)))]
-    , constructors :: [((Name, ID), (Semantics, [[Term Pattern String]], [[SEval]], Closed (Type Semantics)))]
+    , constructors :: [((Name, ID), (Semantics, [ParameterizedClause], [[SEval]], Closed (Type Semantics)))]
     , counter      :: ID
     }
 
@@ -77,22 +79,20 @@ lookupDelete _ [] = Nothing
 lookupDelete a' ((a,b):xs) | a == a' = Just (b, xs)
                            | otherwise = fmap (\(b',xs') -> (b', (a,b):xs')) (lookupDelete a' xs)
 
-addConstructor :: Monad m => Name -> ID -> Int -> PEval -> Closed (Type Semantics) -> ScopeT m ()
-addConstructor con dt i e ty = ScopeT $ modify (updScopeConstructor con dt i e ty)
+addConstructor :: Monad m => Name -> ID -> Int -> [ParameterizedClause] -> SEval -> Closed (Type Semantics) -> ScopeT m ()
+addConstructor con dt i e e' ty = ScopeT $ modify (updScopeConstructor con dt i e e' ty)
 
-updScopeConstructor :: Name -> ID -> Int -> PEval -> Closed (Type Semantics) -> ScopeState -> ScopeState
-updScopeConstructor con dt i e ty scope =
-    let dcon = DCon i 0 $ map (first $ map $ first $ patternToInt . snd) e
-        ent = (Semantics (Name Prefix con) dcon, map (map (first snd) . fst) e, [], ty)
-    in scope { constructors = ((con, dt), ent) : constructors scope }
+updScopeConstructor :: Name -> ID -> Int -> [ParameterizedClause] -> SEval -> Closed (Type Semantics) -> ScopeState -> ScopeState
+updScopeConstructor con dt i e e' ty scope = scope
+    { constructors = ((con, dt), (Semantics (Name Prefix con) $ DCon i 0 e', e, [], ty)) : constructors scope }
 
-replaceConstructor :: Monad m => Name -> ID -> Int -> PEval -> Closed (Type Semantics) -> ScopeT m ()
-replaceConstructor con dt i e ty = ScopeT $ modify $ \scope -> case lookupDelete (con,dt) (constructors scope) of
-    Just (_, constructors') -> updScopeConstructor con dt i e ty $ scope { constructors = constructors' }
-    _ -> updScopeConstructor con dt i e ty scope
+replaceConstructor :: Monad m => Name -> ID -> Int -> [ParameterizedClause] -> SEval -> Closed (Type Semantics) -> ScopeT m ()
+replaceConstructor con dt i e e' ty = ScopeT $ modify $ \scope -> case lookupDelete (con,dt) (constructors scope) of
+    Just (_, constructors') -> updScopeConstructor con dt i e e' ty $ scope { constructors = constructors' }
+    _ -> updScopeConstructor con dt i e e' ty scope
 
 getConstructor :: Monad m => Name -> Maybe (ID, [Term Semantics a])
-    -> ScopeT m [(Term Semantics a, [[Term Pattern String]], [[SEval]], Type Semantics a)]
+    -> ScopeT m [(Term Semantics a, [ParameterizedClause], [[SEval]], Type Semantics a)]
 getConstructor con (Just (dt, params)) = ScopeT $ do
     scope <- get
     return $ map (\(Semantics syn (DCon i _ e), cs, es, Closed (Type ty k)) ->
@@ -110,7 +110,7 @@ getEntry v dt = ScopeT $ do
     cons  <- unScopeT $ getConstructor v dt
     scope <- get
     let dts = if isNothing dt then maybeToList $ lookup v $ dataTypes scope else []
-    return $ map (\(s, Closed t) -> (capply s, [],t)) (maybeToList (lookup v $ functions scope) ++ dts)
+    return $ map (\(s, Closed t) -> (capply s, [], t)) (maybeToList (lookup v $ functions scope) ++ dts)
             ++ if null dts then map (\(a,_,c,d) -> (a,c,d)) cons else []
 
 runScopeT :: Monad m => ScopeT m a -> m a

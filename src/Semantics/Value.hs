@@ -3,7 +3,6 @@ module Semantics.Value
     , Level(..), level
     , ICon(..), ID, Sort(..)
     , POrd(..), DOrd(..), lessOrEqual
-    , Pattern(..), patternToInt
     ) where
 
 import Syntax.Term
@@ -142,11 +141,3 @@ instance Enum Sort where
     fromEnum Prop = -1
     fromEnum (Set l) = fromEnum l
     fromEnum (TypeK l) = fromEnum l
-
-data Pattern = PatDCon Int Int [[Term Pattern String]] | PatPCon | PatICon ICon
-
-patternToInt :: Pattern -> Int
-patternToInt (PatDCon i _ _) = i
-patternToInt PatPCon = 0
-patternToInt (PatICon ILeft) = 0
-patternToInt (PatICon IRight) = 1

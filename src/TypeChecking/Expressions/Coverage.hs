@@ -1,3 +1,5 @@
+{-# LANGUAGE GADTs #-}
+
 module TypeChecking.Expressions.Coverage
     ( checkCoverage
     ) where
@@ -6,17 +8,30 @@ import Data.List
 
 import Syntax.Term
 import Semantics.Value hiding (Value(..))
+import qualified Semantics.Pattern as P
 
+data Pattern = PatDCon Int Int [[Term Pattern String]] | PatPCon | PatICon ICon
 data PatternType = Interval | DataType Int [(Int, [Term Pattern String])] | Path | Unknown
 
 data OK = OK | Incomplete deriving Eq
 data Result = Result OK [Int]
 
-checkCoverage :: [((Int,Int),[Term Pattern String])] -> Maybe [(Int,Int)]
+checkCoverage :: [((Int,Int), P.Clause b)] -> Maybe [(Int,Int)]
 checkCoverage []      = Just []
-checkCoverage clauses = case checkClauses (map snd clauses) of
+checkCoverage clauses = case checkClauses $ map (\(_, P.Clause pats _) -> patternsToTerms pats) clauses of
     Result Incomplete _ -> Nothing
     Result OK used -> Just $ map (\i -> fst $ clauses !! i) $ [0 .. length clauses - 1] \\ used
+  where
+    patternToTerm :: P.Pattern b a -> Term Pattern String
+    patternToTerm (P.PatDCon i n cs pats) =
+        Apply (PatDCon i n $ map (\(P.Clause ps _) -> patternsToTerms ps) cs) (patternsToTerms pats)
+    patternToTerm (P.PatPCon pat) = Apply PatPCon [patternToTerm pat]
+    patternToTerm (P.PatICon con) = capply (PatICon con)
+    patternToTerm (P.PatVar var) = cvar var
+    
+    patternsToTerms :: P.Patterns b a -> [Term Pattern String]
+    patternsToTerms P.Nil = []
+    patternsToTerms (P.Cons p ps) = patternToTerm p : patternsToTerms ps
 
 checkClauses :: [[Term Pattern String]] -> Result
 checkClauses [] = Result Incomplete []

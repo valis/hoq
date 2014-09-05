@@ -4,7 +4,6 @@ module TypeChecking.Expressions
 
 import Control.Monad
 import Data.Either
-import Data.Maybe
 import Data.Void
 import Data.Bifunctor
 import Data.Bitraversable
@@ -13,9 +12,10 @@ import Data.Traversable(sequenceA)
 import Syntax as S
 import Semantics
 import Semantics.Value as V
+import Semantics.Pattern as P
 import Syntax.ErrorDoc
 import TypeChecking.Monad
-import TypeChecking.Context
+import TypeChecking.Context as C
 import TypeChecking.Expressions.Utils
 import TypeChecking.Expressions.Patterns
 -- import TypeChecking.Expressions.Conditions
@@ -43,7 +43,7 @@ prettyOpen' ctx term = epretty $ fmap (pretty . either id absurd) $ close ctx $
     first syntax term >>= fmap Right . either (const $ capply $ Name Prefix $ Ident "?") return
 
 typeCheck :: Monad m => Term (Posn, Syntax) Void -> Maybe (Type Semantics Void) -> TCM m (Term Semantics Void, Type Semantics Void)
-typeCheck = typeCheckCtx Nil
+typeCheck = typeCheckCtx C.Nil
 
 typeCheckCtx :: (Monad m, Eq a) => Context a -> Term (Posn, Syntax) Void
     -> Maybe (Type Semantics a) -> TCM m (Term Semantics a, Type Semantics a)
@@ -113,38 +113,34 @@ typeCheckCtx' ctx (Apply (pos, S.At) (b:c:ts)) mty = do
             return (Apply (Semantics S.At V.At) (b':c':r1:r2:tes), ty, tab)
         t1' -> throwError [Error TypeMismatch $ emsgLC pos "" $ pretty "Expected type: Path"
                                                              $$ pretty "Actual type:" <+> prettyOpen ctx t1']
-typeCheckCtx' ctx (Apply (pos, (S.Case (pat:pats))) (expr:terms)) mty = do
+typeCheckCtx' ctx (Apply (pos, syn@(S.Case (pat:pats))) (expr:terms)) mty = do
     (exprTerm, exprType) <- typeCheckCtx ctx expr Nothing
     let (term1:terms1,terms2) = splitAt (length pats + 1) terms
         typeCheckClause mtype (pat,term) = do
-            (bf, mt, pat') <- typeCheckPattern ctx exprType pat
+            (bf, TermInCtx ctx' pat' _) <- typeCheckPattern ctx exprType pat
             when bf $ warn [Error Other $ emsgLC (termPos pat) "Absurd patterns are not allowed in case constructions" enull]
-            case fromMaybe (TermInCtx (Snoc Nil "_" exprType) $ error "") mt of
-                TermInCtx ctx' _ -> do
-                    (te, Type ty k, tab) <- typeCheckCtx' (ctx +++ ctx') term $ fmap (fmap $ fmap $ liftBase ctx') mtype
-                    let tab' = tab >>= \(kp, t) -> case sequenceA $ fmap (toBase ctx') t of
-                                                    Nothing -> []
-                                                    Just t' -> [(kp, t')]
-                    return (pat', abstractTerm ctx' te, Type (abstractTerm ctx' ty) k, tab')
-    (pat', term1', Type type1 k, tab1) <- typeCheckClause (if null terms2 then mty else Nothing) (pat,term1)
+            (te, Type ty k, tab) <- typeCheckCtx' (ctx C.+++ ctx') term $ fmap (fmap $ fmap $ liftBase ctx') mtype
+            let tab' = tab >>= \(kp, t) -> case sequenceA $ fmap (toBase ctx') t of
+                                            Nothing -> []
+                                            Just t' -> [(kp, t')]
+            return (P.Clause (Cons pat' P.Nil) te, Type (abstractTerm ctx' ty) k, tab')
+    (clause, Type type1 k, tab1) <- typeCheckClause (if null terms2 then mty else Nothing) (pat,term1)
     type1' <- case isStationary type1 of
                 Nothing -> throwError [Error Other $
                     emsgLC pos "Type of expressions in case constructions cannot be dependent" enull]
                 Just r  -> return (Type r k)
-    patsAndTerms <- mapM (liftM (\(p,t,_,_) -> (p,t)) . typeCheckClause (Just $ nfType WHNF $ fmap Right type1')) (zip pats terms1)
+    clauses <- mapM (liftM (\(p,_,_) -> p) . typeCheckClause (Just $ nfType WHNF $ fmap Right type1')) (zip pats terms1)
     (terms2', ty, tab2) <- if null terms2
         then return ([], type1', [])
         else typeCheckApps pos Nothing ctx terms2 type1' mty
-    let (pats',terms1') = unzip patsAndTerms
-        sem = Semantics (S.Case $ map (first $ \(s,_) -> ((0,0), s)) $ pat':pats') $
-            V.Case $ map (first $ patternToInt . snd) (pat':pats')
-        terms' = term1' : terms1' ++ terms2'
-    warn $ coverageErrorMsg pos $ checkCoverage $ zipWith (\p1 p2 -> (termPos p1, [first snd p2])) (pat:pats) (pat':pats')
+    let sem = Semantics syn $ V.Case $ map (head . fst . clauseToEval) (clause:clauses)
+        terms' = map (snd . clauseToEval) (clause:clauses)
+    warn $ coverageErrorMsg pos $ checkCoverage $ zipWith (\p1 p2 -> (termPos p1, p2)) (pat:pats) (clause:clauses)
     {-
     warn $ checkConditions ctx (Lambda $ Apply sem $ bvar : map (fmap Free) terms') $
         map (\(p,t) -> (pos,[p],t)) $ (pat',term1'):patsAndTerms
     -}
-    return (Apply sem $ exprTerm:terms', ty, tab1 ++ tab2)
+    return (Apply sem $ exprTerm : terms' ++ terms2', ty, tab1 ++ tab2)
   where
     isStationary :: Term a b -> Maybe (Term a b)
     isStationary (Lambda t) = case sequenceA t of

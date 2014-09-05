@@ -12,9 +12,10 @@ import Control.Monad.Trans(lift)
 import TypeChecking.Expressions.Utils
 import TypeChecking.Monad.Warn
 import TypeChecking.Monad.Scope
-import Syntax
+import Syntax hiding (Clause)
 import Semantics
 import Semantics.Value
+import Semantics.Pattern
 import Syntax.ErrorDoc
 
 type EDocM = WarnT [Error]
@@ -37,9 +38,8 @@ addDataTypeCheck (pos, var) n ty = do
     md <- lift (getDataType var)
     if null mf && null md then lift (addDataType var n ty) else throwError [multipleDeclaration pos var]
 
-addConstructorCheck :: Monad m => PName -> ID -> Int
-    -> [([Term (Name, Pattern) String], Closed (Term Semantics))] -> Closed (Type Semantics) -> TCM m ()
-addConstructorCheck (pos, var) dt i e ty = do
+addConstructorCheck :: Monad m => PName -> ID -> Int -> [ParameterizedClause] -> SEval -> Closed (Type Semantics) -> TCM m ()
+addConstructorCheck (pos, var) dt i e e' ty = do
     mf <- lift (getFunction var)
     mc <- lift $ getConstructor var $ Just (dt,[])
-    if null mf && null mc then lift (addConstructor var dt i e ty) else warn [multipleDeclaration pos var]
+    if null mf && null mc then lift (addConstructor var dt i e e' ty) else warn [multipleDeclaration pos var]

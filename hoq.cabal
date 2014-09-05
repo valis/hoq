@@ -32,7 +32,7 @@ executable hoq
                        Syntax, Syntax.Term, Syntax.Parser,
                        Syntax.PrettyPrinter, Syntax.ErrorDoc,
                        Syntax.Parser.Lexer, Syntax.Parser.Parser,
-                       Semantics, Semantics.Value,
+                       Semantics, Semantics.Value, Semantics.Pattern,
                        TypeChecking.Definitions.Records,
                        TypeChecking.Definitions.DataTypes,
                        TypeChecking.Definitions.Functions,
