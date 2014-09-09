@@ -1,8 +1,7 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, RankNTypes #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module TypeChecking.Monad.Scope
     ( ScopeT, runScopeT
-    , ParameterizedClause(..)
     , addFunction, addConstructor, addDataType
     , replaceDataType, replaceFunction, replaceConstructor
     , getDataType, getFunction
@@ -18,14 +17,12 @@ import Data.Maybe
 import Syntax hiding (Clause)
 import Semantics
 import Semantics.Value
-import Semantics.Pattern(Clause)
-
-data ParameterizedClause = ParameterizedClause (forall a. [Term Semantics a] -> Clause a)
+import Semantics.Pattern
 
 data ScopeState = ScopeState
     { functions    :: [(Name, (Semantics, Closed (Type Semantics)))]
     , dataTypes    :: [(Name, (Semantics, Closed (Type Semantics)))]
-    , constructors :: [((Name, ID), (Semantics, [ParameterizedClause], [[SEval]], Closed (Type Semantics)))]
+    , constructors :: [((Name, ID), (Semantics, [Closed Clause], [[SEval]], Closed (Type Semantics)))]
     , counter      :: ID
     }
 
@@ -79,20 +76,21 @@ lookupDelete _ [] = Nothing
 lookupDelete a' ((a,b):xs) | a == a' = Just (b, xs)
                            | otherwise = fmap (\(b',xs') -> (b', (a,b):xs')) (lookupDelete a' xs)
 
-addConstructor :: Monad m => Name -> ID -> Int -> [ParameterizedClause] -> SEval -> Closed (Type Semantics) -> ScopeT m ()
-addConstructor con dt i e e' ty = ScopeT $ modify (updScopeConstructor con dt i e e' ty)
+addConstructor :: Monad m => Name -> ID -> Int -> [Closed Clause] -> Closed (Type Semantics) -> ScopeT m ()
+addConstructor con dt i e ty = ScopeT $ modify (updScopeConstructor con dt i e ty)
 
-updScopeConstructor :: Name -> ID -> Int -> [ParameterizedClause] -> SEval -> Closed (Type Semantics) -> ScopeState -> ScopeState
-updScopeConstructor con dt i e e' ty scope = scope
-    { constructors = ((con, dt), (Semantics (Name Prefix con) $ DCon i 0 e', e, [], ty)) : constructors scope }
+updScopeConstructor :: Name -> ID -> Int -> [Closed Clause] -> Closed (Type Semantics) -> ScopeState -> ScopeState
+updScopeConstructor con dt i e ty scope =
+    let cs = map (\(Closed c) -> (fst $ clauseToEval c, Closed $ snd $ clauseToEval c)) e
+    in scope { constructors = ((con, dt), (Semantics (Name Prefix con) $ DCon i 0 cs, e, [], ty)) : constructors scope }
 
-replaceConstructor :: Monad m => Name -> ID -> Int -> [ParameterizedClause] -> SEval -> Closed (Type Semantics) -> ScopeT m ()
-replaceConstructor con dt i e e' ty = ScopeT $ modify $ \scope -> case lookupDelete (con,dt) (constructors scope) of
-    Just (_, constructors') -> updScopeConstructor con dt i e e' ty $ scope { constructors = constructors' }
-    _ -> updScopeConstructor con dt i e e' ty scope
+replaceConstructor :: Monad m => Name -> ID -> Int -> [Closed Clause] -> Closed (Type Semantics) -> ScopeT m ()
+replaceConstructor con dt i e ty = ScopeT $ modify $ \scope -> case lookupDelete (con,dt) (constructors scope) of
+    Just (_, constructors') -> updScopeConstructor con dt i e ty $ scope { constructors = constructors' }
+    _ -> updScopeConstructor con dt i e ty scope
 
 getConstructor :: Monad m => Name -> Maybe (ID, [Term Semantics a])
-    -> ScopeT m [(Term Semantics a, [ParameterizedClause], [[SEval]], Type Semantics a)]
+    -> ScopeT m [(Term Semantics a, [Closed Clause], [[SEval]], Type Semantics a)]
 getConstructor con (Just (dt, params)) = ScopeT $ do
     scope <- get
     return $ map (\(Semantics syn (DCon i _ e), cs, es, Closed (Type ty k)) ->

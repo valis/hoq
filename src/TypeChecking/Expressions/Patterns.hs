@@ -42,8 +42,8 @@ typeCheckPattern ctx ty (Apply (_, Ident "_") []) = return (False, TermInCtx (Sn
 typeCheckPattern ctx ty@(Type (Apply (Semantics _ (DataType dt n)) params) _) (Apply (pos, var) []) = do
     cons <- lift $ getConstructor var $ Just (dt, params)
     case (cons, var) of
-        ((con@(Apply (Semantics _ (DCon i _ _)) _), conds, _, Type conType _):_, _) -> if isDataType conType
-            then return (False, TermInCtx C.Nil (PatDCon i n (map (\(ParameterizedClause c) -> c params) conds) P.Nil) con)
+        ((con@(Apply (Semantics syn (DCon i _ _)) _), conds, _, Type conType _):_, _) -> if isDataType conType
+            then return (False, TermInCtx C.Nil (PatDCon syn i n conds params P.Nil) con)
             else throwError [notEnoughArgs pos $ nameToPrefix var]
         (_, Ident var') -> return (False, TermInCtx (Snoc C.Nil var' ty) (PatVar var') bvar)
         _               -> throwError [unexpectedPatternErrorMsg pos ctx $ getType ty]
@@ -56,13 +56,11 @@ typeCheckPattern ctx ty (Apply (pos, Ident var) []) = return (False, TermInCtx (
 typeCheckPattern ctx (Type (Apply (Semantics _ (DataType dt n)) params) _) (Apply (pos, conName) pats) = do
     cons <- lift $ getConstructor conName $ Just (dt, params)
     case cons of
-        (con@(Apply (Semantics _ (DCon i _ _)) _), conds, _, conType):_ -> do
+        (con@(Apply (Semantics syn (DCon i _ _)) _), conds, _, conType):_ -> do
             (bf, TermsInCtx ctx' rtpats terms (Type ty' _)) <- typeCheckPatterns ctx (nfType WHNF conType) pats
             case nf WHNF ty' of
                 Apply (Semantics _ DataType{}) _ ->
-                    let term = apps (fmap (liftBase ctx') con) terms
-                        pattern = PatDCon i n (map (\(ParameterizedClause c) -> c params) conds) rtpats
-                    in return (bf, TermInCtx ctx' pattern term)
+                    return (bf, TermInCtx ctx' (PatDCon syn i n conds params rtpats) $ apps (fmap (liftBase ctx') con) terms)
                 _ -> throwError [notEnoughArgs pos $ nameToPrefix conName]
         _ -> throwError [notInScope pos "data constructor" $ nameToPrefix conName]
 typeCheckPattern ctx (Type ty _) (Apply (pos, _) _) = throwError [unexpectedPatternErrorMsg pos ctx ty]

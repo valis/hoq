@@ -4,8 +4,9 @@ module Semantics
     ( Semantics(..), Type(..)
     , SValue, SEval
     , cmpTerms, pcmpTerms
-    , dropOnePi, iCon, universe
-    , path, interval
+    , dropOnePi, universe
+    , iConSem, iCon
+    , pathSem, path, interval
     , module Syntax.Term
     ) where
 
@@ -146,12 +147,18 @@ dropOnePi (Semantics (S.Pi _ [v]) _) a (Lambda b) = (v, b)
 dropOnePi (Semantics (S.Pi e (v:vs)) s) a (Lambda b) = (v, Apply (Semantics (S.Pi e vs) s) [fmap Free a, b])
 dropOnePi _ _ b = ("_", fmap Free b)
 
+iConSem :: ICon -> Semantics
+iConSem ILeft  = Semantics (S.Name S.Prefix $ S.Ident "left")  (ICon ILeft)
+iConSem IRight = Semantics (S.Name S.Prefix $ S.Ident "right") (ICon IRight)
+
 iCon :: ICon -> Term Semantics a
-iCon ILeft  = capply $ Semantics (S.Name S.Prefix $ S.Ident "left")  (ICon ILeft)
-iCon IRight = capply $ Semantics (S.Name S.Prefix $ S.Ident "right") (ICon IRight)
+iCon = capply . iConSem
+
+pathSem :: Semantics
+pathSem = Semantics (S.Name S.Prefix $ S.Ident "path") PCon
 
 path :: [Term Semantics a] -> Term Semantics a
-path = Apply $ Semantics (S.Name S.Prefix $ S.Ident "path") PCon
+path = Apply pathSem
 
 interval :: Term Semantics a
 interval = capply $ Semantics (S.Name S.Prefix $ S.Ident "I") Interval

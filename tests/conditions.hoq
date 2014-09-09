@@ -18,12 +18,12 @@ test4 right x = x
 test4 _ (suc x) = suc x
 test4 _ zero = suc zero
 
-data Foo = Foo I | Bar Nat
+data Test1 = Test1 I | Test2 Nat
 
-test5 : Foo -> Nat
-test5 (Foo left) = zero
-test5 (Bar x) = x
-test5 (Foo _) = suc zero
+test5 : Test1 -> Nat
+test5 (Test1 left) = zero
+test5 (Test2 x) = x
+test5 (Test1 _) = suc zero
 
 data Z = positive Nat | negative Nat with
     negative zero = positive zero
@@ -32,15 +32,15 @@ test6 : Z -> Z
 test6 (positive x) = positive (suc x)
 test6 (negative x) = negative (suc x)
 
-data Foo' = Foo' Nat | Bar' Nat with
-    Foo' (suc x) = Bar' x
+data Test2 = Test1 Nat | Test2 Nat with
+    Test1 (suc x) = Test2 x
 
-test7 : Foo' -> Nat
-test7 (Foo' zero) = zero
-test7 (Foo' (suc zero)) = suc zero
-test7 (Foo' (suc (suc x))) = suc (suc x)
-test7 (Bar' zero) = suc zero
-test7 (Bar' (suc x)) = suc x
+test7 : Test2 -> Nat
+test7 (Test1 zero) = zero
+test7 (Test1 (suc zero)) = suc zero
+test7 (Test1 (suc (suc x))) = suc (suc x)
+test7 (Test2 zero) = suc zero
+test7 (Test2 (suc x)) = suc x
 
 test8 : Z -> Nat -> Nat -> Nat
 test8 (positive x) y z = y
@@ -49,3 +49,11 @@ test8 (negative x) y z = y
 test9 : Z -> Nat -> Nat -> Nat
 test9 (positive x) y z = x
 test9 (negative x) y z = z
+
+data Test3 = Test1 Nat Nat | Test2 Nat with
+    Test1 zero = Test2
+
+test10 : Test3 -> Nat
+test10 (Test1 x zero) = zero
+test10 (Test1 x (suc y)) = x
+test10 (Test2 x) = x

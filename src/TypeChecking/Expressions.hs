@@ -18,7 +18,7 @@ import TypeChecking.Monad
 import TypeChecking.Context as C
 import TypeChecking.Expressions.Utils
 import TypeChecking.Expressions.Patterns
--- import TypeChecking.Expressions.Conditions
+import TypeChecking.Expressions.Conditions
 import TypeChecking.Expressions.Coverage
 import Normalization
 
@@ -136,10 +136,8 @@ typeCheckCtx' ctx (Apply (pos, syn@(S.Case (pat:pats))) (expr:terms)) mty = do
     let sem = Semantics syn $ V.Case $ map (head . fst . clauseToEval) (clause:clauses)
         terms' = map (snd . clauseToEval) (clause:clauses)
     warn $ coverageErrorMsg pos $ checkCoverage $ zipWith (\p1 p2 -> (termPos p1, p2)) (pat:pats) (clause:clauses)
-    {-
     warn $ checkConditions ctx (Lambda $ Apply sem $ bvar : map (fmap Free) terms') $
-        map (\(p,t) -> (pos,[p],t)) $ (pat',term1'):patsAndTerms
-    -}
+        zipWith (\p1 p2 -> (termPos p1, p2)) (pat:pats) (clause:clauses)
     return (Apply sem $ exprTerm : terms' ++ terms2', ty, tab1 ++ tab2)
   where
     isStationary :: Term a b -> Maybe (Term a b)
@@ -166,6 +164,7 @@ typeCheckName ctx pos ft var ts mty = do
                         Left kp -> do
                             mt <- lift $ getEntry var Nothing
                             if null mt then return [] else throwError (inferArgErrorMsg kp)
+                    Just (Type ty _) -> lift $ getEntry var $ fmap (\dtID -> (dtID, [])) (dropPis ty)
                     _ -> lift $ getEntry var Nothing
             case mt of
                 [] -> liftM Right (typeCheckKeyword ctx pos (nameToString var) ts mty)
@@ -183,6 +182,12 @@ typeCheckName ctx pos ft var ts mty = do
             (tes, ty', tab) <- typeCheckApps pos (Just var) ctx ts ty mty
             return (apps te tes, ty', tab)
         Right res -> return res
+  where
+    dropPis :: Eq a => Term Semantics a -> Maybe ID
+    dropPis (Apply (Semantics _ V.Pi{}) [_,t]) = dropPis (nf WHNF t)
+    dropPis (Lambda t) = dropPis t
+    dropPis (Apply (Semantics _ (DataType dtID _)) []) = Just dtID
+    dropPis _ = Nothing
 
 typeCheckKeyword :: (Monad m, Eq a) => Context a -> Posn -> String -> [Term (Posn, Syntax) Void]
     -> Maybe (Type Semantics (Either Argument a)) -> TCM m (Term Semantics a, Type Semantics a, [(Argument, Term Semantics a)])

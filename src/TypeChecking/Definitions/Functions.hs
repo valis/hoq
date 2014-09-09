@@ -16,7 +16,7 @@ import TypeChecking.Expressions
 import TypeChecking.Expressions.Utils
 import TypeChecking.Expressions.Patterns
 import TypeChecking.Expressions.Coverage
--- import TypeChecking.Expressions.Conditions
+import TypeChecking.Expressions.Conditions
 import TypeChecking.Definitions.Termination
 import Normalization
 
@@ -55,7 +55,7 @@ typeCheckFunction p@(pos, name) ety clauses = do
     case checkCoverage (map snd clausesAndPats) of
         Nothing | length clausesAndPats /= length (filter (\(_,_,me) -> isJust me) clauses) -> return ()
         r -> warn (coverageErrorMsg pos r)
-    -- warn $ checkConditions C.Nil (open fc) $ map (\((p,Closed t),(pos',_)) -> (pos',p,t)) clausesAndPats
+    warn $ checkConditions C.Nil (open fc) (map snd clausesAndPats)
 
 replaceFunCalls :: ID -> Closed (Term Semantics) -> Term Semantics a -> Term Semantics a
 replaceFunCalls name fc (Var a ts) = Var a $ map (replaceFunCalls name fc) ts

@@ -4,15 +4,19 @@ module Semantics.Pattern
     ( Pattern(..), Patterns(..)
     , Clause(..), clauseToEval
     , patternToTerm, patternsToTerms
+    , abstractTermPat, abstractTermPats
+    , liftBasePat, liftBasePats
+    , patternVars, patternsVars
     , patternsLength, (+++)
     , Split(..), patternsSplitAt
     ) where
 
+import Syntax(Syntax)
 import Semantics
 import Semantics.Value
 
 data Pattern b a where
-    PatDCon :: Int -> Int -> [Clause b] -> Patterns b a -> Pattern b a
+    PatDCon :: Syntax -> Int -> Int -> [Closed Clause] -> [Term Semantics b] -> Patterns b a -> Pattern b a
     PatPCon :: Pattern b a -> Pattern b a
     PatICon :: ICon -> Pattern b b
     PatVar  :: String -> Pattern b (Scoped b)
@@ -24,8 +28,21 @@ data Patterns b a where
 data Clause b where
     Clause :: Patterns b a -> Term Semantics a -> Clause b
 
+instance Functor Clause where
+    fmap f (Clause Nil term) = Clause Nil (fmap f term)
+    fmap f (Clause (Cons (PatDCon v i n cs params ps) pats) term) = case fmap f $ Clause (ps +++ pats) term of
+        Clause pats' term' -> case patternsSplitAt pats' (patternsLength ps) of
+            Split pats1 pats2 -> Clause (Cons (PatDCon v i n cs (map (fmap f) params) pats1) pats2) term'
+    fmap f (Clause (Cons (PatPCon pat) pats) term) = case fmap f $ Clause (Cons pat pats) term of
+        Clause (Cons pat' pats') term' -> Clause (Cons (PatPCon pat') pats') term'
+        _ -> error "fmap: Clause"
+    fmap f (Clause (Cons (PatICon con) pats) term) = case fmap f (Clause pats term) of
+        Clause pats' term' -> Clause (Cons (PatICon con) pats') term'
+    fmap f (Clause (Cons (PatVar  var) pats) term) = case fmap (fmap f) (Clause pats term) of
+        Clause pats' term' -> Clause (Cons (PatVar var) pats') term'
+
 patternToTerm :: Pattern b a -> Term Int String
-patternToTerm (PatDCon i _ _ ps) = Apply i (patternsToTerms ps)
+patternToTerm (PatDCon _ i _ _ _ ps) = Apply i (patternsToTerms ps)
 patternToTerm (PatPCon p) = Apply 0 [patternToTerm p]
 patternToTerm (PatICon ILeft) = capply 0
 patternToTerm (PatICon IRight) = capply 1
@@ -43,10 +60,30 @@ abstractTermPats Nil t = t
 abstractTermPats (Cons p ps) t = abstractTermPat p (abstractTermPats ps t)
 
 abstractTermPat :: Pattern b a -> Term Semantics a -> Term Semantics b
-abstractTermPat (PatDCon _ _ _ ps) t = abstractTermPats ps t
+abstractTermPat (PatDCon _ _ _ _ _ ps) t = abstractTermPats ps t
 abstractTermPat (PatPCon p) t = abstractTermPat p t
 abstractTermPat PatICon{} t = t
 abstractTermPat PatVar{} t = Lambda t
+
+liftBasePat :: Pattern b a -> b -> a
+liftBasePat (PatDCon _ _ _ _ _ pats) = liftBasePats pats
+liftBasePat (PatPCon pat) = liftBasePat pat
+liftBasePat PatICon{} = id
+liftBasePat PatVar{} = Free
+
+liftBasePats :: Patterns b a -> b -> a
+liftBasePats Nil = id
+liftBasePats (Cons pat pats) = liftBasePats pats . liftBasePat pat
+
+patternVars :: Pattern b a -> [String]
+patternVars (PatDCon _ _ _ _ _ pats) = patternsVars pats
+patternVars (PatPCon pat) = patternVars pat
+patternVars PatICon{} = []
+patternVars (PatVar var) = [var]
+
+patternsVars :: Patterns b a -> [String]
+patternsVars Nil = []
+patternsVars (Cons pat pats) = patternVars pat ++ patternsVars pats
 
 patternsLength :: Patterns a b -> Int
 patternsLength Nil = 0

@@ -92,5 +92,5 @@ instantiate1 s t = t >>= \v -> case v of
     Bound   -> s
     Free a  -> return a
 
-closed :: Traversable f => f Void -> Closed f
+closed :: Functor f => f Void -> Closed f
 closed t = Closed (vacuous t)

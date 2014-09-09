@@ -24,7 +24,7 @@ typeCheckRecord recPName@(recPos, recName) params mcon fields clauses = do
         Just n | n > 0 -> throwError [Error Other $ emsgLC recPos "Record types cannot be recursive" enull]
         _ -> return ()
     case mcon of
-        Just con -> addConstructorCheck con recID 0 [] [] $
+        Just con -> addConstructorCheck con recID 0 [] $
             Closed $ Type (vacuous $ abstractTerm ctx $ replaceSort conType conSort Nothing) conSort
         _ -> return ()
     lift $ replaceDataType recName 1 $ Closed $ Type (vacuous $ replaceSort recTerm (succ conSort) $ Just conSort) conSort
