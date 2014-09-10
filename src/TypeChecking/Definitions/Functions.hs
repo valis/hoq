@@ -33,7 +33,7 @@ typeCheckFunction p@(pos, name) ety clauses = do
     clausesAndPats <- forW clauses $ \(pos',pats,mexpr) ->  do
         (bf, TermsInCtx ctx rtpats _ ty') <- typeCheckPatterns C.Nil (Type (nf WHNF ty) k) pats
         case (bf,mexpr) of
-            (True,  Nothing) -> return Nothing
+            (True,  Nothing) -> return $ Just (Nothing, (pos', P.Clause rtpats $ error ""))
             (False, Nothing) -> do
                 let msg = "The right hand side can be omitted only if the absurd pattern is given"
                 warn [Error Other $ emsgLC pos' msg enull]
@@ -41,21 +41,21 @@ typeCheckFunction p@(pos, name) ety clauses = do
             (True, Just expr) -> do
                 let msg = "If the absurd pattern is given the right hand side must be omitted"
                 warn [Error Other $ emsgLC (termPos expr) msg enull]
-                return Nothing
+                return $ Just (Nothing, (pos', P.Clause rtpats $ error ""))
             (False, Just expr) -> do
                 (term, _) <- typeCheckCtx ctx expr $ Just (nfType WHNF ty')
                 let scope = abstractTerm ctx term
                     rtterms = patternsToTerms rtpats
                 throwErrors $ checkTermination (Right fcid) pos' rtterms C.Nil scope
-                return $ Just ((rtterms, closed scope), (pos', P.Clause rtpats term))
-    let clauses' = map fst clausesAndPats
+                return $ Just (Just (rtterms, closed scope), (pos', P.Clause rtpats term))
+    let clauses' = map fst clausesAndPats >>= maybe [] return
         eval = map (fmap $ \(Closed scope) -> Closed $ replaceFunCalls fcid fc scope) clauses'
         fc = Closed $ capply $ Semantics (Name Prefix name) (FunCall fcid eval)
     lift $ replaceFunction name eval cty
     case checkCoverage (map snd clausesAndPats) of
         Nothing | length clausesAndPats /= length (filter (\(_,_,me) -> isJust me) clauses) -> return ()
         r -> warn (coverageErrorMsg pos r)
-    warn $ checkConditions C.Nil (open fc) (map snd clausesAndPats)
+    warn $ checkConditions C.Nil (open fc) $ clausesAndPats >>= \(ma,b) -> maybe [] (const [b]) ma
 
 replaceFunCalls :: ID -> Closed (Term Semantics) -> Term Semantics a -> Term Semantics a
 replaceFunCalls name fc (Var a ts) = Var a $ map (replaceFunCalls name fc) ts
