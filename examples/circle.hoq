@@ -46,9 +46,6 @@ encode _ p = coe (\i -> code (p @ i)) left (positive zero) right
 assoc : (p q r : base = base) -> (p * q) * r = p * (q * r)
 assoc p q = J (\x s -> (p * q) * s = p * (q * s)) idp
 
-map : {A B : Type} (f : A -> B) -> {a a' : A} -> a = a' -> f a = f a'
-map _ _ f a _ p = transport (\x -> f a = f x) p idp
-
 wind-succ-loop-neg : (x : Nat) -> wind (pred (negative x)) * path loop = wind (negative x)
 wind-succ-loop-neg x =
     assoc (wind (negative x)) (inv (path loop)) (path loop) *

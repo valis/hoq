@@ -23,6 +23,9 @@ inv _ a _ p = transport (\x -> x = a) p idp
 inv-comp : {A : Type} {a a' : A} (p : a = a') -> inv p * p = idp
 inv-comp _ _ _ p = J (\_ q -> inv q * q = idp) idp p
 
+map : {A B : Type} (f : A -> B) -> {a a' : A} -> a = a' -> f a = f a'
+map _ _ f a _ p = transport (\x -> f a = f x) p idp
+
 data QED = qed
 
 (!) : {A : Type} -> (a : A) -> QED -> a = a
