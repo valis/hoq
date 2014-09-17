@@ -44,10 +44,9 @@ typeCheckFunction p@(pos, name) ety clauses = do
                 return $ Just (Nothing, (pos', P.Clause rtpats $ error ""))
             (False, Just expr) -> do
                 (term, _) <- typeCheckCtx ctx expr $ Just (nfType WHNF ty')
-                let scope = abstractTerm ctx term
-                    rtterms = patternsToTerms rtpats
-                throwErrors $ checkTermination (Right fcid) pos' rtterms C.Nil scope
-                return $ Just (Just (rtterms, closed scope), (pos', P.Clause rtpats term))
+                let rtterms = patternsToTerms rtpats
+                throwErrors $ checkTermination (Function fcid) pos' rtterms ctx term
+                return $ Just (Just (rtterms, closed $ abstractTerm ctx term), (pos', P.Clause rtpats term))
     let clauses' = map fst clausesAndPats >>= maybe [] return
         eval = map (fmap $ \(Closed scope) -> Closed $ replaceFunCalls fcid fc scope) clauses'
         fc = Closed $ capply $ Semantics (Name Prefix name) (FunCall fcid eval)

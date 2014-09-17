@@ -3,6 +3,7 @@
 module Semantics.Pattern
     ( Pattern(..), Patterns(..)
     , Clause(..), clauseToEval
+    , abstractClause1
     , patternToTerm, patternsToTerms
     , abstractTermPat, abstractTermPats
     , liftBasePat, liftBasePats
@@ -40,6 +41,20 @@ instance Functor Clause where
         Clause pats' term' -> Clause (Cons (PatICon con) pats') term'
     fmap f (Clause (Cons (PatVar  var) pats) term) = case fmap (fmap f) (Clause pats term) of
         Clause pats' term' -> Clause (Cons (PatVar var) pats') term'
+
+abstractClause1 :: Clause (Scoped b) -> Clause b
+abstractClause1 (Clause Nil term) = Clause Nil (Lambda term)
+abstractClause1 (Clause (Cons (PatDCon v i n cs params ps) pats) term) =
+    case abstractClause1 $ Clause (ps +++ pats) term of
+        Clause pats' term' -> case patternsSplitAt pats' (patternsLength ps) of
+            Split pats1 pats2 -> Clause (Cons (PatDCon v i n cs (map Lambda params) pats1) pats2) term'
+abstractClause1 (Clause (Cons (PatPCon pat) pats) term) = case abstractClause1 $ Clause (Cons pat pats) term of
+    Clause (Cons pat' pats') term' -> Clause (Cons (PatPCon pat') pats') term'
+    _ -> error "abstractClause1"
+abstractClause1 (Clause (Cons (PatICon con) pats) term) = case abstractClause1 (Clause pats term) of
+    Clause pats' term' -> Clause (Cons (PatICon con) pats') term'
+abstractClause1 (Clause (Cons (PatVar  var) pats) term) = case abstractClause1 (Clause pats term) of
+    Clause pats' term' -> Clause (Cons (PatVar var) pats') term'
 
 patternToTerm :: Pattern b a -> Term Int String
 patternToTerm (PatDCon _ i _ _ _ ps) = Apply i (patternsToTerms ps)

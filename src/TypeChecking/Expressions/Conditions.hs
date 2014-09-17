@@ -59,7 +59,7 @@ findSuspiciousPairs cs (Cons pat@(PatVar var) pats) =
     check con = if anyICon con cs
                 then case abstractPats1 pats of
                         Some pats' -> let (ctx,terms) = patsToTerms $ appsPats pats' [iCon con]
-                                      in [TermsInCtx2 ctx (iCon con : terms) (iCon con : ctxToVars ctx)]
+                                      in [TermsInCtx2 ctx (iCon con : terms) (iCon con : map return (ctxToVars ctx))]
                 else []
     
     anyICon :: ICon -> [Some Clause] -> Bool
@@ -92,24 +92,24 @@ findSuspiciousPairs cs (Cons pat pats) =
                           fapps t = apps (fmap (liftBase ctx) $ abstractTerm ctx2 t) terms
                       in TermsInCtx2 (ctx C.+++ ctx1)
                             (fmap (liftBase ctx1) (Apply (patToSemantics pat) $ map fapps terms2) : terms1)
-                            (map (fmap $ liftBase ctx1) terms ++ ctxToVars ctx1)
+                            (map (fmap $ liftBase ctx1) terms ++ map return (ctxToVars ctx1))
     
     ext1 (TermsInCtx2 ctx terms1 terms2) = case instantiatePats (fst $ patToTerm pat) ctx terms2 pats of
         Some pats' -> let (ctx',terms') = patsToTerms pats'
                       in TermsInCtx2 (ctx C.+++ ctx') (fmap (liftBase ctx') (Apply (patToSemantics pat) terms1) : terms')
-                                                      (map (fmap $ liftBase ctx') terms2 ++ ctxToVars ctx')
+                                                      (map (fmap $ liftBase ctx') terms2 ++ map return (ctxToVars ctx'))
     
     ext2 :: (Ctx String (Term Semantics) b c, [Term Semantics c])
         -> TermsInCtx2 (Term Semantics) c -> TermsInCtx2 (Term Semantics) b
     ext2 (ctx, terms) (TermsInCtx2 ctx' terms1 terms2) =
         TermsInCtx2 (ctx C.+++ ctx') (fmap (liftBase ctx') (Apply (patToSemantics pat) terms) : terms1)
-                                     (map (fmap $ liftBase ctx') (ctxToVars ctx) ++ terms2)
+                                     (map (fmap $ liftBase ctx') (map return $ ctxToVars ctx) ++ terms2)
 
 unifyPatterns :: Patterns b a -> Patterns b c -> Maybe (TermsInCtx (Term Semantics) b)
 unifyPatterns P.Nil P.Nil = Just $ TermsInCtx C.Nil []
 unifyPatterns pats1 P.Nil =
     let ctx = fst (patsToTerms pats1)
-    in Just $ TermsInCtx ctx (ctxToVars ctx)
+    in Just $ TermsInCtx ctx $ map return (ctxToVars ctx)
 unifyPatterns P.Nil pats2 =
     let (ctx,terms) = patsToTerms pats2
     in Just $ TermsInCtx ctx terms
@@ -126,7 +126,7 @@ unifyPatterns (Cons PatVar{} pats1) (Cons pat2 pats2) =
 unifyPatterns (Cons pat1 pats1) (Cons PatVar{} pats2) =
     let (ctx1,term) = patToTerm pat1
         mapTerms (TermsInCtx ctx2 terms) = TermsInCtx (ctx1 C.+++ ctx2) $
-            map (fmap $ liftBase ctx2) (ctxToVars ctx1) ++ terms
+            map (fmap $ liftBase ctx2) (map return $ ctxToVars ctx1) ++ terms
     in case abstractPats1 pats2 of
         Some pats2' -> case fmapPats (liftBase ctx1) pats2' of
             Some pats2'' -> fmap mapTerms $ unifyPatterns pats1 (appsPats pats2'' [term])

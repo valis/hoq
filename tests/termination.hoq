@@ -79,3 +79,35 @@ data List (A : Type) = nil | cons A (List A)
 test16 : (A : Type) -> List A -> Nat
 test16 A nil = zero
 test16 A (cons a as) = suc (test16 A as)
+
+record Test2 where
+    field1 : Nat -> Nat
+  with
+    field1 (suc n) = field1 n
+
+record Test3 where
+    field1 : Nat -> Nat
+  with
+    field1 (suc n) = field1 (suc n)
+
+record Test4 where
+    field1 : Nat -> Nat
+    field2 : Nat
+  with
+    field1 (suc n) = field1 field2
+
+record Test5 where
+    field1 : Nat -> Nat
+    field2 : Nat
+  with
+    field1 (suc n) = field2
+
+record Test6 (k : Nat) where
+    field1 : Nat -> Nat
+  with
+    field1 (suc n) = field1 k
+
+record Test7 (k : Nat) where
+    field1 : Nat -> Nat
+  with
+    field1 (suc n) = k

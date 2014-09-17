@@ -1,10 +1,11 @@
 {-# LANGUAGE GADTs, ExistentialQuantification #-}
 
 module TypeChecking.Definitions.Termination
-    ( checkTermination
+    ( checkTermination, CT(..)
     ) where
 
 import Control.Monad.State
+import Data.Foldable(toList)
 
 import qualified Syntax as S
 import Semantics.Value
@@ -13,10 +14,16 @@ import Syntax.ErrorDoc
 import TypeChecking.Context
 import TypeChecking.Expressions.Utils
 
-checkTermination :: Either Int ID -> S.Posn -> [Term Int s] -> Ctx String f b a -> Term Semantics a -> [Error]
-checkTermination name pos pats ctx scope = map msg $ case scopeToCtx ctx scope of
-    TermInCtx ctx term -> collectFunCalls ctx name term >>= \mts -> case mts of
-        TermsInCtx ctx' terms -> if evalState (checkTerms ctx' pats terms) 0 == LT then [] else [pos]
+data CT a = Constructor Int | Function ID | Variable a deriving Eq
+
+instance Functor CT where
+    fmap _ (Constructor i) = Constructor i
+    fmap _ (Function i) = Function i
+    fmap f (Variable a) = Variable (f a)
+
+checkTermination :: Eq a => CT a -> S.Posn -> [Term Int s] -> Ctx String f b a -> Term Semantics a -> [Error]
+checkTermination name pos pats ctx term = map msg $ collectFunCalls ctx name term >>= \mts -> case mts of
+    TermsInCtx ctx' terms -> if evalState (checkTerms ctx' pats terms) (length (pats >>= toList) - 1) == LT then [] else [pos]
   where
     msg :: S.Posn -> Error
     msg pos = Error Other $ emsgLC pos "Termination check failed" enull
@@ -28,8 +35,8 @@ checkTerm _ (Apply con _) (Apply (Semantics _ (ICon con')) []) | con == iConToIn
     iConToInt IRight = 1
 checkTerm ctx Var{} (Var v []) = do
     s <- get
-    put (s + 1)
-    return $ if s == lengthCtx ctx - 1 - index ctx v then EQ else GT
+    put (s - 1)
+    return $ if s == index ctx v then EQ else GT
   where
     index :: Ctx String f b a -> a -> Int
     index Nil _ = 0
@@ -57,14 +64,11 @@ checkTerms ctx (pat:pats) (term:terms) = do
 data TermInCtx  s f b = forall a. TermInCtx  (Ctx s f b a) (Term Semantics a)
 data TermsInCtx s f b = forall a. TermsInCtx (Ctx s f b a) [Term Semantics a]
 
-scopeToCtx :: Ctx s f b a -> Term Semantics a -> TermInCtx s f b
-scopeToCtx ctx (Lambda t) = scopeToCtx (Snoc ctx (error "") $ error "") t
-scopeToCtx ctx t = TermInCtx ctx t
-
-collectFunCalls :: Ctx String f b a -> Either Int ID -> Term Semantics a -> [TermsInCtx String f b]
-collectFunCalls ctx name (Lambda t) = collectFunCalls (Snoc ctx (error "") $ error "") name t
-collectFunCalls ctx name (Var _ as) = as >>= collectFunCalls ctx name
+collectFunCalls :: Eq a => Ctx String f b a -> CT a -> Term Semantics a -> [TermsInCtx String f b]
+collectFunCalls ctx name (Lambda t) = collectFunCalls (Snoc ctx (error "") $ error "") (fmap Free name) t
+collectFunCalls ctx name (Var a as) = (if name == Variable a then [TermsInCtx ctx as] else [])
+    ++ (as >>= collectFunCalls ctx name)
 collectFunCalls ctx name (Apply a as) = (case a of
-    Semantics _ (DCon name' _ _) | name == Left name' -> [TermsInCtx ctx as]
-    Semantics _ (FunCall name' _) | name == Right name' -> [TermsInCtx ctx as]
+    Semantics _ (DCon name' _ _) | name == Constructor name' -> [TermsInCtx ctx as]
+    Semantics _ (FunCall name' _) | name == Function name' -> [TermsInCtx ctx as]
     _ -> []) ++ (as >>= collectFunCalls ctx name)
