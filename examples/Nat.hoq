@@ -1,0 +1,39 @@
+import Paths
+
+data Nat = zero | suc Nat
+
+record True where constructor true
+data False
+data Wrap (A : Prop) = wrap A
+
+unWrap : {A : Prop} -> Wrap A -> A
+unWrap _ (wrap a) = a
+
+(<=) : Nat -> Nat -> Prop
+(<=) zero _ = True
+(<=) (suc _) zero = False
+(<=) (suc k) (suc n) = Wrap (k <= n)
+
+{-
+data (<=) (k n : Nat) where
+    (<=) zero _ = zero
+    (<=) (suc k) (suc n) = suc (k <= n)
+-}
+
+trans : {n k m : Nat} -> n <= k -> k <= m -> n <= m
+trans zero _ _ _ q = true
+trans (suc n) zero _ () _
+trans (suc n) (suc k) zero _ q = q
+trans (suc n) (suc k) (suc m) (wrap p) (wrap q) = wrap (trans p q)
+
+trans-le-eq : {n k m : Nat} -> n <= k -> k = m -> n <= m
+trans-le-eq n _ _ p q = transport (\x -> n <= x) q p
+
+id-le : {n : Nat} -> n <= n
+id-le zero = true
+id-le (suc n) = wrap id-le
+
+suc-le : {n k : Nat} -> n <= k -> n <= suc k
+suc-le zero _ _ = true
+suc-le (suc n) zero ()
+suc-le (suc n) (suc k) (wrap p) = wrap (suc-le p)

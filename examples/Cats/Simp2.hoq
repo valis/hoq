@@ -1,0 +1,20 @@
+import Nat
+
+data OPMap (k n : Nat) = OPMap (f : Fin k -> Fin n) ((i j : Nat) -> i <= j -> (p : j <= k) -> proj1)
+
+compose : {k m n : Nat} -> OPMap k m -> OPMap m n -> OPMap k n
+compose _ _ _ f g = _
+
+data (~>) (k n : Nat)
+    = id (k = n)
+    | comp {m : Nat} (k ~> m) (m ~> n)
+    | prim (OPMap k n)
+    | comp-prim (m : Nat) (OPMap k m) (OPMap m n) I
+    | trunc (x y : k ~> n) (x = y) (x = y) I I
+  with
+    comp-prim _ f g left = comp (prim f) (prim g)
+    comp-prim _ f g right = prim (compose f g)
+    trunc x _ _ _ left  _ = x
+    trunc _ y _ _ right _ = y
+    trunc _ _ p _ i left  = p @ i
+    trunc _ _ _ q i right = q @ i

@@ -1,0 +1,21 @@
+import Cats.Simp1
+
+record SimpType where
+    spine : Nat -> Type
+    simp-map : {n k : Nat} -> k ~> n -> spine n -> spine k
+  with
+    simp-map _ _ (id p) x = transport spine (inv p) x
+    simp-map _ _ (comp _ f g) x = simp-map f (simp-map g x)
+
+{-
+record Spine2 (X : SimpType) with
+    ls : X.spine (suc zero)
+    rs : X.spine (suc zero)
+    ms : simp-map (face (suc zero) (wrap true) idp) ls = simp-map (face zero true idp) rs
+-}
+
+{-
+Spine : (X : SimpType) -> X.spine zero -> Nat -> Type
+Spine _ _ zero = True
+Spine X r (suc n) = Sigma (X.spine (suc zero)) (\e -> Prod (Spine X (simp-map (face zero true idp) e) n) (simp-map (face (suc zero) (wrap true) idp) e = r))
+-}
