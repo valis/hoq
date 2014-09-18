@@ -36,7 +36,7 @@ typeCheckDataType p@(_, dt) params cons conds = do
         return $ Just (con, i, conType)
     let ks = map (\(_, _, Type _ k) -> k) cons'
         mk = dmaximum $ (if lcons > 1 then Set NoLevel else Prop) : ks
-    forM_ cons' $ \(con, i, Type ty k) -> addConstructorCheck con dtID i [] [] $
+    forM_ cons' $ \(con, i, Type ty k) -> addConstructorCheck con (dtID, dt) i [] [] $
         closed $ Type (abstractTerm ctx $ replaceSort ty mk Nothing) mk
     conds' <- forW conds $ \(S.Clause (pos, con) pats expr) ->
         case find (\((_, c), _, _) -> c == con) cons' of
@@ -56,7 +56,7 @@ typeCheckDataType p@(_, dt) params cons conds = do
                 conds3 = map (\(_,c) -> closed $ abstractClause ctx c) conds2
             in (con, i, ty, conds2, conds3)) cons'
     forM_ cons'' $ \(con, i, Type ty k, _, conds3) ->
-        lift $ replaceConstructor con dtID i conds3 [] $ closed $ Type (abstractTerm ctx $ replaceSort ty mk Nothing) mk
+        lift $ replaceConstructor con (dtID, dt) i conds3 [] $ closed $ Type (abstractTerm ctx $ replaceSort ty mk Nothing) mk
     forM_ cons'' $ \(con, i, _, conds2, conds3) ->
         let toEval (Closed c) = (fst $ clauseToEval c, Closed $ snd $ clauseToEval c)
             vars = map return (ctxToVars ctx)

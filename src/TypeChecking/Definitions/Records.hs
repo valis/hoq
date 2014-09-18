@@ -46,9 +46,10 @@ typeCheckRecord recPName@(recPos, recName) params mcon fields conds = do
     let clauseToSEval (_,(_,c)) = (fst $ clauseToEval c, closed $ abstractTerm ctx' $ snd $ clauseToEval c)
         getConds (fn,_) = map clauseToSEval $ filter (\(fn',_) -> fn == fn') conds'
     case mcon of
-        Just con -> addConstructorCheck con recID 0 [] (if null conds' then [] else map getConds fields') $
+        Just con -> addConstructorCheck con (recID, recName) 0 [] (if null conds' then [] else map getConds fields') $
             Closed $ Type (vacuous $ abstractTerm ctx $ replaceSort conType conSort Nothing) conSort
         _ -> return ()
+    -- warn $ checkConditions ctx conTerm conds2
 
 data Fields b = forall a. Eq a => Fields (Ctx String (Type Semantics) b a) [(Name, Type Semantics a)]
 
