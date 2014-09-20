@@ -17,6 +17,7 @@ import TypeChecking.Context as C
 import TypeChecking.Expressions.Utils
 import TypeChecking.Expressions.Patterns
 import TypeChecking.Expressions.Telescopes
+import TypeChecking.Expressions.Conditions
 import TypeChecking.Expressions
 import TypeChecking.Definitions.Termination
 import Normalization
@@ -49,7 +50,11 @@ typeCheckRecord recPName@(recPos, recName) params mcon fields conds = do
         Just con -> addConstructorCheck con (recID, recName) 0 [] (if null conds' then [] else map getConds fields') $
             Closed $ Type (vacuous $ abstractTerm ctx $ replaceSort conType conSort Nothing) conSort
         _ -> return ()
-    -- warn $ checkConditions ctx conTerm conds2
+    let varl = lengthCtx ctx'
+        sem field = Semantics (S.Conds varl) $ V.Conds varl (getConds field)
+        vars = map (return . liftBase ctx1) (ctxToVars ctx) ++ map snd fields''
+        fields'' = zipWith (\field@(fn,_) v -> (fn, Apply (sem field) $ return v : vars)) fields' (ctxToVars ctx1)
+    forM_ fields'' $ \(fn, field) -> warn $ checkConditions ctx' field $ map snd $ filter (\(fn',_) -> fn == fn') conds'
 
 data Fields b = forall a. Eq a => Fields (Ctx String (Type Semantics) b a) [(Name, Type Semantics a)]
 

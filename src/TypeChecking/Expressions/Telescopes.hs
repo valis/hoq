@@ -34,7 +34,7 @@ typeCheckTelescope ctx (VarsTele e vars expr : tele) term = do
     case extendCtx (map getName vars) Nil (Type r1 k1) of
         SomeEq ctx' -> do
             (rctx, Type r2 k2) <- typeCheckTelescope (ctx +++ ctx') tele $ fmap (liftBase ctx') term
-            let sem = Semantics (S.Pi e $ reverse $ ctxVars ctx') (V.Pi k1 k2)
+            let sem = Semantics (S.Pi e $ ctxVars ctx') (V.Pi k1 k2)
             return (rctx, Type (Apply sem [r1, abstractTerm ctx' r2]) $ dmax k1 k2)
 typeCheckTelescope ctx (TypeTele e expr : tele) term = do
     (r1, Type t1 _) <- typeCheckCtx ctx expr Nothing

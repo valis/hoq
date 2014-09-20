@@ -43,6 +43,7 @@ data Syntax
     | Name Fixity Name
     | Case [Term PName String]
     | Null
+    | Conds Int
 
 data Explicit = Explicit | Implicit deriving Eq
 

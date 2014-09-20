@@ -48,8 +48,11 @@ toBase Snoc{} Bound = Nothing
 toBase (Snoc ctx _ _) (Free a) = toBase ctx a
 
 ctxVars :: Ctx s f b a -> [s]
-ctxVars Nil = []
-ctxVars (Snoc ctx v _) = v : ctxVars ctx
+ctxVars = reverse . go
+  where
+    go :: Ctx s f b a -> [s]
+    go Nil = []
+    go (Snoc ctx v _) = v : go ctx
 
 abstractTerm :: Ctx s f b a -> Term p a -> Term p b
 abstractTerm Nil term = term

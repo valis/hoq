@@ -110,7 +110,7 @@ typeCheckCtx' ctx (Apply (pos, S.At) (b:c:ts)) mty = do
     (r2, _) <- typeCheckCtx ctx c (Just intType)
     case nf WHNF t1 of
         Apply (Semantics _ Path{}) [a,b',c'] -> do
-            (tes, ty, tab) <- typeCheckApps pos (Just $ Operator "@") ctx ts (Type (fmap Right (apps a [r2])) k) mty
+            (tes, ty, tab) <- typeCheckApps pos (Just $ Operator "@") ctx ts (Type (apps a [r2]) k) mty
             return (Apply (Semantics S.At V.At) (b':c':r1:r2:tes), ty, tab)
         t1' -> throwError [Error TypeMismatch $ emsgLC pos "" $ pretty "Expected type: Path"
                                                              $$ pretty "Actual type:" <+> prettyOpen ctx t1']
@@ -133,7 +133,7 @@ typeCheckCtx' ctx (Apply (pos, syn@(S.Case (pat:pats))) (expr:terms)) mty = do
     clauses <- mapM (liftM (\(p,_,_) -> p) . typeCheckClause (Just $ nfType WHNF $ fmap Right type1')) (zip pats terms1)
     (terms2', ty, tab2) <- if null terms2
         then return ([], type1', [])
-        else typeCheckApps pos Nothing ctx terms2 (fmap Right type1') mty
+        else typeCheckApps pos Nothing ctx terms2 type1' mty
     let sem = Semantics syn $ V.Case $ map (head . fst . clauseToEval) (clause:clauses)
         terms' = map (snd . clauseToEval) (clause:clauses)
     warn $ coverageErrorMsg pos $ checkCoverage $ zipWith (\p1 p2 -> (termPos p1, p2)) (pat:pats) (clause:clauses)
@@ -157,7 +157,7 @@ typeCheckName :: (Monad m, Eq a) => Context a -> Posn -> Fixity -> Name -> [Term
 typeCheckName ctx pos ft var ts mty = do
     when (nameToString var == "_") $ throwError [inferExprErrorMsg pos]
     eres <- case lookupCtx (nameToString var) ctx of
-        Just (te,ty) -> return $ Left (te, fmap Right ty)
+        Just r -> return (Left r)
         Nothing -> do
             let mdt = mty >>= \(Type ty _) -> case ty of
                     Apply (Semantics _ (DataType dtID _)) params -> return (dtID, params)
@@ -181,12 +181,13 @@ typeCheckName ctx pos ft var ts mty = do
                                 Apply (Semantics (Name ft' _) _) _ | ft == ft' -> te
                                 Apply (Semantics _ sem) ts -> Apply (Semantics (Name ft var) sem) ts
                                 _ -> te
-                    te'' <- case sequenceA te' of
-                        Right te'' -> return te''
-                        Left kp -> throwError (inferArgErrorMsg kp)
+                    (te'', ty') <- case (sequenceA te', sequenceA ty) of
+                        (Right te'', Right ty') -> return (te'', ty')
+                        (Left kp, _) -> throwError (inferArgErrorMsg kp)
+                        (_, Left kp) -> throwError (inferArgErrorMsg kp)
                     case ty of
                         Type Lambda{} _ -> throwError [inferParamsErrorMsg pos $ nameToPrefix var]
-                        _ -> return $ Left (te'', ty)
+                        _ -> return $ Left (te'', ty')
                 _ -> throwError [Error Other $ emsgLC pos ("Ambiguous identifier: " ++ show (nameToString var)) enull]
     case eres of
         Left (te, ty) -> do
@@ -289,7 +290,7 @@ typeCheckKeyword ctx pos "coe" (a1:as) Nothing = do
                         [] -> return (Apply coe [r1,r2,r3], Type res k, [])
                         a4:as3 -> do
                             (r4, _) <- typeCheckCtx ctx a4 (Just intType)
-                            (tes, ty, _) <- typeCheckApps pos Nothing ctx as3 (Type (fmap Right (apps r1 [r4])) k) Nothing
+                            (tes, ty, _) <- typeCheckApps pos Nothing ctx as3 (Type (apps r1 [r4]) k) Nothing
                             return (Apply coe $ [r1,r2,r3,r4] ++ tes, ty, [])
 typeCheckKeyword ctx pos "iso" (a1:a2:a3:a4:a5:a6:as) Nothing = do
     (r1, Type t1 _) <- typeCheckCtx ctx a1 Nothing
@@ -349,11 +350,12 @@ actExpType w ctx act exp pos mterm = do
     return l
 
 typeCheckApps :: (Monad m, Eq a) => Posn -> Maybe Name -> Context a -> [Term (Posn, Syntax) Void]
-    -> Type Semantics (Either Argument a) -> Maybe (Type Semantics (Either Argument a))
+    -> Type Semantics a -> Maybe (Type Semantics (Either Argument a))
     -> TCM m ([Term Semantics a], Type Semantics a, [(Argument, Term Semantics a)])
 typeCheckApps pos mname ctx allTerms ty mety = go 0 [] [] (map (\t -> (Explicit, Left t)) allTerms) nty
   where
-    nty = nfType WHNF ty
+    nty = nfType WHNF (fmap Right ty)
+    mterm terms = fmap (\name -> Apply (Semantics (Name Prefix name) $ error "") terms) mname
     dropAndInstantiate t (Semantics (S.Pi _ [_]) _) a (Lambda b) = instantiate1 t b
     dropAndInstantiate t (Semantics (S.Pi e (_:vs)) s) a (Lambda b) = Apply (Semantics (S.Pi e vs) s) [a, instantiate1 t b]
     dropAndInstantiate _ _ _ b = b
@@ -379,7 +381,7 @@ typeCheckApps pos mname ctx allTerms ty mety = go 0 [] [] (map (\t -> (Explicit,
                 in if useful tab
                     then go 0 [] [] (replaceTerms (reverse rest ++ [(e1, ty')] ++ terms) tab) nty
                     else go (n + 1) (ty' : acc) ((e1, ty') : rest) terms $
-                        Type (dropAndInstantiate (fmap Right $ snd pterm') p a b) k2
+                        Type (nf WHNF $ dropAndInstantiate (fmap Right $ snd pterm') p a b) k2
     go n acc rest terms (Type (Apply p@(Semantics (S.Pi Implicit _) (V.Pi _ k2)) [a,b]) _) =
         go (n + 1) (Left (inferArgErrorMsg $ Argument n pos mname) : acc)
             ((Implicit, Left (capply (pos, Name Prefix $ Ident "_"))) : rest) terms $
@@ -397,12 +399,13 @@ typeCheckApps pos mname ctx allTerms ty mety = go 0 [] [] (map (\t -> (Explicit,
                 then go 0 [] [] (replaceTerms (reverse rest) tab) nty
                 else do
                     (acc', Type aty' k', _) <- checkAty
-                    tab' <- actExpType True ctx (fmap Right aty') ety pos Nothing
+                    tab' <- actExpType True ctx (fmap Right aty') ety pos $ mterm (reverse acc')
                     return (acc', Type aty' k', tab')
             Nothing -> checkAty
     go _ _ _ _ (Type (Var (Left kp) _) _) = throwError (inferArgErrorMsg kp)
-    go _ _ _ _ (Type ty _) = throwError [Error TypeMismatch $ emsgLC pos "" $ pretty "Expected pi type"
-                                                                           $$ pretty "Actual type:" <+> prettyOpen' ctx ty]
+    go _ acc _ _ (Type ty _) = throwError [Error TypeMismatch $ emsgLC pos ""
+         $ pretty "Expected pi type"
+        $$ pretty "Actual type:" <+> prettyOpen' ctx ty]
     
     replaceTerms :: [(e, Either (Term (Posn, Syntax) Void) ((Posn, s), Maybe u))]
         -> [(Argument, s)] -> [(e, Either (Term (Posn, Syntax) Void) ((Posn, s), Maybe u))]
@@ -433,8 +436,10 @@ typeCheckLambda ctx te ty = do
                 Type nty kty = nfType NF ty
             in if (nty `lessOrEqual` na)
                 then return (te', Type ty'' k', dropOnePi p a b)
-                else throwError [Error TypeMismatch $ emsgLC (termPos te) "" $
-                        pretty "Expected type:" <+> prettyOpen ctx (Apply (Semantics sp $ V.Pi kty kb) [nty,b]) $$
-                        pretty "Actual type:"   <+> prettyOpen ctx (Apply p [na,b])]
+                else throwError [Error TypeMismatch $ emsgLC (termPos te) ""
+                         $ pretty "Expected type:" <+> prettyOpen ctx (Apply (Semantics sp $ V.Pi kty kb) [nty,b])
+                        $$ pretty "Actual type:"   <+> prettyOpen ctx (Apply p [na,b])
+                        $$ pretty "Term:" <+> prettyOpen ctx te']
         _ -> throwError [Error TypeMismatch $ emsgLC (termPos te) "" $ pretty "Expected pi type"
-                                                                    $$ pretty "Actual type:" <+> prettyOpen ctx ty']
+                                                                    $$ pretty "Actual type:" <+> prettyOpen ctx ty'
+                                                                    $$ pretty "Term:" <+> prettyOpen ctx te']

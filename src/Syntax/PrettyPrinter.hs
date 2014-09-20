@@ -49,6 +49,8 @@ ppSyntax ctx (Case pats) (expr:terms) = hang (text "case" <+> ppTermCtx ctx expr
         ppBound 0 ctx (bifoldMap (const []) return pat) term) (zip pats terms)
 ppSyntax ctx Null [t] = ppTermCtx ctx t
 ppSyntax _ Null _ = empty
+ppSyntax ctx (Conds k) (t:ts) = ppTermCtx ctx $ apps t (drop k ts)
+ppSyntax _ Conds{} [] = error "ppSyntax: Conds"
 ppSyntax _ Lam{} [] = error "ppSyntax: Lam"
 ppSyntax _ Pi{} _ = error "ppSyntax: Pi"
 ppSyntax _ PathImp{} _ = error "ppSyntax: PathImp"
@@ -98,5 +100,6 @@ precTerm :: Term Syntax a -> Int
 precTerm Var{} = 110
 precTerm (Apply Name{} (_:_)) = 100
 precTerm (Apply Null [t]) = precTerm t
+precTerm (Apply Conds{} (t:_)) = precTerm t
 precTerm (Apply s _) = prec s
 precTerm (Lambda t) = precTerm t

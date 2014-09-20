@@ -57,3 +57,15 @@ test10 : Test3 -> Nat
 test10 (Test1 x zero) = zero
 test10 (Test1 x (suc y)) = x
 test10 (Test2 x) = x
+
+record Test4 (n : Nat) where
+    f1 : Z -> Nat
+  with
+    f1 (positive x) = x
+    f1 (negative x) = n
+
+record Test5 (n : Nat) where
+    f1 : Z -> Nat
+  with
+    f1 (positive x) = n
+    f1 (negative x) = n

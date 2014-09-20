@@ -30,6 +30,11 @@ nfSemantics mode t@(Semantics _ (FunCall _ clauses)) ts =
     case instantiateClauses (map (\(pats, Closed term) -> (pats, term)) clauses) ts of
         Just (t', ts')  -> nfStep mode (apps t' ts')
         _               -> Apply t (nfs mode ts)
+nfSemantics mode t@(Semantics _ (Conds k conds)) (term : ts) =
+    let (params,args) = splitAt k ts
+    in case instantiateClauses (map (\(pats, Closed term) -> (pats, apps term params)) conds) args of
+        Just (t', ts')  -> nfStep mode (apps t' ts')
+        _               -> Apply t (nfs mode ts)
 nfSemantics mode t@(Semantics _ At) (t1:t2:t3:t4:ts) = case (nf WHNF t3, nf WHNF t4) of
     (_, Apply (Semantics _ (ICon ILeft))  _) -> nfStep mode (apps t1 ts)
     (_, Apply (Semantics _ (ICon IRight)) _) -> nfStep mode (apps t2 ts)

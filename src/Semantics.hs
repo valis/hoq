@@ -60,6 +60,9 @@ cmpTerms (Apply (Semantics _ PCon) [Apply (Semantics _ Lam) [Lambda (Apply (Sema
 cmpTerms t (Apply (Semantics _ PCon) [Apply (Semantics _ Lam) [Lambda (Apply (Semantics _ At) [_, _, t', Var Bound []])]]) =
     flowerResult $ cmpTerms (fmap (sequenceA . Free) t) (fmap sequenceA t')
 cmpTerms (Apply (Semantics _ At) (_:_:ts)) (Apply (Semantics _ At) (_:_:ts')) = cmpTermsList ts ts'
+cmpTerms (Apply (Semantics _ (DCon i k _)) ts) (Apply (Semantics _ (DCon i' k' _)) ts') | i == i' =
+    cmpTermsList (drop k ts) (drop k' ts')
+cmpTerms (Apply (Semantics _ Conds{}) (t:_)) (Apply (Semantics _ Conds{}) (t':_)) = cmpTerms t t'
 cmpTerms (Apply s ts) (Apply s' ts') = if s == s'
     then cmpTermsList ts ts'
     else (not (isInj $ value s) && hasLefts ts || not (isInj $ value s') && hasLefts ts', ([],[]))
@@ -82,6 +85,7 @@ cmpTerms (Apply s ts) (Apply s' ts') = if s == s'
     isInj Iso{} = False
     isInj Squeeze{} = False
     isInj Case{} = False
+    isInj Conds{} = False
     
     hasLefts :: [Term Semantics (Either k a)] -> Bool
     hasLefts = any $ \t -> case sequenceA t of

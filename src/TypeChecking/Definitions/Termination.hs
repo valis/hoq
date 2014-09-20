@@ -23,7 +23,7 @@ instance Functor CT where
 
 checkTermination :: Eq a => CT a -> S.Posn -> [Term Int s] -> Ctx String f b a -> Term Semantics a -> [Error]
 checkTermination name pos pats ctx term = map msg $ collectFunCalls ctx name term >>= \mts -> case mts of
-    TermsInCtx ctx' terms -> if evalState (checkTerms ctx' pats terms) (length (pats >>= toList) - 1) == LT then [] else [pos]
+    TermsInCtx ctx' terms -> if evalState (checkTerms ctx' pats terms) (length (pats >>= toList) - 1 + lengthCtx ctx' - lengthCtx ctx) == LT then [] else [pos]
   where
     msg :: S.Posn -> Error
     msg pos = Error Other $ emsgLC pos "Termination check failed" enull

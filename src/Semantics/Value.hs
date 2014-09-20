@@ -24,6 +24,7 @@ data Value t
     | Iso
     | Squeeze
     | Case [Term Int String]
+    | Conds Int (Eval t)
 
 data ICon = ILeft | IRight deriving Eq
 
@@ -55,6 +56,7 @@ instance Eq (Value t) where
         cmpPats Var{} Var{} = True
         cmpPats (Apply c pats) (Apply c' pats') = c == c' && and (zipWith cmpPats pats pats')
         cmpPats _ _ = False
+    Conds{} == Conds{} = True
     _ == _ = False
 
 instance Eq Level where

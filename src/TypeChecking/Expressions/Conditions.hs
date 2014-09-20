@@ -41,7 +41,7 @@ checkPatterns func cs pats scope = listToMaybe $
     let nscope1 = nfApps $ abstractTerm ctx $ apps (fmap (liftBase ctx) func) terms
         nscope2 = abstractTerm ctx $ apps (fmap (liftBase ctx) $ abstractTermPats pats scope) terms'
         nscope1' = nf NF nscope1
-    in if nscope1' == nf NF nscope2 then [] else [(reverse $ ctxVars ctx, nscope1, nscope1', nscope2)]
+    in if nscope1' == nf NF nscope2 then [] else [(ctxVars ctx, nscope1, nscope1', nscope2)]
   where
     nfApps :: Eq a => Term Semantics a -> Term Semantics a
     nfApps (Apply a as) = Apply a $ map (nf WHNF) as
