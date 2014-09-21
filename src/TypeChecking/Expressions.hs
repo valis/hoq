@@ -153,10 +153,11 @@ typeCheckCtx' ctx (Apply (pos, syn@(S.FieldAcc (PIdent fPos fName))) (expr:exprs
             mfInd <- lift (getField fName dtID)
             case mfInd of
                 Nothing -> throwError [notInScope fPos "record field" fName]
-                Just (fInd, fsCount, Closed (Type fType k)) -> do
-                    let fields = map (\i -> Apply (Semantics syn $ V.FieldAcc i) [exprTerm]) [0 .. fsCount - 1]
+                Just (fInd, conds, Closed (Type fType k)) -> do
+                    fs <- lift (getFields dtID)
+                    let fields = zipWith (\(_,e,_) i -> Apply (Semantics syn $ V.FieldAcc i e) [exprTerm]) fs [0..]
                     (terms, ty, tab) <- typeCheckApps pos Nothing ctx exprs (Type (apps fType $ params ++ fields) k) mty
-                    return (Apply (Semantics syn $ V.FieldAcc fInd) (exprTerm:terms), ty, tab)
+                    return (Apply (Semantics syn $ V.FieldAcc fInd conds) (exprTerm:terms), ty, tab)
         _ -> throwError [Error TypeMismatch $ emsgLC pos "" $ pretty "Expected a record type"
                                                            $$ pretty "Actual type:" <+> prettyOpen ctx exprType]
 typeCheckCtx' ctx te (Just (Type ty _)) = do

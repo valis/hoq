@@ -4,9 +4,9 @@ module TypeChecking.Monad.Scope
     ( ScopeT, runScopeT
     , addFunction, addConstructor, addDataType, addField
     , replaceDataType, replaceFunction, replaceConstructor
-    , getDataType, getFunction
+    , getDataType, getFunction, getField
     , getConstructor, getEntry
-    , getDataTypeByID, getField
+    , getDataTypeByID, getFields
     ) where
 
 import Control.Monad
@@ -14,6 +14,7 @@ import Control.Monad.Fix
 import Control.Monad.State
 import Control.Applicative
 import Data.Maybe
+import Data.List
 
 import Syntax hiding (Clause)
 import Semantics
@@ -24,7 +25,7 @@ data ScopeState = ScopeState
     { functions    :: [(Name, (Semantics, Closed (Type Semantics)))]
     , dataTypes    :: [(Name, (Semantics, Closed (Type Semantics)))]
     , constructors :: [((Name, ID), (Name, Semantics, [Closed Clause], [[Closed Clause]], Closed (Type Semantics)))]
-    , fields       :: [((String, ID), (Int, Int, Closed (Type Semantics)))]
+    , fields       :: [((String, ID), (Int, SEval, Closed (Type Semantics)))]
     , counter      :: ID
     }
 
@@ -76,11 +77,16 @@ getDataType v = ScopeT $ liftM (map snd . filter (\(v',_) -> v == v') . dataType
 getDataTypeByID :: Monad m => ID -> ScopeT m Name
 getDataTypeByID dt = ScopeT $ liftM (fst . head . filter (\(_,(Semantics _ (DataType dt' _), _)) -> dt == dt') . dataTypes) get
 
-addField :: Monad m => String -> ID -> Int -> Int -> Closed (Type Semantics) -> ScopeT m ()
-addField fn dtID ind n ty = ScopeT $ modify $ \scope -> scope { fields = ((fn, dtID), (ind, n, ty)) : fields scope }
+addField :: Monad m => String -> ID -> Int -> SEval -> Closed (Type Semantics) -> ScopeT m ()
+addField fn dtID ind e ty = ScopeT $ modify $ \scope -> scope { fields = ((fn, dtID), (ind, e, ty)) : fields scope }
 
-getField :: Monad m => String -> ID -> ScopeT m (Maybe (Int, Int, Closed (Type Semantics)))
+getField :: Monad m => String -> ID -> ScopeT m (Maybe (Int, SEval, Closed (Type Semantics)))
 getField fn dtID = ScopeT $ liftM (lookup (fn,dtID) . fields) get
+
+getFields :: Monad m => ID -> ScopeT m [(String, SEval, Closed (Type Semantics))]
+getFields dtID = ScopeT $ liftM (map (\((fn,_),(_,e,ty)) -> (fn,e,ty))
+                                . sortBy (\(_,(i,_,_)) (_,(i',_,_)) -> compare i i')
+                                . filter (\((_,dtID'),_) -> dtID == dtID') . fields) get
 
 lookupDelete :: Eq a => a -> [(a,b)] -> Maybe (b, [(a,b)])
 lookupDelete _ [] = Nothing

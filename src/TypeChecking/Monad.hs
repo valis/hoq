@@ -45,9 +45,9 @@ addConstructorCheck (pos, var) dt i e es ty = do
     mc <- lift $ getConstructor var $ Just (fst dt, [])
     if null mf && null mc then lift (addConstructor var dt i e es ty) else warn [multipleDeclaration pos var]
 
-addFieldCheck :: Monad m => PIdent -> ID -> Int -> Int -> Closed (Type Semantics) -> TCM m ()
-addFieldCheck (PIdent pos fn) dtID ind n ty = do
+addFieldCheck :: Monad m => PIdent -> ID -> Int -> SEval -> Closed (Type Semantics) -> TCM m ()
+addFieldCheck (PIdent pos fn) dtID ind e ty = do
     mind <- lift (getField fn dtID)
     case mind of
-        Nothing -> lift (addField fn dtID ind n ty)
+        Nothing -> lift (addField fn dtID ind e ty)
         Just{} -> warn [multipleDeclaration pos $ Ident fn]

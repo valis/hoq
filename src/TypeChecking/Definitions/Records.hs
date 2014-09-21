@@ -29,12 +29,9 @@ typeCheckRecord recPName@(recPos, recName) params mcon fields conds = do
     (Fields ctx1 fields', Type conType conSort) <- typeCheckFields ctx fields $
         Type (Apply (Semantics (Name Prefix recName) $ DataType recID 1) $ map return $ ctxToVars ctx) Prop
     let ctx' = ctx C.+++ ctx1
-        lfields = length fields'
     forM_ fields' $ \(_, Type fieldType _) -> case findOccurrence recID (nf WHNF fieldType) of
         Just n | n > 0 -> throwError [Error Other $ emsgLC recPos "Record types cannot be recursive" enull]
         _ -> return ()
-    forM_ (zip fields' [0..]) $ \(((fp, fn), Type fty k), ind) ->
-        addFieldCheck (PIdent fp $ nameToPrefix fn) recID ind lfields $ closed $ Type (abstractTerm ctx' fty) k
     conds' <- forW conds $ \(S.Clause (pos, fn) pats expr) ->
         case lookup fn $ zipWith (\((_,fn),fty) fv -> (fn,(fv,fty))) fields' (ctxToVars ctx1) of
             Just (fieldVar, fieldType) -> do
@@ -55,10 +52,12 @@ typeCheckRecord recPName@(recPos, recName) params mcon fields conds = do
             Closed $ Type (vacuous $ abstractTerm ctx $ replaceSort conType conSort Nothing) conSort
         _ -> return ()
     let varl = lengthCtx ctx'
-        sem field = Semantics (S.Conds varl) $ V.Conds varl (getSConds field)
+        sconds = map getSConds fields'
         vars = map (return . liftBase ctx1) (ctxToVars ctx) ++ map snd fields''
-        fields'' = zipWith (\field@((_,fn),_) v -> (fn, Apply (sem field) $ return v : vars)) fields' (ctxToVars ctx1)
+        fields'' = zipWith (\(field@((_,fn),_), c) v -> (fn, Apply (Semantics (S.Conds varl) $ V.Conds varl c) $ return v : vars)) (zip fields' sconds) (ctxToVars ctx1)
     forM_ fields'' $ \(fn, field) -> warn $ checkConditions ctx' field $ map snd $ filter (\(fn',_) -> fn == fn') conds'
+    forM_ (zip (zip fields' [0..]) sconds) $ \((((fp, fn), Type fty k), ind), cond) ->
+        addFieldCheck (PIdent fp $ nameToPrefix fn) recID ind cond $ closed $ Type (abstractTerm ctx' fty) k
 
 data Fields b = forall a. Eq a => Fields (Ctx String (Type Semantics) b a) [(PName, Type Semantics a)]
 
