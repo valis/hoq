@@ -107,11 +107,11 @@ typeCheckCtx' ctx (Apply (pos, PathImp) (a1:a2:ts)) Nothing = do
             [Lambda $ fmap Free t1], r1, r2], Type (universe $ sortPred k) $ succ $ sortPred k, [])
 typeCheckCtx' ctx (Apply (pos, S.At) (b:c:ts)) mty = do
     (r1, Type t1 k) <- typeCheckCtx ctx b Nothing
-    (r2, _) <- typeCheckCtx ctx c (Just intType)
+    (r2, _, tab1) <- typeCheckCtx' ctx c (Just intType)
     case nf WHNF t1 of
         Apply (Semantics _ Path{}) [a,b',c'] -> do
-            (tes, ty, tab) <- typeCheckApps pos (Just $ Operator "@") ctx ts (Type (apps a [r2]) k) mty
-            return (Apply (Semantics S.At V.At) (b':c':r1:r2:tes), ty, tab)
+            (tes, ty, tab2) <- typeCheckApps pos (Just $ Operator "@") ctx ts (Type (apps a [r2]) k) mty
+            return (Apply (Semantics S.At V.At) (b':c':r1:r2:tes), ty, tab1 ++ tab2)
         t1' -> throwError [Error TypeMismatch $ emsgLC pos "" $ pretty "Expected type: Path"
                                                              $$ pretty "Actual type:" <+> prettyOpen ctx t1']
 typeCheckCtx' ctx (Apply (pos, syn@(S.Case (pat:pats))) (expr:terms)) mty = do
@@ -146,6 +146,19 @@ typeCheckCtx' ctx (Apply (pos, syn@(S.Case (pat:pats))) (expr:terms)) mty = do
         Bound -> Nothing
         Free t' -> isStationary t'
     isStationary t = Just t
+typeCheckCtx' ctx (Apply (pos, syn@(S.FieldAcc (PIdent fPos fName))) (expr:exprs)) mty = do
+    (exprTerm, Type exprType _) <- typeCheckCtx ctx expr Nothing
+    case nf WHNF exprType of
+        Apply (Semantics _ (DataType dtID _)) params -> do
+            mfInd <- lift (getField fName dtID)
+            case mfInd of
+                Nothing -> throwError [notInScope fPos "record field" fName]
+                Just (fInd, fsCount, Closed (Type fType k)) -> do
+                    let fields = map (\i -> Apply (Semantics syn $ V.FieldAcc i) [exprTerm]) [0 .. fsCount - 1]
+                    (terms, ty, tab) <- typeCheckApps pos Nothing ctx exprs (Type (apps fType $ params ++ fields) k) mty
+                    return (Apply (Semantics syn $ V.FieldAcc fInd) (exprTerm:terms), ty, tab)
+        _ -> throwError [Error TypeMismatch $ emsgLC pos "" $ pretty "Expected a record type"
+                                                           $$ pretty "Actual type:" <+> prettyOpen ctx exprType]
 typeCheckCtx' ctx te (Just (Type ty _)) = do
     (te', Type ty' k') <- typeCheckCtx ctx te Nothing
     tab <- actExpType True ctx (fmap Right ty') ty (termPos te) (Just te')
@@ -294,7 +307,7 @@ typeCheckKeyword ctx pos "coe" (a1:as) Nothing = do
         [] -> return (Apply coe [r1], Type (Apply (Semantics (S.Pi Explicit ["l"]) $ V.Pi (TypeK NoLevel) k) [interval, Lambda $
             Apply (Semantics (S.Pi Explicit []) $ V.Pi k k) [apps (fmap Free r1) [bvar], fmap Free res]]) k, [])
         a2:as1 -> do
-            (r2, _) <- typeCheckCtx ctx a2 (Just intType)
+            (r2, _, tab2) <- typeCheckCtx' ctx a2 (Just intType)
             case as1 of
                 [] -> return (Apply coe [r1,r2], Type (Apply (Semantics (S.Pi Explicit []) $ V.Pi k k) [apps r1 [r2], res]) k, [])
                 a3:as2 -> do
@@ -302,9 +315,9 @@ typeCheckKeyword ctx pos "coe" (a1:as) Nothing = do
                     case as2 of
                         [] -> return (Apply coe [r1,r2,r3], Type res k, [])
                         a4:as3 -> do
-                            (r4, _) <- typeCheckCtx ctx a4 (Just intType)
+                            (r4, _, tab4) <- typeCheckCtx' ctx a4 (Just intType)
                             (tes, ty, _) <- typeCheckApps pos Nothing ctx as3 (Type (apps r1 [r4]) k) Nothing
-                            return (Apply coe $ [r1,r2,r3,r4] ++ tes, ty, [])
+                            return (Apply coe $ [r1,r2,r3,r4] ++ tes, ty, tab2 ++ tab4)
 typeCheckKeyword ctx pos "iso" (a1:a2:a3:a4:a5:a6:as) Nothing = do
     (r1, Type t1 _) <- typeCheckCtx ctx a1 Nothing
     (r2, Type t2 _) <- typeCheckCtx ctx a2 Nothing
@@ -326,8 +339,8 @@ typeCheckKeyword ctx pos "iso" (a1:a2:a3:a4:a5:a6:as) Nothing = do
             Type (Apply (Semantics (S.Pi Explicit []) $ V.Pi (TypeK NoLevel) $ succ k) [interval, universe k]) $ succ k, [])
         a7:as' -> do
             unless (null as') $ warn [argsErrorMsg pos "A type"]
-            (r7, _) <- typeCheckCtx ctx a7 (Just intType)
-            return (Apply iso [r1,r2,r3,r4,r5,r6,r7], Type (universe k) $ succ k, [])
+            (r7, _, tab7) <- typeCheckCtx' ctx a7 (Just intType)
+            return (Apply iso [r1,r2,r3,r4,r5,r6,r7], Type (universe k) $ succ k, tab7)
 typeCheckKeyword _ pos "iso" _ Nothing =
     throwError [Error NotEnoughArgs $ emsgLC pos "Expected at least 6 arguments to \"iso\"" enull]
 typeCheckKeyword ctx pos "squeeze" as Nothing =
@@ -336,12 +349,12 @@ typeCheckKeyword ctx pos "squeeze" as Nothing =
     in case as of
         [] -> return (capply squeeze, Type (mkType $ mkType interval) $ TypeK NoLevel, [])
         [a1] -> do
-            (r1, _) <- typeCheckCtx ctx a1 (Just intType)
-            return (Apply squeeze [r1], Type (mkType interval) $ TypeK NoLevel, [])
+            (r1, _, tab) <- typeCheckCtx' ctx a1 (Just intType)
+            return (Apply squeeze [r1], Type (mkType interval) $ TypeK NoLevel, tab)
         [a1,a2] -> do
-            (r1, _) <- typeCheckCtx ctx a1 (Just intType)
-            (r2, _) <- typeCheckCtx ctx a2 (Just intType)
-            return (Apply squeeze [r1,r2], intType, [])
+            (r1, _, tab1) <- typeCheckCtx' ctx a1 (Just intType)
+            (r2, _, tab2) <- typeCheckCtx' ctx a2 (Just intType)
+            return (Apply squeeze [r1,r2], intType, tab1 ++ tab2)
         _ -> throwError [argsErrorMsg pos "squeeze _ _"]
 typeCheckKeyword ctx pos var ts (Just (Type ty _)) = do
     (te', Type ty' k', _) <- typeCheckKeyword ctx pos var ts Nothing

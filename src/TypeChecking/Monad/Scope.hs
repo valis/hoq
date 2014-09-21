@@ -2,11 +2,11 @@
 
 module TypeChecking.Monad.Scope
     ( ScopeT, runScopeT
-    , addFunction, addConstructor, addDataType
+    , addFunction, addConstructor, addDataType, addField
     , replaceDataType, replaceFunction, replaceConstructor
     , getDataType, getFunction
     , getConstructor, getEntry
-    , getDataTypeByID
+    , getDataTypeByID, getField
     ) where
 
 import Control.Monad
@@ -24,6 +24,7 @@ data ScopeState = ScopeState
     { functions    :: [(Name, (Semantics, Closed (Type Semantics)))]
     , dataTypes    :: [(Name, (Semantics, Closed (Type Semantics)))]
     , constructors :: [((Name, ID), (Name, Semantics, [Closed Clause], [[Closed Clause]], Closed (Type Semantics)))]
+    , fields       :: [((String, ID), (Int, Int, Closed (Type Semantics)))]
     , counter      :: ID
     }
 
@@ -75,6 +76,12 @@ getDataType v = ScopeT $ liftM (map snd . filter (\(v',_) -> v == v') . dataType
 getDataTypeByID :: Monad m => ID -> ScopeT m Name
 getDataTypeByID dt = ScopeT $ liftM (fst . head . filter (\(_,(Semantics _ (DataType dt' _), _)) -> dt == dt') . dataTypes) get
 
+addField :: Monad m => String -> ID -> Int -> Int -> Closed (Type Semantics) -> ScopeT m ()
+addField fn dtID ind n ty = ScopeT $ modify $ \scope -> scope { fields = ((fn, dtID), (ind, n, ty)) : fields scope }
+
+getField :: Monad m => String -> ID -> ScopeT m (Maybe (Int, Int, Closed (Type Semantics)))
+getField fn dtID = ScopeT $ liftM (lookup (fn,dtID) . fields) get
+
 lookupDelete :: Eq a => a -> [(a,b)] -> Maybe (b, [(a,b)])
 lookupDelete _ [] = Nothing
 lookupDelete a' ((a,b):xs) | a == a' = Just (b, xs)
@@ -117,4 +124,4 @@ getEntry v dt = ScopeT $ do
             ++ if null dts then map (\(_,a,_,c,d) -> (a,c,d)) cons else []
 
 runScopeT :: Monad m => ScopeT m a -> m a
-runScopeT (ScopeT f) = evalStateT f $ ScopeState [] [] [] 0
+runScopeT (ScopeT f) = evalStateT f $ ScopeState [] [] [] [] 0

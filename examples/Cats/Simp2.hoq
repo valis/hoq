@@ -12,7 +12,7 @@ data (~>) (k n : Nat)
     | comp-prim (m : Nat) (OPMap k m) (OPMap m n) I
     | trunc (x y : k ~> n) (x = y) (x = y) I I
   with
-    comp-prim _ f g left = comp (prim f) (prim g)
+    comp-prim _ f g left  = comp (prim f) (prim g)
     comp-prim _ f g right = prim (compose f g)
     trunc x _ _ _ left  _ = x
     trunc _ y _ _ right _ = y

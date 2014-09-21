@@ -29,6 +29,7 @@ import TypeChecking.Monad.Warn
     Operator        { TokOperator $$    }
     Infix           { TokInfix    $$    }
     Integer         { TokInteger  $$    }
+    FieldAcc        { TokField    $$    }
     '\\'            { TokLam      $$    }
     '('             { TokLParen   $$    }
     'case'          { TokCase     $$    }
@@ -174,7 +175,8 @@ Expr3 :: { RawExpr }
     | Expr3 InfixOp Expr4   { Apply (termPos $1, Name (Infix InfixL 90) $ snd $2) [$1, $3]  }
 
 Expr4 :: { RawExpr }
-    : Exprs { let e:es = reverse $1 in apps e es }
+    : Exprs                 { let e:es = reverse $1 in apps e es }
+    | Expr4 FieldAcc Exprs  { Apply (termPos $1, FieldAcc $2) ($1 : reverse $3) }
 
 Exprs :: { [RawExpr] }
     : Expr5         { [$1]  }

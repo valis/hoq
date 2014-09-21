@@ -14,8 +14,14 @@ record Spine2 (X : SimpType) with
     ms : simp-map (face (suc zero) (wrap true) idp) ls = simp-map (face zero true idp) rs
 -}
 
-{-
+record Sigma (A : Type) (B : A -> Type) where
+    constructor (,)
+    proj1 : A
+    proj2 : B proj1
+
+Prod : Type -> Type -> Type
+Prod A B = Sigma A (\_ -> B)
+
 Spine : (X : SimpType) -> X.spine zero -> Nat -> Type
 Spine _ _ zero = True
 Spine X r (suc n) = Sigma (X.spine (suc zero)) (\e -> Prod (Spine X (simp-map (face zero true idp) e) n) (simp-map (face (suc zero) (wrap true) idp) e = r))
--}

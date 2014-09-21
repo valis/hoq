@@ -1,6 +1,7 @@
 module TypeChecking.Monad
     ( EDocM, TCM, runTCM
-    , addFunctionCheck, addDataTypeCheck, addConstructorCheck
+    , addFunctionCheck, addDataTypeCheck
+    , addConstructorCheck, addFieldCheck
     , module TypeChecking.Monad.Warn
     , module TypeChecking.Monad.Scope
     , lift
@@ -25,7 +26,7 @@ runTCM :: Monad m => TCM m a -> m (Maybe a)
 runTCM = liftM snd . runScopeT . runWarnT
 
 multipleDeclaration :: Posn -> Name -> Error
-multipleDeclaration pos var = Error Other $ emsgLC pos ("Multiple declarations of " ++ show (nameToString var)) enull
+multipleDeclaration pos var = Error Other $ emsgLC pos ("Multiple declarations of " ++ show (nameToPrefix var)) enull
 
 addFunctionCheck :: Monad m => PName -> SEval -> Closed (Type Semantics) -> TCM m ID
 addFunctionCheck (pos, var) e ty = do
@@ -43,3 +44,10 @@ addConstructorCheck (pos, var) dt i e es ty = do
     mf <- lift (getFunction var)
     mc <- lift $ getConstructor var $ Just (fst dt, [])
     if null mf && null mc then lift (addConstructor var dt i e es ty) else warn [multipleDeclaration pos var]
+
+addFieldCheck :: Monad m => PIdent -> ID -> Int -> Int -> Closed (Type Semantics) -> TCM m ()
+addFieldCheck (PIdent pos fn) dtID ind n ty = do
+    mind <- lift (getField fn dtID)
+    case mind of
+        Nothing -> lift (addField fn dtID ind n ty)
+        Just{} -> warn [multipleDeclaration pos $ Ident fn]

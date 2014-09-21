@@ -50,12 +50,8 @@ ppSyntax ctx (Case pats) (expr:terms) = hang (text "case" <+> ppTermCtx ctx expr
 ppSyntax ctx Null [t] = ppTermCtx ctx t
 ppSyntax _ Null _ = empty
 ppSyntax ctx (Conds k) (t:ts) = ppTermCtx ctx $ apps t (drop k ts)
-ppSyntax _ Conds{} [] = error "ppSyntax: Conds"
-ppSyntax _ Lam{} [] = error "ppSyntax: Lam"
-ppSyntax _ Pi{} _ = error "ppSyntax: Pi"
-ppSyntax _ PathImp{} _ = error "ppSyntax: PathImp"
-ppSyntax _ At _ = error "ppSyntax: At"
-ppSyntax _ Case{} [] = error "ppSyntax: Case"
+ppSyntax ctx t@(FieldAcc (PIdent _ fn)) (t1:ts) = ppTermPrec (prec t) ctx t1 <+> text ('.' : fn) <+> ppList ctx ts
+ppSyntax _ _ _ = error "ppSyntax"
 
 opFixity :: Infix -> Infix -> Int -> Int
 opFixity ft ft' p = if ft == ft' then p else p + 1
@@ -90,6 +86,7 @@ renameName2 var ctx ctx' = if var `elem` ctx && var `elem` ctx'
 prec :: Syntax             -> Int
 prec (Name Prefix _)        = 110
 prec (Name (Infix _ p) _)   = p
+prec FieldAcc{}             = 100
 prec At                     = 80
 prec PathImp{}              = 70
 prec Pi{}                   = 60

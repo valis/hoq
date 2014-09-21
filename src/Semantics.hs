@@ -86,6 +86,7 @@ cmpTerms (Apply s ts) (Apply s' ts') = if s == s'
     isInj Squeeze{} = False
     isInj Case{} = False
     isInj Conds{} = False
+    isInj FieldAcc{} = False
     
     hasLefts :: [Term Semantics (Either k a)] -> Bool
     hasLefts = any $ \t -> case sequenceA t of

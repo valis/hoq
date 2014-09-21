@@ -57,6 +57,7 @@ $operator   = [\~\!\@\#\$\%\^\&\*\-\+\=\|\?\<\>\,\.\/\:\;\[\]\{\}]
 \@              { \_ _ -> TokAt                                                     }
 \`              { \_ _ -> TokApos                                                   }
 "->"            { \_ _ -> TokArrow                                                  }
+\. @ident       { \p s -> TokField $ PIdent p (tail s) }
 $operator+      { \p s -> TokOperator (PIdent p s)                                  }
 $digit+         { \p s -> TokInteger (p, read s)                                    }
 "infixl"        { \p _ -> TokInfix (p, InfixL)                                      }
@@ -74,6 +75,7 @@ data Token
     | TokImport ![String]
     | TokData
     | TokRecord
+    | TokField !PIdent
     | TokConstructor
     | TokWhere !Int
     | TokCase !Posn

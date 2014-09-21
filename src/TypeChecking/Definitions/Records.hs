@@ -29,11 +29,14 @@ typeCheckRecord recPName@(recPos, recName) params mcon fields conds = do
     (Fields ctx1 fields', Type conType conSort) <- typeCheckFields ctx fields $
         Type (Apply (Semantics (Name Prefix recName) $ DataType recID 1) $ map return $ ctxToVars ctx) Prop
     let ctx' = ctx C.+++ ctx1
+        lfields = length fields'
     forM_ fields' $ \(_, Type fieldType _) -> case findOccurrence recID (nf WHNF fieldType) of
         Just n | n > 0 -> throwError [Error Other $ emsgLC recPos "Record types cannot be recursive" enull]
         _ -> return ()
+    forM_ (zip fields' [0..]) $ \(((fp, fn), Type fty k), ind) ->
+        addFieldCheck (PIdent fp $ nameToPrefix fn) recID ind lfields $ closed $ Type (abstractTerm ctx' fty) k
     conds' <- forW conds $ \(S.Clause (pos, fn) pats expr) ->
-        case lookup fn $ zipWith (\(fn,fty) fv -> (fn,(fv,fty))) fields' (ctxToVars ctx1) of
+        case lookup fn $ zipWith (\((_,fn),fty) fv -> (fn,(fv,fty))) fields' (ctxToVars ctx1) of
             Just (fieldVar, fieldType) -> do
                 (bf, TermsInCtx ctx2 rtpats _ exprType) <- typeCheckPatterns ctx' fieldType pats
                 when bf $ warn [Error Other $ emsgLC pos "Absurd patterns are not allowed in conditions" enull]
@@ -45,8 +48,8 @@ typeCheckRecord recPName@(recPos, recName) params mcon fields conds = do
                 warn [notInScope pos "record field" (nameToString fn)]
                 return Nothing
     let clauseToSEval (_,(_,c)) = (fst $ clauseToEval c, closed $ abstractTerm ctx' $ snd $ clauseToEval c)
-        getSConds (fn,_) = map clauseToSEval $ filter (\(fn',_) -> fn == fn') conds'
-        getConds (fn,_) = map (\(_,(_,c)) -> closed $ abstractClause ctx' c) $ filter (\(fn',_) -> fn == fn') conds'
+        getSConds ((_,fn),_) = map clauseToSEval $ filter (\(fn',_) -> fn == fn') conds'
+        getConds ((_,fn),_) = map (\(_,(_,c)) -> closed $ abstractClause ctx' c) $ filter (\(fn',_) -> fn == fn') conds'
     case mcon of
         Just con -> addConstructorCheck con (recID, recName) 0 [] (if null conds' then [] else map getConds fields') $
             Closed $ Type (vacuous $ abstractTerm ctx $ replaceSort conType conSort Nothing) conSort
@@ -54,20 +57,20 @@ typeCheckRecord recPName@(recPos, recName) params mcon fields conds = do
     let varl = lengthCtx ctx'
         sem field = Semantics (S.Conds varl) $ V.Conds varl (getSConds field)
         vars = map (return . liftBase ctx1) (ctxToVars ctx) ++ map snd fields''
-        fields'' = zipWith (\field@(fn,_) v -> (fn, Apply (sem field) $ return v : vars)) fields' (ctxToVars ctx1)
+        fields'' = zipWith (\field@((_,fn),_) v -> (fn, Apply (sem field) $ return v : vars)) fields' (ctxToVars ctx1)
     forM_ fields'' $ \(fn, field) -> warn $ checkConditions ctx' field $ map snd $ filter (\(fn',_) -> fn == fn') conds'
 
-data Fields b = forall a. Eq a => Fields (Ctx String (Type Semantics) b a) [(Name, Type Semantics a)]
+data Fields b = forall a. Eq a => Fields (Ctx String (Type Semantics) b a) [(PName, Type Semantics a)]
 
 typeCheckFields :: (Monad m, Eq a) => Ctx String (Type Semantics) Void a
     -> [Field] -> Type Semantics a -> TCM m (Fields a, Type Semantics a)
 typeCheckFields _ [] ty = return (Fields C.Nil [], ty)
-typeCheckFields ctx (Field (PIdent _ v) expr : exprs) ty = do
+typeCheckFields ctx (Field (PIdent p v) expr : exprs) ty = do
     (term, Type t1 _) <- typeCheckCtx ctx expr Nothing
     k1 <- checkIsType ctx (termPos expr) (nf WHNF t1)
     (Fields ctx' terms, Type ty' k2) <- typeCheckFields (Snoc ctx v $ Type term k1) exprs (fmap Free ty)
     let ctx'' = Snoc C.Nil v (Type term k1) C.+++ ctx'
-    return (Fields ctx'' $ (Ident v, fmap (liftBase ctx'') $ Type term k1) : terms,
+    return (Fields ctx'' $ ((p, Ident v), fmap (liftBase ctx'') $ Type term k1) : terms,
         Type (Apply (Semantics (S.Pi Explicit [v]) $ V.Pi k1 k2) [term, Lambda ty']) $ dmax k1 k2)
 
 abstractClause :: Ctx s f b a -> P.Clause a -> P.Clause b

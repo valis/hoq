@@ -73,6 +73,9 @@ nfSemantics mode t@(Semantics _ (Case pats)) (term:terms) =
     in case instantiateCaseClauses (zipWith (\pat te -> ([pat], te)) pats terms1) [term] of
         Just (t', ts')  -> nfStep mode $ apps t' (ts' ++ terms2)
         _               -> Apply t $ nfs mode (term:terms)
+nfSemantics mode t@(Semantics _ (FieldAcc i)) (term:terms) = case nf WHNF term of
+    Apply (Semantics _ DCon{}) args | arg:_ <- drop i args -> nfStep mode (apps arg terms)
+    term' -> Apply t $ nfs mode (term':terms)
 nfSemantics mode a as = Apply a (nfs mode as)
 
 nfStep :: Eq a => NF -> Term Semantics a -> Term Semantics a
