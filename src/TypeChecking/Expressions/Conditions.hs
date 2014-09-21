@@ -2,33 +2,25 @@
 
 module TypeChecking.Expressions.Conditions
     ( checkConditions
+    , appsPat, appsPats
+    , patToTerm, patsToTerms
     ) where
 
 import Control.Monad
 import Data.Maybe
-import Data.Bifunctor
 import Data.Void
 
 import qualified Syntax as S
 import Semantics
 import Semantics.Value
 import Semantics.Pattern as P
-import Syntax.ErrorDoc
 import TypeChecking.Context as C
 import TypeChecking.Expressions.Utils
 import Normalization
 
 checkConditions :: Eq b => Ctx String f Void b => Term Semantics b -> [(S.Posn, Clause b)] -> [Error]
 checkConditions ctx func cs = maybeToList $ msum $
-    map (\(pos, Clause p scope) -> fmap (msg pos ctx) $ checkPatterns func (map (\(_, c) -> c) cs) p scope) cs
-  where
-    msg :: S.Posn -> Ctx String f Void a -> ([String], Term Semantics a, Term Semantics a, Term Semantics a) -> Error
-    msg pos ctx (vs, t1, t2, t3) = Error Conditions $ emsgLC pos "Conditions check failed:"
-        $  scopeToEDoc ctx vs t1 <+> pretty "equals to" <+> scopeToEDoc ctx vs t2
-        $$ pretty "but should be equal to" <+> scopeToEDoc ctx vs t3
-    
-    scopeToEDoc :: Ctx String f Void a -> [String] -> Term Semantics a -> EDoc (Term S.Syntax)
-    scopeToEDoc ctx vs t = epretty $ bimap syntax pretty $ apps (vacuous $ abstractTerm ctx t) $ map cvar (ctxVars ctx ++ vs)
+    map (\(pos, Clause p scope) -> fmap (conditionsErrorMsg pos ctx) $ checkPatterns func (map (\(_, c) -> c) cs) p scope) cs
 
 data Some f = forall a. Some (f a)
 data TermsInCtx2 f b = forall a. TermsInCtx2 (Ctx String f b a) [f a] [f a]
@@ -187,7 +179,7 @@ patToSemantics PatPCon{} = pathSem
 patToSemantics (PatICon con) = iConSem con
 patToSemantics PatVar{} = error "patToSemantics"
 
-patToTerm :: Pattern b a -> (Ctx String (Term Semantics) b a, Term Semantics a)
+patToTerm :: Pattern b a -> (Ctx String f b a, Term Semantics a)
 patToTerm pat@(PatDCon _ _ _ _ ps pats) =
     let (ctx,terms) = patsToTerms pats
     in (ctx, Apply (patToSemantics pat) $ map (fmap $ liftBasePats pats) ps ++ terms)
@@ -197,7 +189,7 @@ patToTerm (PatPCon pat) =
 patToTerm (PatICon con) = (C.Nil, iCon con)
 patToTerm (PatVar  var) = (Snoc C.Nil var $ error "", bvar)
 
-patsToTerms :: Patterns b a -> (Ctx String (Term Semantics) b a, [Term Semantics a])
+patsToTerms :: Patterns b a -> (Ctx String f b a, [Term Semantics a])
 patsToTerms P.Nil = (C.Nil, [])
 patsToTerms (Cons pat pats) =
     let (ctx1,term)  = patToTerm pat

@@ -157,7 +157,7 @@ typeCheckName :: (Monad m, Eq a) => Context a -> Posn -> Fixity -> Name -> [Term
 typeCheckName ctx pos ft var ts mty = do
     when (nameToString var == "_") $ throwError [inferExprErrorMsg pos]
     eres <- case lookupCtx (nameToString var) ctx of
-        Just r -> return (Left r)
+        Just (te,ty) -> return $ Left (te, [], [], ty)
         Nothing -> do
             let mdt = mty >>= \(Type ty _) -> case ty of
                     Apply (Semantics _ (DataType dtID _)) params -> return (dtID, params)
@@ -176,22 +176,35 @@ typeCheckName ctx pos ft var ts mty = do
                                     then pretty $ "Actual data type: " ++ nameToPrefix c
                                     else pretty $ "Posible data types: " ++ intercalate ", " (map nameToPrefix cons')]
                         _ -> liftM Right (typeCheckKeyword ctx pos (nameToString var) ts mty)
-                [(te, _, ty)] -> do
+                [(te, conds, ty)] ->
                     let te' = case te of
                                 Apply (Semantics (Name ft' _) _) _ | ft == ft' -> te
                                 Apply (Semantics _ sem) ts -> Apply (Semantics (Name ft var) sem) ts
                                 _ -> te
-                    (te'', ty') <- case (sequenceA te', sequenceA ty) of
-                        (Right te'', Right ty') -> return (te'', ty')
+                    in case (sequenceA te', sequenceA ty) of
                         (Left kp, _) -> throwError (inferArgErrorMsg kp)
                         (_, Left kp) -> throwError (inferArgErrorMsg kp)
-                    case ty of
-                        Type Lambda{} _ -> throwError [inferParamsErrorMsg pos $ nameToPrefix var]
-                        _ -> return $ Left (te'', ty')
+                        (Right te'', Right (Type Lambda{} _)) -> throwError [inferParamsErrorMsg pos $ nameToPrefix var]
+                        (Right te'', Right ty') -> return $ Left (te'', conds, maybe [] snd mdt, ty')
                 _ -> throwError [Error Other $ emsgLC pos ("Ambiguous identifier: " ++ show (nameToString var)) enull]
     case eres of
-        Left (te, ty) -> do
+        Left (te, conds, params, ty) -> do
             (tes, ty', tab) <- typeCheckApps pos (Just var) ctx ts ty mty
+            let lconds = length conds
+                msg = "Expected " ++ show lconds ++ " arguments to " ++ nameToPrefix var
+            when (length tes < lconds) $ warn [Error Conditions $ emsgLC pos msg enull]
+            when (lconds > 0) $
+                let (lefts,params') = partitionEithers (map sequenceA params)
+                in case lefts of
+                    [] -> forM_ (zip tes conds) $ \(term,cs) -> forM_ cs $ \(Closed cl) -> case clauseToClauseEq cl of
+                        ClauseEq pats rhs -> 
+                            let args = params' ++ tes
+                                (ctx',args') = patsToTerms (appsPats pats args)
+                                term' = apps (fmap (liftBase ctx') term) args'
+                                actTerm = nf NF term'
+                                expTerm = nf NF $ apps rhs $ map (fmap $ liftBasePats pats) args
+                            in unless (expTerm == actTerm) $ warn [conditionsErrorMsg pos (ctx C.+++ ctx') ([], term', actTerm, expTerm)]
+                    _ -> warn (lefts >>= inferArgErrorMsg)
             return (apps te tes, ty', tab)
         Right res -> return res
   where

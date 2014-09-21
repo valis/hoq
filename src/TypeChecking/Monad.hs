@@ -38,7 +38,7 @@ addDataTypeCheck (pos, var) n ty = do
     md <- lift (getDataType var)
     if null mf && null md then lift (addDataType var n ty) else throwError [multipleDeclaration pos var]
 
-addConstructorCheck :: Monad m => PName -> (ID, Name) -> Int -> [Closed Clause] -> [SEval] -> Closed (Type Semantics) -> TCM m ()
+addConstructorCheck :: Monad m => PName -> (ID, Name) -> Int -> [Closed Clause] -> [[Closed Clause]] -> Closed (Type Semantics) -> TCM m ()
 addConstructorCheck (pos, var) dt i e es ty = do
     mf <- lift (getFunction var)
     mc <- lift $ getConstructor var $ Just (fst dt, [])

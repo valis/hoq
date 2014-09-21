@@ -3,6 +3,7 @@
 module Semantics.Pattern
     ( Pattern(..), Patterns(..)
     , Clause(..), clauseToEval
+    , ClauseEq(..), clauseToClauseEq
     , abstractClause1
     , patternToTerm, patternsToTerms
     , abstractTermPat, abstractTermPats
@@ -28,6 +29,22 @@ data Patterns b a where
 
 data Clause b where
     Clause :: Patterns b a -> Term Semantics a -> Clause b
+
+data ClauseEq b where
+    ClauseEq :: Eq a => Patterns b a -> Term Semantics a -> ClauseEq b
+
+clauseToClauseEq :: Eq b => Clause b -> ClauseEq b
+clauseToClauseEq (Clause Nil term) = ClauseEq Nil term
+clauseToClauseEq (Clause (Cons (PatDCon v i n cs params ps) pats) term) = case clauseToClauseEq $ Clause (ps +++ pats) term of
+    ClauseEq pats' term' -> case patternsSplitAt pats' (patternsLength ps) of
+        Split pats1 pats2 -> ClauseEq (Cons (PatDCon v i n cs params pats1) pats2) term'
+clauseToClauseEq (Clause (Cons (PatPCon pat) pats) term) = case clauseToClauseEq $ Clause (Cons pat pats) term of
+    ClauseEq (Cons pat' pats') term' -> ClauseEq (Cons (PatPCon pat') pats') term'
+    _ -> error "clauseToClauseEq"
+clauseToClauseEq (Clause (Cons (PatICon con) pats) term) = case clauseToClauseEq (Clause pats term) of
+    ClauseEq pats' term' -> ClauseEq (Cons (PatICon con) pats') term'
+clauseToClauseEq (Clause (Cons (PatVar var) pats) term) = case clauseToClauseEq (Clause pats term) of
+    ClauseEq pats' term' -> ClauseEq (Cons (PatVar var) pats') term'
 
 instance Functor Clause where
     fmap f (Clause Nil term) = Clause Nil (fmap f term)

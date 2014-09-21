@@ -1,4 +1,4 @@
-{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE ExistentialQuantification, GADTs #-}
 
 module TypeChecking.Definitions.Records
     ( typeCheckRecord
@@ -45,13 +45,14 @@ typeCheckRecord recPName@(recPos, recName) params mcon fields conds = do
                 warn [notInScope pos "record field" (nameToString fn)]
                 return Nothing
     let clauseToSEval (_,(_,c)) = (fst $ clauseToEval c, closed $ abstractTerm ctx' $ snd $ clauseToEval c)
-        getConds (fn,_) = map clauseToSEval $ filter (\(fn',_) -> fn == fn') conds'
+        getSConds (fn,_) = map clauseToSEval $ filter (\(fn',_) -> fn == fn') conds'
+        getConds (fn,_) = map (\(_,(_,c)) -> closed $ abstractClause ctx' c) $ filter (\(fn',_) -> fn == fn') conds'
     case mcon of
         Just con -> addConstructorCheck con (recID, recName) 0 [] (if null conds' then [] else map getConds fields') $
             Closed $ Type (vacuous $ abstractTerm ctx $ replaceSort conType conSort Nothing) conSort
         _ -> return ()
     let varl = lengthCtx ctx'
-        sem field = Semantics (S.Conds varl) $ V.Conds varl (getConds field)
+        sem field = Semantics (S.Conds varl) $ V.Conds varl (getSConds field)
         vars = map (return . liftBase ctx1) (ctxToVars ctx) ++ map snd fields''
         fields'' = zipWith (\field@(fn,_) v -> (fn, Apply (sem field) $ return v : vars)) fields' (ctxToVars ctx1)
     forM_ fields'' $ \(fn, field) -> warn $ checkConditions ctx' field $ map snd $ filter (\(fn',_) -> fn == fn') conds'
@@ -68,3 +69,7 @@ typeCheckFields ctx (Field (PIdent _ v) expr : exprs) ty = do
     let ctx'' = Snoc C.Nil v (Type term k1) C.+++ ctx'
     return (Fields ctx'' $ (Ident v, fmap (liftBase ctx'') $ Type term k1) : terms,
         Type (Apply (Semantics (S.Pi Explicit [v]) $ V.Pi k1 k2) [term, Lambda ty']) $ dmax k1 k2)
+
+abstractClause :: Ctx s f b a -> P.Clause a -> P.Clause b
+abstractClause C.Nil c = c
+abstractClause (Snoc ctx _ _) c = abstractClause ctx (abstractClause1 c)

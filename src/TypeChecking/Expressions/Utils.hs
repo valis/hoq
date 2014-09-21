@@ -70,6 +70,14 @@ notEnoughArgs pos a = Error NotEnoughArgs $ emsgLC pos ("Not enough arguments to
 tooManyArgs :: Posn -> Error
 tooManyArgs pos = Error TooManyArgs $ emsgLC pos "Too many arguments" enull
 
+conditionsErrorMsg :: Posn -> Ctx String f Void a -> ([String], Term Semantics a, Term Semantics a, Term Semantics a) -> Error
+conditionsErrorMsg pos ctx (vs, t1, t2, t3) = Error Conditions $ emsgLC pos "Conditions check failed:"
+    $  scopeToEDoc ctx vs t1 <+> pretty "equals to" <+> scopeToEDoc ctx vs t2
+    $$ pretty "but should be equal to" <+> scopeToEDoc ctx vs t3
+  where
+    scopeToEDoc :: Ctx String f Void a -> [String] -> Term Semantics a -> EDoc (Term Syntax)
+    scopeToEDoc ctx vs t = epretty $ bimap syntax pretty $ apps (vacuous $ abstractTerm ctx t) $ map cvar (ctxVars ctx ++ vs)
+
 prettyOpen :: Ctx String (Type Semantics) Void a -> Term Semantics a -> EDoc (Term Syntax)
 prettyOpen ctx term = epretty $ fmap (pretty . either id absurd) $ close ctx (bimap syntax Right term)
 
