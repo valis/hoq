@@ -45,18 +45,22 @@ typeCheckDataType p@(_, dt) params cons conds = do
                 when bf $ warn [Error Other $ emsgLC pos "Absurd patterns are not allowed in conditions" enull]
                 let ctx' = ctx C.+++ ctx1
                 (term, _) <- typeCheckCtx ctx' expr $ Just (nfType WHNF ty')
-                throwErrors $ checkTermination (Constructor i) pos (patternsToTerms rtpats) ctx' term
-                return $ Just (conName, (pos, P.Clause rtpats term))
+                return $ Just (conName, (pos, P.Clause rtpats term), i, PatInCtx (Constructor i) (patternsToTermsVar rtpats) term)
             _ -> do
                 warn [notInScope pos "data constructor" (nameToString con)]
                 return Nothing
+    termErrs <- forM [0 .. lcons - 1] $ \i -> 
+        let tc = filter (\(_,_,i',_) -> i == i') conds'
+            termErrs = checkTermination (head $ map (\(_,(pos,_),_,_) -> pos) tc) $ map (\(_,_,_,c) -> c) tc
+        in warn termErrs >> return (null termErrs)
     lift $ replaceDataType dt lcons $ closed $ Type (replaceSort dtTerm (succ mk) $ Just mk) mk
     let cons'' = map (\((_, con), i, ty) ->
-            let conds2 = map snd $ filter (\(c,_) -> c == con) conds'
+            let conds2 = map (\(_,b,_,_) -> b) $ filter (\(c,_,_,_) -> c == con) conds'
                 conds3 = map (\(_,c) -> closed $ abstractClause ctx c) conds2
             in (con, i, ty, conds2, conds3)) cons'
     forM_ cons'' $ \(con, i, Type ty k, _, conds3) ->
-        lift $ replaceConstructor con (dtID, dt) i conds3 [] $ closed $ Type (abstractTerm ctx $ replaceSort ty mk Nothing) mk
+        lift $ replaceConstructor con (dtID, dt) i (if termErrs !! i then conds3 else []) [] $
+        closed $ Type (abstractTerm ctx $ replaceSort ty mk Nothing) mk
     forM_ cons'' $ \(con, i, _, conds2, conds3) ->
         let toEval (Closed c) = (fst $ clauseToEval c, Closed $ snd $ clauseToEval c)
             vars = map return (ctxToVars ctx)

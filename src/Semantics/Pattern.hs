@@ -6,6 +6,7 @@ module Semantics.Pattern
     , ClauseEq(..), clauseToClauseEq
     , abstractClause1
     , patternToTerm, patternsToTerms
+    , patternToTermVar, patternsToTermsVar
     , abstractTermPat, abstractTermPats
     , liftBasePat, liftBasePats
     , patternVars, patternsVars
@@ -83,6 +84,17 @@ patternToTerm (PatVar v) = cvar v
 patternsToTerms :: Patterns b a -> [Term Int String]
 patternsToTerms Nil = []
 patternsToTerms (Cons p ps) = patternToTerm p : patternsToTerms ps
+
+patternToTermVar :: Pattern b a -> Term Int a
+patternToTermVar (PatDCon _ i _ _ _ ps) = Apply i (patternsToTermsVar ps)
+patternToTermVar (PatPCon p) = Apply 0 [patternToTermVar p]
+patternToTermVar (PatICon ILeft) = capply 0
+patternToTermVar (PatICon IRight) = capply 1
+patternToTermVar (PatVar v) = cvar Bound
+
+patternsToTermsVar :: Patterns b a -> [Term Int a]
+patternsToTermsVar Nil = []
+patternsToTermsVar (Cons p ps) = fmap (liftBasePats ps) (patternToTermVar p) : patternsToTermsVar ps
 
 clauseToEval :: Clause b -> ([Term Int String], Term Semantics b)
 clauseToEval (Clause pats term) = (patternsToTerms pats, abstractTermPats pats term)

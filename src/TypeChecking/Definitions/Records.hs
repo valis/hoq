@@ -39,14 +39,22 @@ typeCheckRecord recPName@(recPos, recName) params mcon fields conds = do
                 when bf $ warn [Error Other $ emsgLC pos "Absurd patterns are not allowed in conditions" enull]
                 let ctx'' = ctx' C.+++ ctx2
                 (term, _) <- typeCheckCtx ctx'' expr $ Just (nfType WHNF exprType)
-                throwErrors $ checkTermination (Variable $ liftBase ctx2 fieldVar) pos (patternsToTerms rtpats) ctx'' term
-                return $ Just (fn, (pos, P.Clause rtpats term))
+                return $ Just (fn, (pos, P.Clause rtpats term), PatInCtx (Variable $ liftBase ctx2 fieldVar) (patternsToTermsVar rtpats) term)
             Nothing -> do
                 warn [notInScope pos "record field" (nameToString fn)]
                 return Nothing
-    let clauseToSEval (_,(_,c)) = (fst $ clauseToEval c, closed $ abstractTerm ctx' $ snd $ clauseToEval c)
-        getSConds ((_,fn),_) = map clauseToSEval $ filter (\(fn',_) -> fn == fn') conds'
-        getConds ((_,fn),_) = map (\(_,(_,c)) -> closed $ abstractClause ctx' c) $ filter (\(fn',_) -> fn == fn') conds'
+    termErrs <- liftM concat $ forM fields' $ \((_, fn), _) ->
+        let tc = filter (\(fn',_,_) -> fn == fn') conds'
+            (_,(pos,_),_) = head tc
+            termErrs = checkTermination pos $ map (\(_,_,t) -> t) tc
+        in warn termErrs >> return (if null termErrs then [] else [fn])
+    let clauseToSEval (_,(_,c),_) = (fst $ clauseToEval c, closed $ abstractTerm ctx' $ snd $ clauseToEval c)
+        getSConds ((_,fn),_) = if elem fn termErrs
+            then []
+            else map clauseToSEval $ filter (\(fn',_,_) -> fn == fn') conds'
+        getConds ((_,fn),_) = if elem fn termErrs
+            then []
+            else map (\(_,(_,c),_) -> closed $ abstractClause ctx' c) $ filter (\(fn',_,_) -> fn == fn') conds'
     case mcon of
         Just con -> addConstructorCheck con (recID, recName) 0 [] (if null conds' then [] else map getConds fields') $
             Closed $ Type (vacuous $ abstractTerm ctx $ replaceSort conType conSort Nothing) conSort
@@ -55,7 +63,7 @@ typeCheckRecord recPName@(recPos, recName) params mcon fields conds = do
         sconds = map getSConds fields'
         vars = map (return . liftBase ctx1) (ctxToVars ctx) ++ map snd fields''
         fields'' = zipWith (\(field@((_,fn),_), c) v -> (fn, Apply (Semantics (S.Conds varl) $ V.Conds varl c) $ return v : vars)) (zip fields' sconds) (ctxToVars ctx1)
-    forM_ fields'' $ \(fn, field) -> warn $ checkConditions ctx' field $ map snd $ filter (\(fn',_) -> fn == fn') conds'
+    forM_ fields'' $ \(fn, field) -> warn $ checkConditions ctx' field $ map (\(_,b,_) -> b) $ filter (\(fn',_,_) -> fn == fn') conds'
     forM_ (zip (zip fields' [0..]) sconds) $ \((((fp, fn), Type fty k), ind), cond) ->
         addFieldCheck (PIdent fp $ nameToPrefix fn) recID ind cond $ closed $ Type (abstractTerm ctx' fty) k
 

@@ -1,11 +1,8 @@
 {-# LANGUAGE GADTs, ExistentialQuantification #-}
 
 module TypeChecking.Definitions.Termination
-    ( checkTermination, CT(..)
+    ( checkTermination, CT(..), PatInCtx(..)
     ) where
-
-import Control.Monad.State
-import Data.Foldable(toList)
 
 import qualified Syntax as S
 import Semantics.Value
@@ -21,48 +18,46 @@ instance Functor CT where
     fmap _ (Function i) = Function i
     fmap f (Variable a) = Variable (f a)
 
-checkTermination :: Eq a => CT a -> S.Posn -> [Term Int s] -> Ctx String f b a -> Term Semantics a -> [Error]
-checkTermination name pos pats ctx term = map msg $ collectFunCalls ctx name term >>= \mts -> case mts of
-    TermsInCtx ctx' terms -> if evalState (checkTerms ctx' pats terms) (length (pats >>= toList) - 1 + lengthCtx ctx' - lengthCtx ctx) == LT then [] else [pos]
-  where
-    msg :: S.Posn -> Error
-    msg pos = Error Other $ emsgLC pos "Termination check failed" enull
+data PatInCtx  = forall a. Eq a => PatInCtx (CT a) [Term Int a] (Term Semantics a)
+data PatsInCtx = forall a. Eq a => PatsInCtx       [Term Int a] [Term Semantics a]
 
-checkTerm :: Ctx String f b a -> Term Int s -> Term Semantics a -> State Int Ordering
-checkTerm _ (Apply con _) (Apply (Semantics _ (ICon con')) []) | con == iConToInt con' = return EQ
+checkTermination :: S.Posn -> [PatInCtx] -> [Error]
+checkTermination _ [] = []
+checkTermination pos clauses = go $ clauses >>= \(PatInCtx name pats term) ->
+    map (\(TermsInCtx ctx terms) -> PatsInCtx (map (fmap $ liftBase ctx) pats) terms) (collectFunCalls Nil name term)
+  where
+    go tc = if any isEmpty tc
+            then [Error Other $ emsgLC pos "Termination check failed" enull]
+            else if all (\(PatsInCtx pats terms) -> checkTerms pats terms == LT) tc
+                 then []
+                 else go $ map (\(PatsInCtx pats terms) -> PatsInCtx (tail pats) $ tail terms) tc
+    
+    isEmpty (PatsInCtx [] _) = True
+    isEmpty (PatsInCtx _ []) = True
+    isEmpty _ = False
+
+checkTerm :: Eq a => Term Int a -> Term Semantics a -> Ordering
+checkTerm (Apply con _) (Apply (Semantics _ (ICon con')) []) | con == iConToInt con' = EQ
   where
     iConToInt ILeft  = 0
     iConToInt IRight = 1
-checkTerm ctx Var{} (Var v []) = do
-    s <- get
-    put (s - 1)
-    return $ if s == index ctx v then EQ else GT
-  where
-    index :: Ctx String f b a -> a -> Int
-    index Nil _ = 0
-    index (Snoc ctx _ _) Bound = 0
-    index (Snoc ctx _ _) (Free a) = index ctx a + 1
-checkTerm ctx (Apply i pats) term = do
-    s <- get
-    results <- mapM (\pat -> checkTerm ctx pat term) pats
-    if minimum (GT:results) /= GT then return LT else case term of
-        Apply (Semantics _ (DCon i' k _)) terms | i == i' -> do
-            put s
-            checkTerms ctx pats (drop k terms)
-        _ -> return GT
-checkTerm _ _ _ = return GT
+checkTerm (Var a []) (Var a' []) = if a == a' then EQ else GT
+checkTerm (Apply i pats) term =
+    if minimum (GT : map (\pat -> checkTerm pat term) pats) /= GT
+    then LT
+    else case term of
+        Apply (Semantics _ (DCon i' k _)) terms | i == i' -> checkTerms pats (drop k terms)
+        _ -> GT
+checkTerm _ _ = GT
 
-checkTerms :: Ctx String f b a -> [Term Int s] -> [Term Semantics a] -> State Int Ordering
-checkTerms _ [] _ = return EQ
-checkTerms _ _ [] = return EQ
-checkTerms ctx (pat:pats) (term:terms) = do
-    r <- checkTerm ctx pat term
-    case r of
-        EQ -> checkTerms ctx pats terms
-        _  -> return r
+checkTerms :: Eq a => [Term Int a] -> [Term Semantics a] -> Ordering
+checkTerms [] _ = EQ
+checkTerms _ [] = GT
+checkTerms (pat:pats) (term:terms) = case checkTerm pat term of
+    EQ -> checkTerms pats terms
+    r  -> r
 
-data TermInCtx  s f b = forall a. TermInCtx  (Ctx s f b a) (Term Semantics a)
-data TermsInCtx s f b = forall a. TermsInCtx (Ctx s f b a) [Term Semantics a]
+data TermsInCtx s f b = forall a. Eq a => TermsInCtx (Ctx s f b a) [Term Semantics a]
 
 collectFunCalls :: Eq a => Ctx String f b a -> CT a -> Term Semantics a -> [TermsInCtx String f b]
 collectFunCalls ctx name (Lambda t) = collectFunCalls (Snoc ctx (error "") $ error "") (fmap Free name) t
