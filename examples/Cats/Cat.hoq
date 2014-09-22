@@ -1,27 +1,104 @@
 import Cats.Simp1
+import hlevel
 
 record SimpType where
     spine : Nat -> Type
-    simp-map : {n k : Nat} -> k ~> n -> spine n -> spine k
+    simp-map : (k n : Nat) -> k ~> n -> spine n -> spine k
   with
     simp-map _ _ (id p) x = transport spine (inv p) x
-    simp-map _ _ (comp _ f g) x = simp-map f (simp-map g x)
-
-{-
-record Spine2 (X : SimpType) with
-    ls : X.spine (suc zero)
-    rs : X.spine (suc zero)
-    ms : simp-map (face (suc zero) (wrap true) idp) ls = simp-map (face zero true idp) rs
--}
-
-record Sigma (A : Type) (B : A -> Type) where
-    constructor (,)
-    proj1 : A
-    proj2 : B proj1
+    simp-map k n (comp m f g) x = simp-map k m f (simp-map m n g x)
 
 Prod : Type -> Type -> Type
 Prod A B = Sigma A (\_ -> B)
 
-Spine : (X : SimpType) -> X.spine zero -> Nat -> Type
-Spine _ _ zero = True
-Spine X r (suc n) = Sigma (X.spine (suc zero)) (\e -> Prod (Spine X (simp-map (face zero true idp) e) n) (simp-map (face (suc zero) (wrap true) idp) e = r))
+-- X (suc n) = * X 1 - X n
+
+face0 : (n : Nat) -> zero ~> n
+face0 zero = id idp
+face0 (suc n) = comp n (face0 n) (face (suc n) (wrap id-le) idp)
+
+face1 : (n : Nat) -> suc zero ~> suc n
+face1 zero = id idp
+face1 (suc n) = comp (suc n) (face1 n) (face (suc (suc n)) (wrap (wrap id-le)) idp)
+
+face1-left : (n : Nat) -> face0 (suc n) = comp (suc zero) (face (suc zero) (wrap true) idp) (face1 n)
+face1-left zero = idp
+face1-left (suc n) =
+    comp' (suc n) (face0 (suc n)) (face (suc (suc n)) (wrap (wrap id-le)) idp)
+  ==< map (\t -> comp' (suc n) t (face (suc (suc n)) (wrap (wrap id-le)) idp)) (face1-left n) >==
+    comp' (suc n) (comp' (suc zero) (face (suc zero) (wrap true) idp) (face1 n)) (face (suc (suc n)) (wrap (wrap id-le)) idp)
+  ==< idp >==
+    comp' (suc zero) (face (suc zero) (wrap true) idp) (comp' (suc n) (face1 n) (face (suc (suc n)) (wrap (wrap id-le)) idp))
+  !qed
+
+face1-right : (n : Nat) -> Path (\_ -> zero ~> suc n) (comp (suc zero) (face zero true idp) (face1 n)) (comp n (face0 n) (face zero true idp))
+face1-right zero = idp
+face1-right (suc n) =
+    comp' (suc zero) (face zero true idp) (face1 (suc n))
+  ==< idp >==
+    comp' (suc zero) (face zero true idp) (comp' (suc n) (face1 n) (face (suc (suc n)) (wrap (wrap id-le)) idp))
+  ==< idp >==
+    comp' (suc n) (comp' (suc zero) (face zero true idp) (face1 n)) (face (suc (suc n)) (wrap (wrap id-le)) idp)
+  ==< map (\t -> comp' (suc n) t (face (suc (suc n)) (wrap (wrap id-le)) idp)) (face1-right n) >==
+    comp' (suc n) (comp' n (face0 n) (face zero true idp)) (face (suc (suc n)) (wrap (wrap id-le)) idp)
+  ==< idp >==
+    comp' n (face0 n) (comp' (suc n) (face zero true idp) (face (suc (suc n)) (wrap (wrap id-le)) idp))
+  ==< map (comp' n (face0 n)) (path (face-face true (wrap id-le) idp)) >==
+    comp' n (face0 n) (comp' (suc n) (face (suc n) (wrap id-le) idp) (face zero true idp))
+  ==< idp >==
+    comp' (suc n) (comp' n (face0 n) (face (suc n) (wrap id-le) idp)) (face zero true idp)
+  ==< idp >==
+    comp' (suc n) (face0 (suc n)) (face zero true idp)
+  !qed
+
+Spine : (X : SimpType) -> Nat -> X.spine zero -> Type
+Spine _ zero _ = True
+Spine X (suc n) r = Sigma (X.spine (suc zero)) (\e ->
+    Prod (r = X.simp-map zero (suc zero) (face (suc zero) (wrap true) idp) e)
+         (Spine X n (X.simp-map zero (suc zero) (face zero true idp) e)))
+
+getSpine0 : (X : SimpType) (n : Nat) (x : X.spine n) -> Spine X n (X.simp-map zero n (face0 n) x)
+getSpine0 X zero x = true
+getSpine0 X (suc n) x
+    = X.simp-map (suc zero) (suc n) (face1 n) x
+    , map (\t -> X.simp-map zero (suc n) t x) (face1-left n)
+    , transport (\t -> Spine X n (X.simp-map zero (suc n) t x))
+                (face1-right n)
+                (getSpine0 X n (X.simp-map n (suc n) (face zero true idp) x))
+
+getSpine : (X : SimpType) (n : Nat) -> X.spine n -> Sigma (X.spine zero) (Spine X n)
+getSpine X n x = X.simp-map zero n (face0 n) x, getSpine0 X n x
+
+{-
+-- X (suc n) = X n - X 1 *
+
+face0 : (n : Nat) -> zero ~> n
+face0 zero = id idp
+face0 (suc n) = comp n (face0 n) (face zero true idp)
+
+face1 : (n : Nat) -> suc zero ~> suc n
+face1 zero = id idp
+face1 (suc n) = comp (suc n) (face1 n) (face zero true idp)
+
+Spine : (X : SimpType) -> Nat -> X.spine zero -> Type
+Spine _ zero _ = True
+Spine X (suc n) r = Sigma (X.spine (suc zero)) (\e ->
+    Prod (Spine X n (X.simp-map zero (suc zero) (face (suc zero) (wrap true) idp) e))
+         (X.simp-map zero (suc zero) (face zero true idp) e = r))
+
+getSpine0 : (X : SimpType) (n : Nat) (x : X.spine n) -> Spine X n (X.simp-map zero n (face0 n) x)
+getSpine0 X zero x = true
+getSpine0 X (suc n) x
+    = X.simp-map (suc zero) (suc n) (face1 n) x
+    , ? : Spine X n (X.simp-map zero (suc n) (comp (suc zero) (face (suc zero) (wrap true) idp) (face1 n)) x)
+    , ? : X.simp-map zero (suc n) (comp (suc zero) (face zero true idp) (face1 n)) x
+        = X.simp-map zero (suc n) (comp n (face0 n) (face zero true idp)) x
+
+getSpine : (X : SimpType) (n : Nat) -> X.spine n -> Sigma (X.spine zero) (Spine X n)
+getSpine X n x = X.simp-map n zero (face0 n) x, getSpine0 X n x
+-}
+
+isEquiv : {X Y : Type} -> (X -> Y) -> Type
+isEquiv X Y f = (y : Y) -> isContr (Sigma X (\x -> f x = y))
+
+SegalType = Sigma SimpType (\X -> (n : Nat) -> isEquiv (getSpine X n))

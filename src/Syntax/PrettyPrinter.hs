@@ -50,7 +50,15 @@ ppSyntax ctx (Case pats) (expr:terms) = hang (text "case" <+> ppTermCtx ctx expr
 ppSyntax ctx Null [t] = ppTermCtx ctx t
 ppSyntax _ Null _ = empty
 ppSyntax ctx (Conds k) (t:ts) = ppTermCtx ctx $ apps t (drop k ts)
-ppSyntax ctx t@(FieldAcc (PIdent _ fn)) (t1:ts) = ppTermPrec (prec t) ctx t1 <+> text ('.' : fn) <+> ppList ctx ts
+ppSyntax ctx t@(FieldAcc (PIdent _ fn)) (t1:ts) =
+    let b = prec t > precTerm t1 || isAtom t1
+        isAtom (Apply Name{} []) = True
+        isAtom (Apply Null [t]) = isAtom t
+        isAtom (Apply (Conds k) (t:ts)) = isAtom t && null (drop k ts)
+        isAtom (Apply FieldAcc{} [_]) = True
+        isAtom (Var _ []) = True
+        isAtom _ = False
+    in (if b then (<>) else (<+>)) (ppTermPrec (prec t) ctx t1) (text $ '.' : fn) <+> ppList ctx ts
 ppSyntax _ _ _ = error "ppSyntax"
 
 opFixity :: Infix -> Infix -> Int -> Int

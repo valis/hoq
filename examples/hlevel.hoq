@@ -1,18 +1,11 @@
 import Paths
-
-data Nat = zero | suc Nat
+import Nat
 
 infixr 4 ,
 record Sigma (A : Type) (B : A -> Type) where
     constructor (,)
     proj1 : A
     proj2 : B proj1
-
-proj1 : (A : Type) (B : A -> Type) -> Sigma A B -> A
-proj1 _ _ ((,) a _) = a
-
-proj2 : (A : Type) (B : A -> Type) (x : Sigma A B) -> B (proj1 A B x)
-proj2 _ _ ((,) _ b) = b
 
 isContr : Type -> Type
 isContr A = Sigma A (\a -> (a' : A) -> a = a')
@@ -31,7 +24,7 @@ of-hlevel zero A = isContr A
 of-hlevel (suc n) A = (a a' : A) -> of-hlevel n (a = a')
 
 h1-prop : (A : Type) -> of-hlevel (suc zero) A -> isProp A
-h1-prop A f a a' = proj1 (a = a') (\p -> (p' : a = a') -> p = p') (f a a')
+h1-prop A f a a' = f a a' .proj1
 
 contr-prop : (A : Type) -> isContr A -> isProp A
 contr-prop A ((,) c f) a a' = inv (f a) * f a'

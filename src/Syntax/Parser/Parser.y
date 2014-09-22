@@ -176,7 +176,11 @@ Expr3 :: { RawExpr }
 
 Expr4 :: { RawExpr }
     : Exprs                 { let e:es = reverse $1 in apps e es }
-    | Expr4 FieldAcc Exprs  { Apply (termPos $1, FieldAcc $2) ($1 : reverse $3) }
+    | Expr4 FieldAcc EExprs { Apply (termPos $1, FieldAcc $2) ($1 : reverse $3) }
+
+EExprs :: { [RawExpr] }
+    : {- empty -}   { []  }
+    | EExprs Expr5  { $2:$1 }
 
 Exprs :: { [RawExpr] }
     : Expr5         { [$1]  }
