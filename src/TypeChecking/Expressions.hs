@@ -192,7 +192,7 @@ typeCheckName ctx pos ft var ts mty = do
                         _ -> liftM Right (typeCheckKeyword ctx pos (nameToString var) ts mty)
                 [(te, conds, ty)] ->
                     let te' = case te of
-                                Apply (Semantics (Name ft' _) _) _ | ft == ft' -> te
+                                Apply (Semantics (Constr k _) sem) ts -> Apply (Semantics (Constr k $ Name ft var) sem) ts
                                 Apply (Semantics _ sem) ts -> Apply (Semantics (Name ft var) sem) ts
                                 _ -> te
                     in case (sequenceA te', sequenceA ty) of

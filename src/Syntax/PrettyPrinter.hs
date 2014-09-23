@@ -26,9 +26,9 @@ ppTerm t = ppTermCtx (freeVars t) (vacuous t)
 ppTermCtx :: [String] -> Term Syntax Doc -> Doc
 ppTermCtx ctx (Var d ts) = d <+> ppList ctx ts
 ppTermCtx ctx (Apply s ts) = ppSyntax ctx s ts
-ppTermCtx ctx (Lambda t) = ppTermCtx ctx $ fmap (\v -> case v of
+ppTermCtx ctx (Lambda t) = text "{{" <+> ppTermCtx ctx (fmap (\v -> case v of
     Bound -> text "(error: Bound)"
-    Free d -> d) t
+    Free d -> text "Free(" <> d <> text ")") t) <+> text "}}"
 
 ppSyntax :: [String] -> Syntax -> [Term Syntax Doc] -> Doc
 ppSyntax ctx p@(Pi e vs) (t1:t2:ts) =
@@ -50,11 +50,13 @@ ppSyntax ctx (Case pats) (expr:terms) = hang (text "case" <+> ppTermCtx ctx expr
 ppSyntax ctx Null [t] = ppTermCtx ctx t
 ppSyntax _ Null _ = empty
 ppSyntax ctx (Conds k) (t:ts) = ppTermCtx ctx $ apps t (drop k ts)
+ppSyntax ctx (Constr k s) ts = ppSyntax ctx s (drop k ts)
 ppSyntax ctx t@(FieldAcc (PIdent _ fn)) (t1:ts) =
     let b = prec t > precTerm t1 || isAtom t1
         isAtom (Apply Name{} []) = True
         isAtom (Apply Null [t]) = isAtom t
         isAtom (Apply (Conds k) (t:ts)) = isAtom t && null (drop k ts)
+        isAtom (Apply (Constr k _) ts) = null (drop k ts)
         isAtom (Apply FieldAcc{} [_]) = True
         isAtom (Var _ []) = True
         isAtom _ = False
@@ -99,6 +101,7 @@ prec At                     = 80
 prec PathImp{}              = 70
 prec Pi{}                   = 60
 prec Lam{}                  = 50
+prec (Constr _ s)           = prec s
 prec _                      = 0
 
 precTerm :: Term Syntax a -> Int
@@ -106,5 +109,6 @@ precTerm Var{} = 110
 precTerm (Apply Name{} (_:_)) = 100
 precTerm (Apply Null [t]) = precTerm t
 precTerm (Apply Conds{} (t:_)) = precTerm t
+precTerm (Apply (Constr _ s) ts) = precTerm (Apply s ts)
 precTerm (Apply s _) = prec s
 precTerm (Lambda t) = precTerm t

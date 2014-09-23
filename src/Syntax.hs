@@ -44,6 +44,7 @@ data Syntax
     | Case [Term PName String]
     | Null
     | Conds Int
+    | Constr Int Syntax
     | FieldAcc PIdent
 
 data Explicit = Explicit | Implicit deriving Eq

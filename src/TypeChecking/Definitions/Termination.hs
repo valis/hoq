@@ -64,6 +64,6 @@ collectFunCalls ctx name (Lambda t) = collectFunCalls (Snoc ctx (error "") $ err
 collectFunCalls ctx name (Var a as) = (if name == Variable a then [TermsInCtx ctx as] else [])
     ++ (as >>= collectFunCalls ctx name)
 collectFunCalls ctx name (Apply a as) = (case a of
-    Semantics _ (DCon name' _ _) | name == Constructor name' -> [TermsInCtx ctx as]
+    Semantics _ (DCon name' k _) | name == Constructor name' -> [TermsInCtx ctx $ drop k as]
     Semantics _ (FunCall name' _) | name == Function name' -> [TermsInCtx ctx as]
     _ -> []) ++ (as >>= collectFunCalls ctx name)

@@ -38,7 +38,7 @@ checkPatterns func cs pats scope = listToMaybe $
     nfApps :: Eq a => Term Semantics a -> Term Semantics a
     nfApps (Apply a as) = Apply a $ map (nf WHNF) as
     nfApps (Lambda t) = Lambda (nfApps t)
-    nfApps t = t
+    nfApps (Var a as) = Var a $ map (nf WHNF) as
 
 findSuspiciousPairs :: [Some Clause] -> Patterns b a -> [TermsInCtx2 (Term Semantics) b]
 findSuspiciousPairs _ P.Nil = []
@@ -60,9 +60,10 @@ findSuspiciousPairs cs (Cons pat@(PatVar var) pats) =
     anyICon con (_ : cs) = anyICon con cs
 findSuspiciousPairs cs (Cons pat pats) =
     (case pat of
-        PatDCon _ _ _ conds params args -> conds >>= \(Closed (Clause cond _)) -> case unifyPatterns args cond of
-            Nothing -> []
-            Just args' -> [ext0 args args']
+        PatDCon _ _ _ conds params args -> conds >>= \(Closed (Clause cond _)) ->
+            case unifyPatterns args (appsPats cond params) of
+                Nothing -> []
+                Just args' -> [ext0 args args']
         _ -> []) ++
     map ext1 (findSuspiciousPairs cs' $ getArgs pat) ++
     map (ext2 $ patsToTerms $ getArgs pat) (findSuspiciousPairs (mapTail pat cs) pats)
@@ -83,18 +84,16 @@ findSuspiciousPairs cs (Cons pat pats) =
                           (ctx2,terms2) = patsToTerms args
                           fapps t = apps (fmap (liftBase ctx) $ abstractTerm ctx2 t) terms
                       in TermsInCtx2 (ctx C.+++ ctx1)
-                            (fmap (liftBase ctx1) (Apply (patToSemantics pat) $ map fapps terms2) : terms1)
+                            (fmap (liftBase ctx1) (apps (fmap (liftBase ctx) $ patToCon pat) $ map fapps terms2) : terms1)
                             (map (fmap $ liftBase ctx1) terms ++ map return (ctxToVars ctx1))
     
     ext1 (TermsInCtx2 ctx terms1 terms2) = case instantiatePats (fst $ patToTerm pat) ctx terms2 pats of
         Some pats' -> let (ctx',terms') = patsToTerms pats'
-                      in TermsInCtx2 (ctx C.+++ ctx') (fmap (liftBase ctx') (Apply (patToSemantics pat) terms1) : terms')
+                      in TermsInCtx2 (ctx C.+++ ctx') (fmap (liftBase ctx') (apps (fmap (liftBase ctx) $ patToCon pat) terms1) : terms')
                                                       (map (fmap $ liftBase ctx') terms2 ++ map return (ctxToVars ctx'))
     
-    ext2 :: (Ctx String (Term Semantics) b c, [Term Semantics c])
-        -> TermsInCtx2 (Term Semantics) c -> TermsInCtx2 (Term Semantics) b
     ext2 (ctx, terms) (TermsInCtx2 ctx' terms1 terms2) =
-        TermsInCtx2 (ctx C.+++ ctx') (fmap (liftBase ctx') (Apply (patToSemantics pat) terms) : terms1)
+        TermsInCtx2 (ctx C.+++ ctx') (fmap (liftBase ctx') (apps (fmap (liftBase ctx) $ patToCon pat) terms) : terms1)
                                      (map (fmap $ liftBase ctx') (map return $ ctxToVars ctx) ++ terms2)
 
 unifyPatterns :: Patterns b a -> Patterns b c -> Maybe (TermsInCtx (Term Semantics) b)
@@ -178,6 +177,10 @@ patToSemantics (PatDCon v i _ cs ps _) = Semantics v $
 patToSemantics PatPCon{} = pathSem
 patToSemantics (PatICon con) = iConSem con
 patToSemantics PatVar{} = error "patToSemantics"
+
+patToCon :: Pattern b a -> Term Semantics b
+patToCon p@(PatDCon _ _ _ _ ps _) = Apply (patToSemantics p) ps
+patToCon p = capply (patToSemantics p)
 
 patToTerm :: Pattern b a -> (Ctx String f b a, Term Semantics a)
 patToTerm pat@(PatDCon _ _ _ _ ps pats) =

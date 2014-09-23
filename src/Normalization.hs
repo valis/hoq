@@ -74,7 +74,7 @@ nfSemantics mode t@(Semantics _ (Case pats)) (term:terms) =
         Just (t', ts')  -> nfStep mode $ apps t' (ts' ++ terms2)
         _               -> Apply t $ nfs mode (term:terms)
 nfSemantics mode t@(Semantics _ (FieldAcc i conds)) (term:terms) = case nf WHNF term of
-    Apply (Semantics _ DCon{}) args | arg:_ <- drop i args -> nfStep mode (apps arg terms)
+    Apply (Semantics _ (DCon _ k _)) args | arg:_ <- drop (k + i) args -> nfStep mode (apps arg terms)
     term' -> case instantiateClauses (map (\(pats, Closed term) -> (pats, term)) conds) terms of
         Just (t', ts')  -> nfStep mode (apps t' ts')
         _               -> Apply t $ nfs mode (term':terms)

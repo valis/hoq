@@ -112,9 +112,7 @@ getConstructor :: Monad m => Name -> Maybe (ID, [Term Semantics a])
 getConstructor con (Just (dt, params)) = ScopeT $ do
     scope <- get
     return $ map (\(n, Semantics syn (DCon i _ e), cs, es, Closed (Type ty k)) ->
-        (n, if null e
-            then capply $ Semantics syn (DCon i 0 [])
-            else Apply (Semantics syn $ DCon i (length params) e) params
+        (n, Apply (Semantics (if null params then syn else Constr (length params) syn) $ DCon i (length params) e) params
         , cs, es, Type (apps ty params) k
         )) $ maybeToList $ lookup (con, dt) (constructors scope)
 getConstructor con Nothing = ScopeT $ do
