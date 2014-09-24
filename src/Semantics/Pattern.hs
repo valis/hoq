@@ -10,16 +10,16 @@ module Semantics.Pattern
     , instantiateClause
     , patternToTerm, patternsToTerms
     , patternToTermVar, patternsToTermsVar
+    , patternToTermSyntax, patternsToTermsSyntax 
     , abstractTermPat, abstractTermPats
     , liftBasePat, liftBasePats
     , patternVars, patternsVars
     , patternsLength, (+++)
-    , Split(..), patternsSplitAt
     ) where
 
 import Data.Void
 
-import Syntax(Syntax)
+import Syntax(Syntax(..),Name)
 import Semantics
 import Semantics.Value
 import qualified TypeChecking.Context as C
@@ -146,6 +146,21 @@ patternToTermVar (PatVar v) = cvar Bound
 patternsToTermsVar :: Patterns b a -> [Term Int a]
 patternsToTermsVar Nil = []
 patternsToTermsVar (Cons p ps) = fmap (liftBasePats ps) (patternToTermVar p) : patternsToTermsVar ps
+
+getName :: Syntax -> Name
+getName (Constr _ s) = getName s
+getName (Name _ n) = n
+getName _ = error "getName"
+
+patternToTermSyntax :: Pattern b a -> Term Name String
+patternToTermSyntax (PatDCon syn i _ _ _ ps) = Apply (getName syn) (patternsToTermsSyntax ps)
+patternToTermSyntax (PatPCon p) = Apply (getName $ syntax pathSem) [patternToTermSyntax p]
+patternToTermSyntax (PatICon c) = capply $ getName $ syntax (iConSem c)
+patternToTermSyntax (PatVar v) = cvar v
+
+patternsToTermsSyntax :: Patterns b a -> [Term Name String]
+patternsToTermsSyntax Nil = []
+patternsToTermsSyntax (Cons p ps) = patternToTermSyntax p : patternsToTermsSyntax ps
 
 clauseToEval :: Clause b -> ([Term Int String], Term Semantics b)
 clauseToEval (Clause pats term) = (patternsToTerms pats, abstractTermPats pats term)

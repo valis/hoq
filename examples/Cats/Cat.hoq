@@ -22,7 +22,18 @@ face1 zero = id idp
 face1 (suc n) = comp (suc n) (face1 n) (face (suc (suc n)) (wrap (wrap id-le)) idp)
 
 face1-left : (n : Nat) -> face0 (suc n) = comp (suc zero) (face (suc zero) (wrap true) idp) (face1 n)
-face1-left zero = idp
+face1-left = _
+{-
+face1-left zero =
+    face0 (suc zero)
+  ==< idp >==
+    comp zero (id idp) (face (suc zero) (wrap id-le) idp)
+  ==< path (id-comp (face (suc zero) (wrap true) idp)) >==
+    face (suc zero) (wrap id-le) idp
+  ==< path (comp-id (face (suc zero) (wrap id-le) idp)) >==
+    comp (suc zero) (face (suc zero) (wrap true) idp) (id idp)
+  ==< idp >==
+    comp (suc zero) (face (suc zero) (wrap true) idp) (face1 zero)
 face1-left (suc n) =
     comp' (suc n) (face0 (suc n)) (face (suc (suc n)) (wrap (wrap id-le)) idp)
   ==< map (\t -> comp' (suc n) t (face (suc (suc n)) (wrap (wrap id-le)) idp)) (face1-left n) >==
@@ -30,8 +41,11 @@ face1-left (suc n) =
   ==< idp >==
     comp' (suc zero) (face (suc zero) (wrap true) idp) (comp' (suc n) (face1 n) (face (suc (suc n)) (wrap (wrap id-le)) idp))
   !qed
+-}
 
 face1-right : (n : Nat) -> Path (\_ -> zero ~> suc n) (comp (suc zero) (face zero true idp) (face1 n)) (comp n (face0 n) (face zero true idp))
+face1-right = _
+{-
 face1-right zero = idp
 face1-right (suc n) =
     comp' (suc zero) (face zero true idp) (face1 (suc n))
@@ -50,6 +64,7 @@ face1-right (suc n) =
   ==< idp >==
     comp' (suc n) (face0 (suc n)) (face zero true idp)
   !qed
+-}
 
 Spine : (X : SimpType) -> Nat -> X.spine zero -> Type
 Spine _ zero _ = True
@@ -63,40 +78,11 @@ getSpine0 X (suc n) x
     = X.simp-map (suc zero) (suc n) (face1 n) x
     , map (\t -> X.simp-map zero (suc n) t x) (face1-left n)
     , transport (\t -> Spine X n (X.simp-map zero (suc n) t x))
-                (face1-right n)
+                (inv (face1-right n))
                 (getSpine0 X n (X.simp-map n (suc n) (face zero true idp) x))
 
 getSpine : (X : SimpType) (n : Nat) -> X.spine n -> Sigma (X.spine zero) (Spine X n)
 getSpine X n x = X.simp-map zero n (face0 n) x, getSpine0 X n x
-
-{-
--- X (suc n) = X n - X 1 *
-
-face0 : (n : Nat) -> zero ~> n
-face0 zero = id idp
-face0 (suc n) = comp n (face0 n) (face zero true idp)
-
-face1 : (n : Nat) -> suc zero ~> suc n
-face1 zero = id idp
-face1 (suc n) = comp (suc n) (face1 n) (face zero true idp)
-
-Spine : (X : SimpType) -> Nat -> X.spine zero -> Type
-Spine _ zero _ = True
-Spine X (suc n) r = Sigma (X.spine (suc zero)) (\e ->
-    Prod (Spine X n (X.simp-map zero (suc zero) (face (suc zero) (wrap true) idp) e))
-         (X.simp-map zero (suc zero) (face zero true idp) e = r))
-
-getSpine0 : (X : SimpType) (n : Nat) (x : X.spine n) -> Spine X n (X.simp-map zero n (face0 n) x)
-getSpine0 X zero x = true
-getSpine0 X (suc n) x
-    = X.simp-map (suc zero) (suc n) (face1 n) x
-    , ? : Spine X n (X.simp-map zero (suc n) (comp (suc zero) (face (suc zero) (wrap true) idp) (face1 n)) x)
-    , ? : X.simp-map zero (suc n) (comp (suc zero) (face zero true idp) (face1 n)) x
-        = X.simp-map zero (suc n) (comp n (face0 n) (face zero true idp)) x
-
-getSpine : (X : SimpType) (n : Nat) -> X.spine n -> Sigma (X.spine zero) (Spine X n)
-getSpine X n x = X.simp-map n zero (face0 n) x, getSpine0 X n x
--}
 
 isEquiv : {X Y : Type} -> (X -> Y) -> Type
 isEquiv X Y f = (y : Y) -> isContr (Sigma X (\x -> f x = y))

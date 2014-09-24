@@ -176,7 +176,7 @@ Expr3 :: { RawExpr }
 
 Expr4 :: { RawExpr }
     : Exprs                 { let e:es = reverse $1 in apps e es }
-    | Expr4 FieldAcc EExprs { Apply (termPos $1, FieldAcc $2) ($1 : reverse $3) }
+    | Expr4 FieldAcc EExprs { Apply (termPos $1, FieldAcc 0 $2) ($1 : reverse $3) }
 
 EExprs :: { [RawExpr] }
     : {- empty -}   { []  }
@@ -192,9 +192,9 @@ Expr5 :: { RawExpr }
     | 'case' Expr of CaseClauses '}'    { Apply ($1, Case $ map vacuous $ reverse $ fst $4) ($2 : reverse (snd $4)) }
 
 CaseClauses :: { ([Term PName Void], [RawExpr]) }
-    : Name Patterns '->' Expr                   { ([Apply $1 $2], [$4])                 }
-    | CaseClauses ';'                           { $1                                    }
-    | CaseClauses ';' Name Patterns '->' Expr   { (Apply $3 $4 : fst $1, $6 : snd $1)   }
+    : Name Patterns '->' Expr                   { ([Apply $1 $ reverse $2], [$4])               }
+    | CaseClauses ';'                           { $1                                            }
+    | CaseClauses ';' Name Patterns '->' Expr   { (Apply $3 (reverse $4) : fst $1, $6 : snd $1) }
 
 {
 return' :: a -> Parser a

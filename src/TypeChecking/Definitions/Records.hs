@@ -61,8 +61,7 @@ typeCheckRecord recPName@(recPos, recName) params mcon fields conds = do
         _ -> return ()
     let varl = lengthCtx ctx'
         sconds = map getSConds fields'
-        vars = map (return . liftBase ctx1) (ctxToVars ctx) ++ map snd fields''
-        fields'' = zipWith (\(field@((_,fn),_), c) v -> (fn, Apply (Semantics (S.Conds varl) $ V.Conds varl c) $ return v : vars)) (zip fields' sconds) (ctxToVars ctx1)
+        fields'' = zipWith (\(field@((_,fn),_), c) v -> (fn, Apply (Semantics (S.Conds varl) $ V.Conds varl c) $ return v : map return (ctxToVars ctx1))) (zip fields' sconds) (ctxToVars ctx1)
     forM_ fields'' $ \(fn, field) -> warn $ checkConditions ctx' field $ map (\(_,b,_) -> b) $ filter (\(fn',_,_) -> fn == fn') conds'
     forM_ (zip (zip fields' [0..]) sconds) $ \((((fp, fn), Type fty k), ind), cond) ->
         addFieldCheck (PIdent fp $ nameToPrefix fn) recID ind cond $ closed $ Type (abstractTerm ctx' fty) k

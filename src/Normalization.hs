@@ -73,11 +73,14 @@ nfSemantics mode t@(Semantics _ (Case pats)) (term:terms) =
     in case instantiateCaseClauses (zipWith (\pat te -> ([pat], te)) pats terms1) [term] of
         Just (t', ts')  -> nfStep mode $ apps t' (ts' ++ terms2)
         _               -> Apply t $ nfs mode (term:terms)
-nfSemantics mode t@(Semantics _ (FieldAcc i conds)) (term:terms) = case nf WHNF term of
-    Apply (Semantics _ (DCon _ k _)) args | arg:_ <- drop (k + i) args -> nfStep mode (apps arg terms)
-    term' -> case instantiateClauses (map (\(pats, Closed term) -> (pats, term)) conds) terms of
-        Just (t', ts')  -> nfStep mode (apps t' ts')
-        _               -> Apply t $ nfs mode (term':terms)
+nfSemantics mode t@(Semantics syn (FieldAcc i n k conds)) (term:terms) = case nf WHNF term of
+    Apply (Semantics _ (DCon _ k' _)) args | arg:_ <- drop (k' + i) args -> nfStep mode $ apps arg (drop k terms)
+    term' ->
+        let (params,args) = splitAt k terms
+            fields = map (\j -> Apply (Semantics syn $ FieldAcc j n k []) (term:params)) [0 .. n - 1]
+        in case instantiateClauses (map (\(pats, Closed term) -> (pats, apps term $ params ++ fields)) conds) args of
+            Just (t', ts')  -> nfStep mode (apps t' ts')
+            _               -> Apply t $ nfs mode (term':terms)
 nfSemantics mode a as = Apply a (nfs mode as)
 
 nfStep :: Eq a => NF -> Term Semantics a -> Term Semantics a

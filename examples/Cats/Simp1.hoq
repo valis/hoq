@@ -5,6 +5,9 @@ data (~>) (k n : Nat)
     | comp (m : Nat) (k ~> m) (m ~> n)
     | face (i : Nat) (i <= suc k) (suc k = n)
     | deg (i : Nat) (i <= n) (k = suc n)
+    | comp-id (k ~> n) I
+    | id-comp (k ~> n) I
+    | comp-comp (m l : Nat) (k ~> m) (m ~> l) (l ~> n) I
     | face-face {i j : Nat} (i <= j) (j <= suc k) (suc (suc k) = n) I
     | deg-deg {i j : Nat} (j <= i) (i <= n) (k = suc (suc n)) I
     | face-deg-1 {i j m : Nat} (i <= j) (j <= m) (k = suc m) (suc m = n) I
@@ -12,9 +15,12 @@ data (~>) (k n : Nat)
     | face-deg-3 {i j m : Nat} (suc j <= i) (i <= suc m) (k = suc m) (suc m = n) I
     | trunc (x y : k ~> n) (x = y) (x = y) I I
   with
-    comp m (id p) g = transport (\x -> x ~> n) (inv p) g
-    comp m f (id p) = transport (\x -> k ~> x) p f
-    comp m (comp m' f g) h = comp m' f (comp m g h)
+    comp-id p left = comp n p (id idp)
+    comp-id p right = p
+    id-comp p left = comp k (id idp) p
+    id-comp p right = p
+    comp-comp m l p q r left = comp l (comp m p q) r
+    comp-comp m l p q r right = comp m p (comp l q r)
     face-face i j p q r left = comp (suc k) (face i (trans p q) idp) (face (suc j) (wrap q) r)
     face-face i j p q r right = comp (suc k) (face j q idp) (face i (trans (suc-le p) (wrap q)) r)
     deg-deg i j p q r left = comp (suc n) (deg (suc i) (wrap q) r) (deg j (trans p q) idp)

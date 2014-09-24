@@ -66,3 +66,8 @@ test4 : Circle -> Nat
 test4 x = case x of
     base -> zero
     loop _ -> suc zero
+
+test4' : Circle -> I
+test4' x = case x of
+    base -> left
+    loop i -> i

@@ -114,7 +114,7 @@ typeCheckCtx' ctx (Apply (pos, S.At) (b:c:ts)) mty = do
             return (Apply (Semantics S.At V.At) (b':c':r1:r2:tes), ty, tab1 ++ tab2)
         t1' -> throwError [Error TypeMismatch $ emsgLC pos "" $ pretty "Expected type: Path"
                                                              $$ pretty "Actual type:" <+> prettyOpen ctx t1']
-typeCheckCtx' ctx (Apply (pos, syn@(S.Case (pat:pats))) (expr:terms)) mty = do
+typeCheckCtx' ctx (Apply (pos, (S.Case (pat:pats))) (expr:terms)) mty = do
     (exprTerm, exprType) <- typeCheckCtx ctx expr Nothing
     let (term1:terms1,terms2) = splitAt (length pats + 1) terms
         typeCheckClause mtype (pat,term) = do
@@ -134,11 +134,13 @@ typeCheckCtx' ctx (Apply (pos, syn@(S.Case (pat:pats))) (expr:terms)) mty = do
     (terms2', ty, tab2) <- if null terms2
         then return ([], type1', [])
         else typeCheckApps pos Nothing ctx terms2 type1' mty
-    let sem = Semantics syn $ V.Case $ map (head . fst . clauseToEval) (clause:clauses)
-        terms' = map (snd . clauseToEval) (clause:clauses)
-    warn $ coverageErrorMsg pos $ checkCoverage $ zipWith (\p1 p2 -> (termPos p1, p2)) (pat:pats) (clause:clauses)
-    warn $ checkConditions ctx (Lambda $ Apply sem $ bvar : map (fmap Free) terms') $
-        zipWith (\p1 p2 -> (termPos p1, p2)) (pat:pats) (clause:clauses)
+    let clauseToSyntax (P.Clause pats _) p = bimap (\nm -> (termPos p, nm)) id $ head (patternsToTermsSyntax pats)
+        cs = clause:clauses
+        sem = Semantics (S.Case $ zipWith clauseToSyntax cs (pat:pats)) $ V.Case $ map (head . fst . clauseToEval) cs
+        terms' = map (snd . clauseToEval) cs
+        clauses' = zipWith (\p1 p2 -> (termPos p1, p2)) (pat:pats) cs
+    warn $ coverageErrorMsg pos (checkCoverage clauses')
+    warn $ checkConditions ctx (Lambda $ Apply sem $ bvar : map (fmap Free) terms') clauses'
     return (Apply sem $ exprTerm : terms' ++ terms2', ty, tab1 ++ tab2)
   where
     isStationary :: Term a b -> Maybe (Term a b)
@@ -146,7 +148,7 @@ typeCheckCtx' ctx (Apply (pos, syn@(S.Case (pat:pats))) (expr:terms)) mty = do
         Bound -> Nothing
         Free t' -> isStationary t'
     isStationary t = Just t
-typeCheckCtx' ctx (Apply (pos, syn@(S.FieldAcc (PIdent fPos fName))) (expr:exprs)) mty = do
+typeCheckCtx' ctx (Apply (pos, (S.FieldAcc _ pid@(PIdent fPos fName))) (expr:exprs)) mty = do
     (exprTerm, Type exprType _) <- typeCheckCtx ctx expr Nothing
     case nf WHNF exprType of
         Apply (Semantics _ (DataType dtID _)) params -> do
@@ -155,9 +157,12 @@ typeCheckCtx' ctx (Apply (pos, syn@(S.FieldAcc (PIdent fPos fName))) (expr:exprs
                 Nothing -> throwError [notInScope fPos "record field" fName]
                 Just (fInd, conds, Closed (Type fType k)) -> do
                     fs <- lift (getFields dtID)
-                    let fields = zipWith (\(_,e,_) i -> Apply (Semantics syn $ V.FieldAcc i e) [exprTerm]) fs [0..]
+                    let lparams = length params
+                        lfs = length fs
+                        syn = S.FieldAcc lparams pid
+                        fields = zipWith (\(_,e,_) i -> Apply (Semantics syn $ V.FieldAcc i lfs lparams e) $ exprTerm:params) fs [0..]
                     (terms, ty, tab) <- typeCheckApps pos Nothing ctx exprs (Type (apps fType $ params ++ fields) k) mty
-                    return (Apply (Semantics syn $ V.FieldAcc fInd conds) (exprTerm:terms), ty, tab)
+                    return (Apply (Semantics syn $ V.FieldAcc fInd lfs lparams conds) (exprTerm : params ++ terms), ty, tab)
         _ -> throwError [Error TypeMismatch $ emsgLC pos "" $ pretty "Expected a record type"
                                                            $$ pretty "Actual type:" <+> prettyOpen ctx exprType]
 typeCheckCtx' ctx te (Just (Type ty _)) = do
@@ -373,7 +378,7 @@ actExpType w ctx act exp pos mterm = do
         l = if w then l2 else l1
     unless (mo == Just EQ || mo == Just LT) $
         throwError [Error TypeMismatch $ emsgLC pos "" $ pretty "Expected type:" <+> prettyOpen' ctx exp'
-                                                      $$ pretty "Actual type:"   <+> prettyOpen' ctx act'
+                                                      $$ pretty "Actual type:  " <+> prettyOpen' ctx act'
                                                       $$ maybe enull (\t -> pretty "Term:" <+> prettyOpen ctx t) mterm]
     return l
 
@@ -466,7 +471,7 @@ typeCheckLambda ctx te ty = do
                 then return (te', Type ty'' k', dropOnePi p a b)
                 else throwError [Error TypeMismatch $ emsgLC (termPos te) ""
                          $ pretty "Expected type:" <+> prettyOpen ctx (Apply (Semantics sp $ V.Pi kty kb) [nty,b])
-                        $$ pretty "Actual type:"   <+> prettyOpen ctx (Apply p [na,b])
+                        $$ pretty "Actual type:  " <+> prettyOpen ctx (Apply p [na,b])
                         $$ pretty "Term:" <+> prettyOpen ctx te']
         _ -> throwError [Error TypeMismatch $ emsgLC (termPos te) "" $ pretty "Expected pi type"
                                                                     $$ pretty "Actual type:" <+> prettyOpen ctx ty'

@@ -45,7 +45,7 @@ data Syntax
     | Null
     | Conds Int
     | Constr Int Syntax
-    | FieldAcc PIdent
+    | FieldAcc Int PIdent
 
 data Explicit = Explicit | Implicit deriving Eq
 

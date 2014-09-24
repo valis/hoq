@@ -25,7 +25,7 @@ data Value t
     | Squeeze
     | Case [Term Int String]
     | Conds Int (Eval t)
-    | FieldAcc Int (Eval t)
+    | FieldAcc Int Int Int (Eval t)
 
 data ICon = ILeft | IRight deriving Eq
 
@@ -58,7 +58,7 @@ instance Eq (Value t) where
         cmpPats (Apply c pats) (Apply c' pats') = c == c' && and (zipWith cmpPats pats pats')
         cmpPats _ _ = False
     Conds{} == Conds{} = True
-    FieldAcc i _ == FieldAcc i' _ = i == i'
+    FieldAcc i _ _ _ == FieldAcc i' _ _ _ = i == i'
     _ == _ = False
 
 instance Eq Level where
