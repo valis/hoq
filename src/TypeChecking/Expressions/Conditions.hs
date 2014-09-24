@@ -1,8 +1,7 @@
-{-# LANGUAGE GADTs, ExistentialQuantification, FlexibleInstances #-}
+{-# LANGUAGE GADTs, ExistentialQuantification #-}
 
 module TypeChecking.Expressions.Conditions
     ( checkConditions
-    , appsPat, appsPats
     , patToTerm, patsToTerms
     ) where
 
@@ -22,7 +21,6 @@ checkConditions :: Eq b => Ctx String f Void b => Term Semantics b -> [(S.Posn, 
 checkConditions ctx func cs = maybeToList $ msum $
     map (\(pos, Clause p scope) -> fmap (conditionsErrorMsg pos ctx) $ checkPatterns func (map (\(_, c) -> c) cs) p scope) cs
 
-data Some f = forall a. Some (f a)
 data TermsInCtx2 f b = forall a. TermsInCtx2 (Ctx String f b a) [f a] [f a]
 data TermsInCtx f b = forall a. TermsInCtx (Ctx String f b a) [f a]
 
@@ -49,8 +47,8 @@ findSuspiciousPairs cs (Cons pat@(PatVar var) pats) =
         TermsInCtx2 (Snoc C.Nil var (error "") C.+++ ctx) (fmap (liftBase ctx) bvar : terms1)
                                                           (fmap (liftBase ctx) bvar : terms2)
     check con = if anyICon con cs
-                then case abstractPats1 pats of
-                        Some pats' -> let (ctx,terms) = patsToTerms $ appsPats pats' [iCon con]
+                then case instantiatePats1 (iCon con) pats of
+                        Some pats' -> let (ctx,terms) = patsToTerms pats'
                                       in [TermsInCtx2 ctx (iCon con : terms) (iCon con : map return (ctxToVars ctx))]
                 else []
     
@@ -60,10 +58,11 @@ findSuspiciousPairs cs (Cons pat@(PatVar var) pats) =
     anyICon con (_ : cs) = anyICon con cs
 findSuspiciousPairs cs (Cons pat pats) =
     (case pat of
-        PatDCon _ _ _ conds params args -> conds >>= \(Closed (Clause cond _)) ->
-            case unifyPatterns args (appsPats cond params) of
-                Nothing -> []
-                Just args' -> [ext0 args args']
+        PatDCon _ _ _ conds params args -> conds >>= \(ClauseInCtx ctx (Clause cond _)) ->
+            case instantiatePats ctx params cond of
+                Some cond' -> case unifyPatterns args cond' of
+                    Nothing -> []
+                    Just args' -> [ext0 args args']
         _ -> []) ++
     map ext1 (findSuspiciousPairs cs' $ getArgs pat) ++
     map (ext2 $ patsToTerms $ getArgs pat) (findSuspiciousPairs (mapTail pat cs) pats)
@@ -79,7 +78,7 @@ findSuspiciousPairs cs (Cons pat pats) =
             Cons (PatPCon pat) _ -> [Some $ Clause (Cons pat P.Nil) $ error ""]
             _ -> []
     
-    ext0 args (TermsInCtx ctx terms) = case instantiatePats (fst $ patToTerm pat) ctx terms pats of
+    ext0 args (TermsInCtx ctx terms) = case instantiatePatsAndLift (fst $ patToTerm pat) ctx terms pats of
         Some pats' -> let (ctx1,terms1) = patsToTerms pats'
                           (ctx2,terms2) = patsToTerms args
                           fapps t = apps (fmap (liftBase ctx) $ abstractTerm ctx2 t) terms
@@ -87,7 +86,7 @@ findSuspiciousPairs cs (Cons pat pats) =
                             (fmap (liftBase ctx1) (apps (fmap (liftBase ctx) $ patToCon pat) $ map fapps terms2) : terms1)
                             (map (fmap $ liftBase ctx1) terms ++ map return (ctxToVars ctx1))
     
-    ext1 (TermsInCtx2 ctx terms1 terms2) = case instantiatePats (fst $ patToTerm pat) ctx terms2 pats of
+    ext1 (TermsInCtx2 ctx terms1 terms2) = case instantiatePatsAndLift (fst $ patToTerm pat) ctx terms2 pats of
         Some pats' -> let (ctx',terms') = patsToTerms pats'
                       in TermsInCtx2 (ctx C.+++ ctx') (fmap (liftBase ctx') (apps (fmap (liftBase ctx) $ patToCon pat) terms1) : terms')
                                                       (map (fmap $ liftBase ctx') terms2 ++ map return (ctxToVars ctx'))
@@ -111,69 +110,19 @@ unifyPatterns (Cons (PatICon con1) pats1) (Cons (PatICon con2) pats2) | con1 == 
 unifyPatterns (Cons PatVar{} pats1) (Cons pat2 pats2) =
     let (ctx1,term) = patToTerm pat2
         mapTerms (TermsInCtx ctx2 terms) = TermsInCtx (ctx1 C.+++ ctx2) $ fmap (liftBase ctx2) term : terms
-    in case abstractPats1 pats1 of
-        Some pats1' -> case fmapPats (liftBase ctx1) pats1' of
-            Some pats1'' -> fmap mapTerms $ unifyPatterns (appsPats pats1'' [term]) pats2
+    in case instantiatePatsAndLift1 ctx1 term pats1 of
+        Some pats1' -> fmap mapTerms (unifyPatterns pats1' pats2)
 unifyPatterns (Cons pat1 pats1) (Cons PatVar{} pats2) =
     let (ctx1,term) = patToTerm pat1
         mapTerms (TermsInCtx ctx2 terms) = TermsInCtx (ctx1 C.+++ ctx2) $
             map (fmap $ liftBase ctx2) (map return $ ctxToVars ctx1) ++ terms
-    in case abstractPats1 pats2 of
-        Some pats2' -> case fmapPats (liftBase ctx1) pats2' of
-            Some pats2'' -> fmap mapTerms $ unifyPatterns pats1 (appsPats pats2'' [term])
+    in case instantiatePatsAndLift1 ctx1 term pats2 of
+        Some pats2' -> fmap mapTerms (unifyPatterns pats1 pats2')
 unifyPatterns _ _ = Nothing
 
-abstractPats1 :: Patterns (Scoped b) a -> Some (Patterns b)
-abstractPats1 P.Nil = Some P.Nil
-abstractPats1 (Cons (PatDCon v i n cs params ps) pats) = case abstractPats1 (ps P.+++ pats) of
-    Some pats' -> case patternsSplitAt pats' (patternsLength ps) of
-        Split pats1 pats2 -> Some $ Cons (PatDCon v i n cs (map Lambda params) pats1) pats2
-abstractPats1 (Cons (PatPCon pat) pats) = case abstractPats1 (Cons pat pats) of
-    Some (Cons pat' pats') -> Some $ Cons (PatPCon pat') pats'
-    _ -> error "abstractPats1"
-abstractPats1 (Cons (PatICon con) pats) = case abstractPats1 pats of
-    Some pats' -> Some $ Cons (PatICon con) pats'
-abstractPats1 (Cons (PatVar  var) pats) = case abstractPats1 pats of
-    Some pats' -> Some $ Cons (PatVar var) pats'
-
-abstractPats :: Ctx s f b c -> Patterns c a -> Some (Patterns b)
-abstractPats C.Nil pats = Some pats
-abstractPats (Snoc ctx _ _) pats = case abstractPats1 pats of
-    Some pats' -> abstractPats ctx pats'
-
-fmapPats :: (b -> d) -> Patterns b a -> Some (Patterns d)
-fmapPats _ P.Nil = Some P.Nil
-fmapPats f (Cons (PatDCon v i n cs params ps) pats) = case fmapPats f (ps P.+++ pats) of
-    Some pats' -> case patternsSplitAt pats' (patternsLength ps) of
-        Split pats1 pats2 -> Some $ Cons (PatDCon v i n cs (map (fmap f) params) pats1) pats2
-fmapPats f (Cons (PatPCon pat) pats) = case fmapPats f (Cons pat pats) of
-    Some (Cons pat' pats') -> Some $ Cons (PatPCon pat') pats'
-    _ -> error "fmapPats"
-fmapPats f (Cons (PatICon con) pats) = case fmapPats f pats of
-    Some pats' -> Some $ Cons (PatICon con) pats'
-fmapPats f (Cons (PatVar  var) pats) = case fmapPats (fmap f) pats of
-    Some pats' -> Some $ Cons (PatVar var) pats'
-
-appsPats :: Patterns d a -> [Term Semantics d] -> Patterns d a
-appsPats pats [] = pats
-appsPats P.Nil _ = P.Nil
-appsPats (Cons pat pats) terms = Cons (appsPat pat terms) $ appsPats pats $ map (fmap $ liftBasePat pat) terms
-
-appsPat :: Pattern d a -> [Term Semantics d] -> Pattern d a
-appsPat pat [] = pat
-appsPat (PatDCon v i n cs params ps) terms = PatDCon v i n cs (map (\param -> apps param terms) params) (appsPats ps terms)
-appsPat (PatPCon pat) terms = PatPCon (appsPat pat terms)
-appsPat (PatICon con) _ = PatICon con
-appsPat (PatVar  var) _ = PatVar var
-
-instantiatePats :: Ctx s f b c -> Ctx s f b d -> [Term Semantics d] -> Patterns c a -> Some (Patterns d)
-instantiatePats ctx1 ctx2 terms pats = case abstractPats ctx1 pats of
-    Some pats1 -> case fmapPats (liftBase ctx2) pats1 of
-        Some pats2 -> Some (appsPats pats2 terms)
-
 patToSemantics :: Pattern b a -> Semantics
-patToSemantics (PatDCon v i _ cs ps _) = Semantics v $
-    DCon i (length ps) $ map (\(Closed c) -> (fst $ clauseToEval c, Closed $ snd $ clauseToEval c)) cs
+patToSemantics (PatDCon v i _ cs ps _) = Semantics v $ DCon i (length ps) $
+    map (\(ClauseInCtx ctx cl) -> (fst $ clauseToEval cl, closed $ abstractTerm ctx $ snd $ clauseToEval cl)) cs
 patToSemantics PatPCon{} = pathSem
 patToSemantics (PatICon con) = iConSem con
 patToSemantics PatVar{} = error "patToSemantics"

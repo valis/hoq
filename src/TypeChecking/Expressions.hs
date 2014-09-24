@@ -210,14 +210,15 @@ typeCheckName ctx pos ft var ts mty = do
             when (lconds > 0) $
                 let (lefts,params') = partitionEithers (map sequenceA params)
                 in case lefts of
-                    [] -> forM_ (zip tes conds) $ \(term,cs) -> forM_ cs $ \(Closed cl) -> case clauseToClauseEq cl of
-                        ClauseEq pats rhs -> 
-                            let args = params' ++ tes
-                                (ctx',args') = patsToTerms (appsPats pats args)
-                                term' = apps (fmap (liftBase ctx') term) args'
-                                actTerm = nf NF term'
-                                expTerm = nf NF $ apps rhs $ map (fmap $ liftBasePats pats) args
-                            in unless (expTerm == actTerm) $ warn [conditionsErrorMsg pos (ctx C.+++ ctx') ([], term', actTerm, expTerm)]
+                    [] -> forM_ (zip tes conds) $ \(term,cs) -> forM_ cs $ \(ClauseInCtx ctx' cl) ->
+                        case clauseToClauseEq $ instantiateClause ctx' (params' ++ tes) cl of
+                            P.ClauseEq pats rhs ->
+                                let (ctx1,args1) = patsToTerms pats
+                                    term' = apps (fmap (liftBase ctx1) term) args1
+                                    actTerm = nf NF term'
+                                    expTerm = nf NF rhs
+                                in unless (expTerm == actTerm) $
+                                    warn [conditionsErrorMsg pos (ctx C.+++ ctx1) ([], term', actTerm, expTerm)]
                     _ -> warn (lefts >>= inferArgErrorMsg)
             return (apps te tes, ty', tab)
         Right res -> return res

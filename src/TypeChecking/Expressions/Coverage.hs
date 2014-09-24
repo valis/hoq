@@ -24,7 +24,7 @@ checkCoverage clauses = case checkClauses $ map (\(_, P.Clause pats _) -> patter
   where
     patternToTerm :: P.Pattern b a -> Term Pattern String
     patternToTerm (P.PatDCon _ i n cs params pats) =
-        Apply (PatDCon i n $ map (\(Closed (P.Clause ps _)) -> patternsToTerms ps) cs) (patternsToTerms pats)
+        Apply (PatDCon i n $ map (\(P.ClauseInCtx _ (P.Clause ps _)) -> patternsToTerms ps) cs) (patternsToTerms pats)
     patternToTerm (P.PatPCon pat) = Apply PatPCon [patternToTerm pat]
     patternToTerm (P.PatICon con) = capply (PatICon con)
     patternToTerm (P.PatVar var) = cvar var

@@ -54,7 +54,7 @@ typeCheckRecord recPName@(recPos, recName) params mcon fields conds = do
             else map clauseToSEval $ filter (\(fn',_,_) -> fn == fn') conds'
         getConds ((_,fn),_) = if elem fn termErrs
             then []
-            else map (\(_,(_,c),_) -> closed $ abstractClause ctx' c) $ filter (\(fn',_,_) -> fn == fn') conds'
+            else map (\(_,(_,c),_) -> ClauseInCtx ctx' c) $ filter (\(fn',_,_) -> fn == fn') conds'
     case mcon of
         Just con -> addConstructorCheck con (recID, recName) 0 [] (if null conds' then [] else map getConds fields') $
             Closed $ Type (vacuous $ abstractTerm ctx $ replaceSort conType conSort Nothing) conSort
@@ -79,7 +79,3 @@ typeCheckFields ctx (Field (PIdent p v) expr : exprs) ty = do
     let ctx'' = Snoc C.Nil v (Type term k1) C.+++ ctx'
     return (Fields ctx'' $ ((p, Ident v), fmap (liftBase ctx'') $ Type term k1) : terms,
         Type (Apply (Semantics (S.Pi Explicit [v]) $ V.Pi k1 k2) [term, Lambda ty']) $ dmax k1 k2)
-
-abstractClause :: Ctx s f b a -> P.Clause a -> P.Clause b
-abstractClause C.Nil c = c
-abstractClause (Snoc ctx _ _) c = abstractClause ctx (abstractClause1 c)

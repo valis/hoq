@@ -1,10 +1,13 @@
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GADTs, ExistentialQuantification #-}
 
 module Semantics.Pattern
     ( Pattern(..), Patterns(..)
     , Clause(..), clauseToEval
     , ClauseEq(..), clauseToClauseEq
-    , abstractClause1
+    , ClauseInCtx(..), Some(..)
+    , instantiatePats1, instantiatePats
+    , instantiatePatsAndLift1, instantiatePatsAndLift
+    , instantiateClause
     , patternToTerm, patternsToTerms
     , patternToTermVar, patternsToTermsVar
     , abstractTermPat, abstractTermPats
@@ -14,12 +17,15 @@ module Semantics.Pattern
     , Split(..), patternsSplitAt
     ) where
 
+import Data.Void
+
 import Syntax(Syntax)
 import Semantics
 import Semantics.Value
+import qualified TypeChecking.Context as C
 
 data Pattern b a where
-    PatDCon :: Syntax -> Int -> Int -> [Closed Clause] -> [Term Semantics b] -> Patterns b a -> Pattern b a
+    PatDCon :: Syntax -> Int -> Int -> [ClauseInCtx] -> [Term Semantics b] -> Patterns b a -> Pattern b a
     PatPCon :: Pattern b a -> Pattern b a
     PatICon :: ICon -> Pattern b b
     PatVar  :: String -> Pattern b (Scoped b)
@@ -34,6 +40,9 @@ data Clause b where
 data ClauseEq b where
     ClauseEq :: Eq a => Patterns b a -> Term Semantics a -> ClauseEq b
 
+data ClauseInCtx = forall b. Eq b => ClauseInCtx (C.Ctx String (Type Semantics) Void b) (Clause b)
+data Some f = forall a. Some (f a)
+
 clauseToClauseEq :: Eq b => Clause b -> ClauseEq b
 clauseToClauseEq (Clause Nil term) = ClauseEq Nil term
 clauseToClauseEq (Clause (Cons (PatDCon v i n cs params ps) pats) term) = case clauseToClauseEq $ Clause (ps +++ pats) term of
@@ -47,32 +56,74 @@ clauseToClauseEq (Clause (Cons (PatICon con) pats) term) = case clauseToClauseEq
 clauseToClauseEq (Clause (Cons (PatVar var) pats) term) = case clauseToClauseEq (Clause pats term) of
     ClauseEq pats' term' -> ClauseEq (Cons (PatVar var) pats') term'
 
-instance Functor Clause where
-    fmap f (Clause Nil term) = Clause Nil (fmap f term)
-    fmap f (Clause (Cons (PatDCon v i n cs params ps) pats) term) = case fmap f $ Clause (ps +++ pats) term of
-        Clause pats' term' -> case patternsSplitAt pats' (patternsLength ps) of
-            Split pats1 pats2 -> Clause (Cons (PatDCon v i n cs (map (fmap f) params) pats1) pats2) term'
-    fmap f (Clause (Cons (PatPCon pat) pats) term) = case fmap f $ Clause (Cons pat pats) term of
-        Clause (Cons pat' pats') term' -> Clause (Cons (PatPCon pat') pats') term'
-        _ -> error "fmap: Clause"
-    fmap f (Clause (Cons (PatICon con) pats) term) = case fmap f (Clause pats term) of
-        Clause pats' term' -> Clause (Cons (PatICon con) pats') term'
-    fmap f (Clause (Cons (PatVar  var) pats) term) = case fmap (fmap f) (Clause pats term) of
+(>>>=) :: Patterns b a -> (b -> Term Semantics c) -> Some (Patterns c)
+Nil >>>= _ = Some Nil
+Cons (PatDCon v i n cs params ps) pats >>>= k = case (ps +++ pats) >>>= k of
+    Some pats' -> case patternsSplitAt pats' (patternsLength ps) of
+        Split pats1 pats2 -> Some $ Cons (PatDCon v i n cs (map (>>= k) params) pats1) pats2
+Cons (PatPCon pat) pats >>>= k = case Cons pat pats >>>= k of
+    Some (Cons pat' pats') -> Some $ Cons (PatPCon pat') pats'
+    _ -> error "(>>>=): Patterns"
+Cons (PatICon con) pats >>>= k = case pats >>>= k of
+    Some pats' -> Some $ Cons (PatICon con) pats'
+Cons (PatVar var) pats >>>= k =
+    case (pats >>>= \v -> case v of
+                            Bound  -> return Bound
+                            Free b -> fmap Free (k b)) of
+        Some pats' -> Some $ Cons (PatVar var) pats'
+
+instantiatePats1 :: Term Semantics b -> Patterns (Scoped b) a -> Some (Patterns b)
+instantiatePats1 t ps = ps >>>= \v -> case v of
+    Bound  -> t
+    Free b -> return b
+
+instantiatePatsAndLift1 :: C.Ctx s f b c -> Term Semantics c -> Patterns (Scoped b) a -> Some (Patterns c)
+instantiatePatsAndLift1 ctx t ps = ps >>>= \v -> case v of
+    Bound  -> t
+    Free b -> return (C.liftBase ctx b)
+
+instantiatePatsAndLift :: C.Ctx s f b c -> C.Ctx s f b d -> [Term Semantics d] -> Patterns c a -> Some (Patterns d)
+instantiatePatsAndLift ctx1 ctx2 terms pats = pats >>>= go ctx1 ctx2 terms
+  where
+    go :: C.Ctx s f b c -> C.Ctx s f b d -> [Term Semantics d] -> c -> Term Semantics d
+    go C.Nil ctx2 _ b = return (C.liftBase ctx2 b)
+    go C.Snoc{} _ (t:_) Bound = t
+    go (C.Snoc ctx1 _ _) ctx2 (_:ts) (Free c) = go ctx1 ctx2 ts c
+    go _ _ _ _ = error "instantiatePatsAndLift"
+
+instantiatePats :: C.Ctx s f Void b -> [Term Semantics d] -> Patterns b a -> Some (Patterns d)
+instantiatePats ctx terms pats = pats >>>= go ctx terms
+  where
+    go :: C.Ctx s f Void b -> [Term Semantics d] -> b -> Term Semantics d
+    go C.Nil _ b = absurd b
+    go C.Snoc{} (t:_) Bound = t
+    go (C.Snoc ctx _ _) (_:ts) (Free b) = go ctx ts b
+    go _ _ _ = error "instantiatePats"
+
+bindClause :: Clause b -> (b -> Term Semantics c) -> Clause c
+bindClause (Clause Nil term) k = Clause Nil (term >>= k)
+bindClause (Clause (Cons (PatDCon v i n cs params ps) pats) term) k = case bindClause (Clause (ps +++ pats) term) k of
+    Clause pats' term' -> case patternsSplitAt pats' (patternsLength ps) of
+        Split pats1 pats2 -> Clause (Cons (PatDCon v i n cs (map (>>= k) params) pats1) pats2) term'
+bindClause (Clause (Cons (PatPCon pat) pats) term) k = case bindClause (Clause (Cons pat pats) term) k of
+    Clause (Cons pat' pats') term' -> Clause (Cons (PatPCon pat') pats') term'
+    _ -> error "bindClause"
+bindClause (Clause (Cons (PatICon con) pats) term) k = case bindClause (Clause pats term) k of
+    Clause pats' term' -> Clause (Cons (PatICon con) pats') term'
+bindClause (Clause (Cons (PatVar var) pats) term) k =
+    case (Clause pats term `bindClause` \v -> case v of
+                                                Bound  -> return Bound
+                                                Free b -> fmap Free (k b)) of
         Clause pats' term' -> Clause (Cons (PatVar var) pats') term'
 
-abstractClause1 :: Clause (Scoped b) -> Clause b
-abstractClause1 (Clause Nil term) = Clause Nil (Lambda term)
-abstractClause1 (Clause (Cons (PatDCon v i n cs params ps) pats) term) =
-    case abstractClause1 $ Clause (ps +++ pats) term of
-        Clause pats' term' -> case patternsSplitAt pats' (patternsLength ps) of
-            Split pats1 pats2 -> Clause (Cons (PatDCon v i n cs (map Lambda params) pats1) pats2) term'
-abstractClause1 (Clause (Cons (PatPCon pat) pats) term) = case abstractClause1 $ Clause (Cons pat pats) term of
-    Clause (Cons pat' pats') term' -> Clause (Cons (PatPCon pat') pats') term'
-    _ -> error "abstractClause1"
-abstractClause1 (Clause (Cons (PatICon con) pats) term) = case abstractClause1 (Clause pats term) of
-    Clause pats' term' -> Clause (Cons (PatICon con) pats') term'
-abstractClause1 (Clause (Cons (PatVar  var) pats) term) = case abstractClause1 (Clause pats term) of
-    Clause pats' term' -> Clause (Cons (PatVar var) pats') term'
+instantiateClause :: C.Ctx s f Void b -> [Term Semantics d] -> Clause b -> Clause d
+instantiateClause ctx terms cl = bindClause cl (go ctx terms)
+  where
+    go :: C.Ctx s f Void b -> [Term Semantics d] -> b -> Term Semantics d
+    go C.Nil _ b = absurd b
+    go C.Snoc{} (t:_) Bound = t
+    go (C.Snoc ctx _ _) (_:ts) (Free b) = go ctx ts b
+    go _ _ _ = error "instantiatePats"
 
 patternToTerm :: Pattern b a -> Term Int String
 patternToTerm (PatDCon _ i _ _ _ ps) = Apply i (patternsToTerms ps)

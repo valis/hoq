@@ -56,17 +56,13 @@ typeCheckDataType p@(_, dt) params cons conds = do
     lift $ replaceDataType dt lcons $ closed $ Type (replaceSort dtTerm (succ mk) $ Just mk) mk
     let cons'' = map (\((_, con), i, ty) ->
             let conds2 = map (\(_,b,_,_) -> b) $ filter (\(c,_,_,_) -> c == con) conds'
-                conds3 = map (\(_,c) -> closed $ abstractClause ctx c) conds2
+                conds3 = map (\(_,c) -> ClauseInCtx ctx c) conds2
             in (con, i, ty, conds2, conds3)) cons'
     forM_ cons'' $ \(con, i, Type ty k, _, conds3) ->
         lift $ replaceConstructor con (dtID, dt) i (if termErrs !! i then conds3 else []) [] $
         closed $ Type (abstractTerm ctx $ replaceSort ty mk Nothing) mk
     forM_ cons'' $ \(con, i, _, conds2, conds3) ->
-        let toEval (Closed c) = (fst $ clauseToEval c, Closed $ snd $ clauseToEval c)
+        let toEval (ClauseInCtx ctx' cl) = (fst $ clauseToEval cl, closed $ abstractTerm ctx' $ snd $ clauseToEval cl)
             vars = map return (ctxToVars ctx)
             conTerm = Apply (Semantics (Name Prefix con) $ DCon i (length vars) $ map toEval conds3) vars
         in warn $ checkConditions ctx conTerm conds2
-
-abstractClause :: Ctx s f b a -> P.Clause a -> P.Clause b
-abstractClause C.Nil c = c
-abstractClause (Snoc ctx _ _) c = abstractClause ctx (abstractClause1 c)

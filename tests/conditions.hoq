@@ -75,12 +75,3 @@ data Test6 (k n : Nat) = Test6 (m : Nat) (Test6 k m) (Test6 m n)
 
 test11 : (k n : Nat) -> Test6 k n -> Nat -> Nat
 test11 k n (Test6 m f g) x = test11 k m f (test11 m n g x)
-
-test11' : Test6 zero zero -> Nat
-test11' (Test6 zero f g) = test11' f
-
-data Test7 (k n p : Nat) = Test7 (m : Nat) (Test7 k m p) (Test7 m n p)
-    with Test7 s (Test7 t f g) h = Test7 t f (Test7 s g h)
-
-test12 : Test7 zero zero (suc zero) -> Nat
-test12 (Test7 zero f g) = test12 f
