@@ -178,24 +178,23 @@ typeCheckName ctx pos ft var ts mty = do
     eres <- case lookupCtx (nameToString var) ctx of
         Just (te,ty) -> return $ Left (te, [], [], ty)
         Nothing -> do
-            let mdt = mty >>= \(Type ty _) -> case ty of
-                    Apply (Semantics _ (DataType dtID _)) params -> return (dtID, params)
-                    _ -> fmap (\dtID -> (dtID, [])) (dropPis ty)
-            mt <- lift (getEntry var mdt)
-            case mt of
-                [] -> do
-                    cons <- lift (getConstructor var Nothing)
-                    let cons' = map (\(c,_,_,_,_) -> c) cons
-                    case (cons',mdt) of
-                        (c:cs, Just (dtID,_)) -> do
-                            dt <- lift (getDataTypeByID dtID)
-                            throwError [Error TypeMismatch $ emsgLC pos ""
-                                 $ pretty ("Expected data type: " ++ nameToPrefix dt)
-                                $$ if null cs
-                                    then pretty $ "Actual data type: " ++ nameToPrefix c
-                                    else pretty $ "Posible data types: " ++ intercalate ", " (map nameToPrefix cons')]
-                        _ -> liftM Right (typeCheckKeyword ctx pos (nameToString var) ts mty)
-                [(te, conds, ty)] ->
+            let mdt = mty >>= \(Type ty _) -> dropPis ty
+            mt <- lift $ getEntry var $ mdt >>= either (const Nothing) Just
+            cons <- lift (getConstructor var Nothing)
+            let cons' = map (\(c,_,_,_,_) -> c) cons
+            case (mdt, cons', mt) of
+                (Just (Left wty), _:_, _) -> throwError [Error TypeMismatch $ emsgLC pos ""
+                                                 $ pretty "Expected type:" <+> prettyOpen' ctx wty
+                                                $$ pretty ("But " ++ nameToPrefix var ++ " is a data type constructor")]
+                (Just (Right (dtID, _)), c:cs, []) -> do
+                    dt <- lift (getDataTypeByID dtID)
+                    throwError [Error TypeMismatch $ emsgLC pos ""
+                         $ pretty ("Expected data type: " ++ nameToPrefix dt)
+                        $$ if null cs
+                            then pretty $ "Actual data type: " ++ nameToPrefix c
+                            else pretty $ "Posible data types: " ++ intercalate ", " (map nameToPrefix cons')]
+                (_, _, []) -> liftM Right (typeCheckKeyword ctx pos (nameToString var) ts mty)
+                (_, _, [(te, conds, ty)]) ->
                     let te' = case te of
                                 Apply (Semantics (Constr k _) sem) ts -> Apply (Semantics (Constr k $ Name ft var) sem) ts
                                 Apply (Semantics _ sem) ts -> Apply (Semantics (Name ft var) sem) ts
@@ -204,7 +203,7 @@ typeCheckName ctx pos ft var ts mty = do
                         (Left kp, _) -> throwError (inferArgErrorMsg kp)
                         (_, Left kp) -> throwError (inferArgErrorMsg kp)
                         (Right te'', Right (Type Lambda{} _)) -> throwError [inferParamsErrorMsg pos $ nameToPrefix var]
-                        (Right te'', Right ty') -> return $ Left (te'', conds, maybe [] snd mdt, ty')
+                        (Right te'', Right ty') -> return $ Left (te'', conds, maybe [] (either (const []) snd) mdt, ty')
                 _ -> throwError [Error Other $ emsgLC pos ("Ambiguous identifier: " ++ show (nameToString var)) enull]
     case eres of
         Left (te, conds, params, ty) -> do
@@ -228,10 +227,18 @@ typeCheckName ctx pos ft var ts mty = do
             return (apps te tes, ty', tab)
         Right res -> return res
   where
-    dropPis :: Eq a => Term Semantics a -> Maybe ID
-    dropPis (Apply (Semantics _ V.Pi{}) [_,t]) = dropPis (nf WHNF t)
-    dropPis (Lambda t) = dropPis t
-    dropPis (Apply (Semantics _ (DataType dtID _)) []) = Just dtID
+    dropPis :: Eq a => Term Semantics a -> Maybe (Either (Term Semantics a) (ID, [Term Semantics a]))
+    dropPis (Apply (Semantics (S.Pi _ []) _) [_,t]) = dropPis (nf WHNF t)
+    dropPis (Apply (Semantics (S.Pi _ (v:vs)) _) [_, Lambda t]) = case dropPis (nf WHNF t) of
+        Just (Right (dtID, params)) -> Just $ Right (dtID, case sequenceA $ map sequenceA params of
+                                                            Free params' -> params'
+                                                            _            -> [])
+        Just (Left t) -> Just $ Left $ t >>= \u -> case u of
+                                                    Bound  -> capply $ Semantics (Name Prefix $ Ident v) (error "dropPis")
+                                                    Free a -> return a
+        Nothing -> Nothing
+    dropPis (Apply (Semantics _ (DataType dtID _)) params) = Just $ Right (dtID, params)
+    dropPis t@(Apply (Semantics _ v) _) | isInj v = Just (Left t)
     dropPis _ = Nothing
 
 typeCheckKeyword :: (Monad m, Eq a) => Context a -> Posn -> String -> [Term (Posn, Syntax) Void]
@@ -298,7 +305,7 @@ typeCheckKeyword ctx pos "path" (a:as) mty = do
                                 Lambda{} -> Apply (Semantics (S.Lam ["i"]) V.Lam) [tb]
                                 _ -> Apply (Semantics (S.Lam ["_"]) V.Lam) [Lambda $ fmap Free tb]
                         aty = Apply (pathImp k1) [tb', apps r [iCon ILeft], apps r [iCon IRight]]
-                    let res = path [r]
+                        res = path [r]
                     tab2 <- actExpType True ctx (fmap Right aty) ety pos (Just res)
                     return (res, Type aty k, tab1 ++ tab2)
                 _ -> error "typeCheckKeyword: path"
@@ -408,7 +415,7 @@ typeCheckApps pos mname ctx allTerms ty mety = go 0 [] [] (map (\t -> (Explicit,
                         return $ Right (pte, maty, tab)
         case mres of
             Left errs -> go (n + 1) (Left errs : acc) ((e1,term):rest) terms $
-                Type (nf WHNF $ dropAndInstantiate (cvar $ Left $ NoArgument errs) p a b) k2
+                Type (nf WHNF $ dropAndInstantiate (cvar $ Left $ NoArgument n errs) p a b) k2
             Right (pterm', mty, tab) ->
                 let ty' = Right (pterm', mty)
                 in if useful tab
@@ -419,12 +426,12 @@ typeCheckApps pos mname ctx allTerms ty mety = go 0 [] [] (map (\t -> (Explicit,
         go (n + 1) (Left (inferArgErrorMsg $ Argument n pos mname) : acc)
             ((Implicit, Left (capply (pos, Name Prefix $ Ident "_"))) : rest) terms $
             Type (nf WHNF $ dropAndInstantiate (cvar $ Left (Argument n pos mname)) p a b) k2
-    go _ acc rest [] (Type aty k) =
+    go n acc rest [] (Type aty k) =
         let checkAty = case sequenceA aty of
                         Left kp -> throwError (inferArgErrorMsg kp)
                         Right aty' -> case partitionEithers (reverse acc) of
                                         ([], rights) -> return (map (snd . fst) rights, Type aty' k, [])
-                                        (left:_, _)  -> throwError left
+                                        (lefts, _)   -> throwError (concat lefts)
         in case mety of
             Just (Type ety _) -> do
                 tab <- actExpType False ctx aty ety pos Nothing
@@ -432,26 +439,23 @@ typeCheckApps pos mname ctx allTerms ty mety = go 0 [] [] (map (\t -> (Explicit,
                 then go 0 [] [] (replaceTerms (reverse rest) tab) nty
                 else do
                     (acc', Type aty' k', _) <- checkAty
-                    tab' <- actExpType True ctx (fmap Right aty') ety pos $ mterm (reverse acc')
+                    tab' <- actExpType True ctx (fmap Right aty') ety pos (mterm acc')
                     return (acc', Type aty' k', tab')
             Nothing -> checkAty
     go _ _ _ _ (Type (Var (Left kp) _) _) = throwError (inferArgErrorMsg kp)
-    go _ acc _ _ (Type ty _) = throwError [Error TypeMismatch $ emsgLC pos ""
+    go _ _ _ _ (Type ty _) = throwError [Error TypeMismatch $ emsgLC pos ""
          $ pretty "Expected pi type"
         $$ pretty "Actual type:" <+> prettyOpen' ctx ty]
     
     replaceTerms :: [(e, Either (Term (Posn, Syntax) Void) ((Posn, s), Maybe u))]
         -> [(Argument, s)] -> [(e, Either (Term (Posn, Syntax) Void) ((Posn, s), Maybe u))]
     replaceTerms ts [] = ts
-    replaceTerms ts ((Argument k _ _, t):tab) = case splitAt k (replaceTerms ts tab) of
+    replaceTerms ts ((arg, t):tab) = case splitAt (argumentIndex arg) (replaceTerms ts tab) of
         (ts1, []) -> ts1
         (ts1, t2:ts2) -> ts1 ++ [(fst t2, Right ((either termPos (fst . fst) (snd t2), t), Nothing))] ++ ts2
-    replaceTerms ts ((NoArgument{},_):tab) = replaceTerms ts tab
-
-useful :: [(Argument,a)] -> Bool
-useful = not . null . filter (\(arg,_) -> case arg of
-    Argument{}   -> True
-    NoArgument{} -> False)
+    
+    useful :: [(Argument,a)] -> Bool
+    useful = not . null
 
 typeCheckLambda :: (Monad m, Eq a) => Context a -> Term (Posn, Syntax) Void -> Type Semantics a
     -> TCM m (Term Semantics a, Type Semantics a, (String, Term Semantics (Scoped a)))

@@ -26,11 +26,14 @@ data ErrorType
     | Other
     deriving Eq
 
-data Argument = Argument Int Posn (Maybe Name) | NoArgument [Error]
+data Argument = Argument Int Posn (Maybe Name) | NoArgument Int [Error]
+
+argumentIndex :: Argument -> Int
+argumentIndex (Argument k _ _) = k
+argumentIndex (NoArgument k _) = k
 
 instance Eq Argument where
-    Argument k p _ == Argument k' p' _ = k == k' && p == p'
-    _ == _ = False
+    arg == arg' = argumentIndex arg == argumentIndex arg'
 
 notInScope :: Show a => Posn -> String -> a -> Error
 notInScope pos s a = Error NotInScope $ emsgLC pos ("Not in scope: " ++ (if null s then "" else s ++ " ") ++ show a) enull
@@ -49,7 +52,7 @@ inferArgErrorMsg (Argument k pos mname) = [Error Inference $ emsgLC pos
     nth 2 = "second"
     nth 3 = "third"
     nth n = show n ++ "th"
-inferArgErrorMsg (NoArgument errs) = errs
+inferArgErrorMsg (NoArgument _ errs) = errs
 
 inferParamsErrorMsg :: Show a => Posn -> a -> Error
 inferParamsErrorMsg pos d = Error Inference $ emsgLC pos ("Cannot infer parameters of data constructor " ++ show d) enull

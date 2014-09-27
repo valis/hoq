@@ -22,26 +22,24 @@ face1 zero = id idp
 face1 (suc n) = comp (suc n) (face1 n) (face (suc (suc n)) (wrap (wrap id-le)) idp)
 
 face1-left : (n : Nat) -> face0 (suc n) = comp (suc zero) (face (suc zero) (wrap true) idp) (face1 n)
-face1-left = _
-{-
 face1-left zero =
     face0 (suc zero)
   ==< idp >==
     comp zero (id idp) (face (suc zero) (wrap id-le) idp)
   ==< path (id-comp (face (suc zero) (wrap true) idp)) >==
     face (suc zero) (wrap id-le) idp
-  ==< path (comp-id (face (suc zero) (wrap id-le) idp)) >==
+  ==< inv (path (comp-id (face (suc zero) (wrap true) idp))) >==
     comp (suc zero) (face (suc zero) (wrap true) idp) (id idp)
   ==< idp >==
     comp (suc zero) (face (suc zero) (wrap true) idp) (face1 zero)
-face1-left (suc n) =
-    comp' (suc n) (face0 (suc n)) (face (suc (suc n)) (wrap (wrap id-le)) idp)
-  ==< map (\t -> comp' (suc n) t (face (suc (suc n)) (wrap (wrap id-le)) idp)) (face1-left n) >==
-    comp' (suc n) (comp' (suc zero) (face (suc zero) (wrap true) idp) (face1 n)) (face (suc (suc n)) (wrap (wrap id-le)) idp)
-  ==< idp >==
-    comp' (suc zero) (face (suc zero) (wrap true) idp) (comp' (suc n) (face1 n) (face (suc (suc n)) (wrap (wrap id-le)) idp))
   !qed
--}
+face1-left (suc n) =
+    comp (suc n) (face0 (suc n)) (face (suc (suc n)) (wrap (wrap id-le)) idp)
+  ==< map (\t -> comp (suc n) t (face (suc (suc n)) (wrap (wrap id-le)) idp)) (face1-left n) >==
+    comp (suc n) (comp (suc zero) (face (suc zero) (wrap true) idp) (face1 n)) (face (suc (suc n)) (wrap (wrap id-le)) idp)
+  ==< path (comp-comp (suc zero) (suc n) (face (suc zero) (wrap true) idp) (face1 n) (face (suc (suc n)) (wrap (wrap id-le)) idp)) >==
+    comp (suc zero) (face (suc zero) (wrap true) idp) (comp (suc n) (face1 n) (face (suc (suc n)) (wrap (wrap id-le)) idp))
+  !qed
 
 face1-right : (n : Nat) -> Path (\_ -> zero ~> suc n) (comp (suc zero) (face zero true idp) (face1 n)) (comp n (face0 n) (face zero true idp))
 face1-right = _

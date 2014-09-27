@@ -28,6 +28,7 @@ map _ _ f a _ p = transport (\x -> f a = f x) p idp
 
 data QED = qed
 
+infix 3 !
 (!) : {A : Type} -> (a : A) -> QED -> a = a
 (!) _ _ _ = idp
 
