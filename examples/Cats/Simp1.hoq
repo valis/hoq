@@ -8,7 +8,7 @@ data (~>) (k n : Nat)
     | comp-id (k ~> n) I
     | id-comp (k ~> n) I
     | comp-comp (m l : Nat) (k ~> m) (m ~> l) (l ~> n) I
-    | face-face {i j : Nat} (i <= j) (j <= suc k) (suc (suc k) = n) I
+    | face-face (i j : Nat) (i <= j) (j <= suc k) (suc (suc k) = n) I
     | deg-deg {i j : Nat} (j <= i) (i <= n) (k = suc (suc n)) I
     | face-deg-1 {i j m : Nat} (i <= j) (j <= m) (k = suc m) (suc m = n) I
     | face-deg-2 {i j : Nat} (j <= i) (i <= suc j) (j <= k) (k = n) I
@@ -35,6 +35,3 @@ data (~>) (k n : Nat)
     trunc _ y _ _ right _ = y
     trunc _ _ p _ i left  = p @ i
     trunc _ _ _ q i right = q @ i
-
-comp' : {k n : Nat} (m : Nat) -> k ~> m -> m ~> n -> k ~> n
-comp' _ _ m p q = comp m p q

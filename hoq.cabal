@@ -1,5 +1,5 @@
 name:                hoq
-version:             0.2
+version:             0.3
 synopsis:            A language based on homotopy type theory with an interval type
 -- description:         
 tested-with:         GHC == 7.6.3
@@ -18,7 +18,10 @@ extra-source-files:  README.md,
                      examples/basics.hoq,
                      examples/hlevel.hoq,
                      examples/circle.hoq,
-                     examples/lem.hoq
+                     examples/lem.hoq,
+                     examples/Nat.hoq,
+                     examples/Cats/Simp1.hoq,
+                     examples/Cats/Cat.hoq
 
 source-repository head
   type:     git
