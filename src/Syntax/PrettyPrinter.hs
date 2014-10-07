@@ -118,7 +118,8 @@ prec (Constr _ s)           = prec s
 prec _                      = 0
 
 precTerm :: Term Syntax a -> Int
-precTerm Var{} = 110
+precTerm (Var _ []) = 110
+precTerm Var{} = 100
 precTerm (Apply Name{} (_:_)) = 100
 precTerm (Apply Null [t]) = precTerm t
 precTerm (Apply Conds{} (t:_)) = precTerm t

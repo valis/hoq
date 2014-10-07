@@ -28,6 +28,7 @@ typeCheckRecord recPName@(recPos, recName) params mcon fields conds = do
     recID <- addDataTypeCheck recPName 1 $ Closed (vacuous recType)
     (Fields ctx1 fields', Type conType conSort) <- typeCheckFields ctx fields $
         Type (Apply (Semantics (Name Prefix recName) $ DataType recID 1) $ map return $ ctxToVars ctx) Prop
+    lift $ replaceDataType recName 1 $ closed $ Type (replaceSort recTerm (succ conSort) $ Just conSort) conSort
     let ctx' = ctx C.+++ ctx1
     forM_ fields' $ \(_, Type fieldType _) -> case findOccurrence recID (nf WHNF fieldType) of
         Just n | n > 0 -> throwError [Error Other $ emsgLC recPos "Record types cannot be recursive" enull]

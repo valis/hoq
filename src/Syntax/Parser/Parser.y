@@ -79,6 +79,12 @@ of :: { () }
     : 'of' '{'      {% \_ -> lift $ modify (NoLayout  :) }
     | 'of' error    {% \_ -> lift $ modify (Layout $1 :) }
 
+close :: { () }
+    : '}'           { () }
+    | error         {% \p -> lift get >>= \ls -> case ls of
+                                                    Layout{}:ls' -> lift (put ls')
+                                                    _ -> parseError TokRBrace p }
+
 Def :: { Def }
     : Name ':' Expr                                     { DefType $1 $3                                     }
     | Name Patterns '=' Expr                            { DefFun $1 (reverse $2) (Just $4)                  }
@@ -88,7 +94,7 @@ Def :: { Def }
     | 'record' Name Teles where
         MaybeConstructor Fields '}' MaybeFunClauses     { DefRecord $2 (reverse $3) $5 (reverse $6) $8      }
     | Infix Integer InfixOps                            { DefFixity (fst $1) (snd $1) (snd $2) (map snd $3) }
-    | Import                                            { DefImport $1 }
+    | Import                                            { DefImport $1                                      }
 
 Defs :: { [Def] }
     : {- empty -}   { []    }
@@ -189,7 +195,7 @@ Exprs :: { [RawExpr] }
 Expr5 :: { RawExpr }
     : Name                              { Apply (fst $1, Name Prefix $ snd $1) []                                   }
     | '(' Expr ')'                      { $2                                                                        }
-    | 'case' Expr of CaseClauses '}'    { Apply ($1, Case $ map vacuous $ reverse $ fst $4) ($2 : reverse (snd $4)) }
+    | 'case' Expr of CaseClauses close  { Apply ($1, Case $ map vacuous $ reverse $ fst $4) ($2 : reverse (snd $4)) }
 
 CaseClauses :: { ([Term PName Void], [RawExpr]) }
     : Name Patterns '->' Expr                   { ([Apply $1 $ reverse $2], [$4])               }

@@ -7,6 +7,9 @@ record SimpType where
   with
     simp-map _ _ (id p) x = transport spine (inv p) x
     simp-map k n (comp m f g) x = simp-map k m f (simp-map m n g x)
+    simp-map k n (id-comp f _) x = simp-map k n f x
+--    simp-map k n (comp-id f _) x = simp-map k n f x
+--    simp-map k n (comp-comp m l f g h _) x = simp-map k m f (simp-map m l g (simp-map l n h x))
 
 Prod : Type -> Type -> Type
 Prod A B = Sigma A (\_ -> B)
@@ -108,4 +111,8 @@ getSpine X n x = X.simp-map zero n (face0 n) x, getSpine0 X n x
 isEquiv : {X Y : Type} -> (X -> Y) -> Type
 isEquiv X Y f = (y : Y) -> isContr (Sigma X (\x -> f x = y))
 
-SegalType = Sigma SimpType (\X -> (n : Nat) -> isEquiv (getSpine X n))
+record Sigma1 (A : Type1) (B : A -> Type1) where
+    proj1 : A
+    proj2 : B proj1
+
+SegalType = Sigma1 SimpType (\X -> (n : Nat) -> isEquiv (getSpine X n))
