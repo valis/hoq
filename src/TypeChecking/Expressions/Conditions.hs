@@ -17,7 +17,7 @@ import TypeChecking.Context as C
 import TypeChecking.Expressions.Utils
 import Normalization
 
-checkConditions :: Eq b => Ctx String f Void b => Term Semantics b -> [(S.Posn, Clause b)] -> [Error]
+checkConditions :: Eq b => Ctx String f Void b -> Term Semantics b -> [(S.Posn, Clause b)] -> [Error]
 checkConditions ctx func cs = maybeToList $ msum $
     map (\(pos, Clause p scope) -> fmap (conditionsErrorMsg pos ctx) $ checkPatterns func (map (\(_, c) -> c) cs) p scope) cs
 
