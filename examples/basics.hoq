@@ -71,6 +71,13 @@ infixl 70 *
 -- squeeze _ left = left
 -- squeeze i right = i
 
+-- Actually, we can define squeeze which satisfy equations above
+squeeze1 : I -> I -> I
+squeeze1 i j = coe (\x -> left = x) left (path (\_ -> left)) j @ i
+
+squeeze2 : I -> I -> I
+squeeze2 i j = coe (\i -> Path (\j -> left = squeeze1 i j) (path (\_ -> left)) (path (\j -> squeeze1 i j))) left (path (\_ -> path (\_ -> left))) right @ i @ j
+
 -- Path types
 -- Path A a a' is a type with constructor path : (f : (i : I) -> A i) -> Path A (f left) (f right)
 -- a = a' is a synonym for Path (\_ -> A) a a'

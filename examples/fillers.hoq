@@ -1,0 +1,47 @@
+-- fill2 satisfies the following rules:
+-- fill2 _ _ _ _ _ a0_ a_0 a1_ left y = a0_ @ y
+-- fill2 _ _ _ _ _ a0_ a_0 a1_ right y = a1_ @ y
+-- fill2 _ _ _ _ _ a0_ a_0 a1_ x left = a_0 @ x
+
+fill2 : {A : Type}
+    -- Vertices of the square
+    {a00 a01 a10 a11 : A}
+    -- Edges of the square
+    (a0_ : a00 = a01) (a_0 : a00 = a10) (a1_ : a10 = a11)
+    -- The square
+    -> I -> I -> A
+fill2 A a00 a01 a10 a11 a0_ a_0 a1_ x y = coe (\y -> a0_ @ y = a1_ @ y) left a_0 y @ x
+
+-- fill3 satisfies the following rules:
+-- fill3 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ a0__ a1__ a_0_ a_1_ a__0 left y z = a0__ @ y @ z
+-- fill3 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ a0__ a1__ a_0_ a_1_ a__0 right y z = a1__ @ y @ z
+-- fill3 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ a0__ a1__ a_0_ a_1_ a__0 x left z = a_0_ @ x @ z
+-- fill3 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ a0__ a1__ a_0_ a_1_ a__0 x right z = a_1_ @ x @ z
+-- fill3 _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ a0__ a1__ a_0_ a_1_ a__0 x y left = a__0 @ x @ y
+
+fill3 : {A : Type}
+    -- Vertices of the cube
+    {a000 a001 a010 a011 a100 a101 a110 a111 : A}
+    -- Edges of the cube
+    (a00_ : a000 = a001)
+    (a01_ : a010 = a011)
+    (a10_ : a100 = a101)
+    (a11_ : a110 = a111)
+    (a0_0 : a000 = a010)
+    (a0_1 : a001 = a011)
+    (a1_0 : a100 = a110)
+    (a1_1 : a101 = a111)
+    (a_00 : a000 = a100)
+    (a_01 : a001 = a101)
+    (a_10 : a010 = a110)
+    (a_11 : a011 = a111)
+    -- Faces of the cube
+    (a0__ : Path (\y -> a0_0 @ y = a0_1 @ y) a00_ a01_)
+    (a1__ : Path (\y -> a1_0 @ y = a1_1 @ y) a10_ a11_)
+    (a_0_ : Path (\x -> a_00 @ x = a_01 @ x) a00_ a10_)
+    (a_1_ : Path (\x -> a_10 @ x = a_11 @ x) a01_ a11_)
+    (a__0 : Path (\x -> a_00 @ x = a_10 @ x) a0_0 a1_0)
+    -- The cube
+    -> I -> I -> I -> A
+fill3 A a000 a001 a010 a011 a100 a101 a110 a111 a00_ a01_ a10_ a11_ a0_0 a0_1 a1_0 a1_1 a_00 a_01 a_10 a_11 a0__ a1__ a_0_ a_1_ a__0 x y z =
+    coe (\z -> Path (\x -> a_0_ @ x @ z = a_1_ @ x @ z) (path (\y -> a0__ @ y @ z)) (path (\y -> a1__ @ y @ z))) left a__0 z @ x @ y
