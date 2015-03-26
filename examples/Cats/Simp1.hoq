@@ -15,6 +15,11 @@ data (~>) (k n : Nat)
     | face-deg-3 {i j m : Nat} (suc j <= i) (i <= suc m) (k = suc m) (suc m = n) I
     | trunc (x y : k ~> n) (x = y) (x = y) I I
   with
+{-
+    comp m (id p) f = transport (\x -> x ~> n) (inv p) f
+    comp m f (id p) = transport (\x -> k ~> x) p f
+    comp m (comp l f g) h = comp l f (comp m g h)
+-}
     comp-id p left = comp n p (id idp)
     comp-id p right = p
     id-comp p left = comp k (id idp) p

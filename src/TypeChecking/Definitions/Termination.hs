@@ -11,10 +11,10 @@ import Syntax.ErrorDoc
 import TypeChecking.Context
 import TypeChecking.Expressions.Utils
 
-data CT a = Constructor Int | Function ID | Variable a deriving Eq
+data CT a = Constructor ID Int | Function ID | Variable a deriving Eq
 
 instance Functor CT where
-    fmap _ (Constructor i) = Constructor i
+    fmap _ (Constructor dt i) = Constructor dt i
     fmap _ (Function i) = Function i
     fmap f (Variable a) = Variable (f a)
 
@@ -46,7 +46,7 @@ checkTerm (Apply i pats) term =
     if minimum (GT : map (\pat -> checkTerm pat term) pats) /= GT
     then LT
     else case term of
-        Apply (Semantics _ (DCon i' k _)) terms | i == i' -> checkTerms pats (drop k terms)
+        Apply (Semantics _ (DCon _ i' k _)) terms | i == i' -> checkTerms pats (drop k terms)
         _ -> GT
 checkTerm _ _ = GT
 
@@ -64,6 +64,6 @@ collectFunCalls ctx name (Lambda t) = collectFunCalls (Snoc ctx (error "") $ err
 collectFunCalls ctx name (Var a as) = (if name == Variable a then [TermsInCtx ctx as] else [])
     ++ (as >>= collectFunCalls ctx name)
 collectFunCalls ctx name (Apply a as) = (case a of
-    Semantics _ (DCon name' k _) | name == Constructor name' -> [TermsInCtx ctx $ drop k as]
+    Semantics _ (DCon dt' name' k _) | name == Constructor dt' name' -> [TermsInCtx ctx $ drop k as]
     Semantics _ (FunCall name' _) | name == Function name' -> [TermsInCtx ctx as]
     _ -> []) ++ (as >>= collectFunCalls ctx name)

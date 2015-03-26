@@ -21,7 +21,7 @@ nfSemantics :: Eq a => NF -> Semantics -> [Term Semantics a] -> Term Semantics a
 nfSemantics mode (Semantics (S.Lam (_:vs)) Lam) (Lambda a@Lambda{} : t : ts) =
     nfStep mode $ Apply (Semantics (S.Lam vs) Lam) (instantiate1 t a : ts)
 nfSemantics mode (Semantics _ Lam) (Lambda s : t : ts) = nfStep mode $ apps (instantiate1 t s) ts
-nfSemantics mode t@(Semantics _ (DCon _ k conds)) ts =
+nfSemantics mode t@(Semantics _ (DCon _ _ k conds)) ts =
     let (params,args) = splitAt k ts
     in case instantiateClauses (map (\(pats, Closed term) -> (pats, apps term params)) conds) args of
         Just (t', ts')  -> nfStep mode (apps t' ts')
@@ -74,7 +74,7 @@ nfSemantics mode t@(Semantics _ (Case pats)) (term:terms) =
         Just (t', ts')  -> nfStep mode $ apps t' (ts' ++ terms2)
         _               -> Apply t $ nfs mode (term:terms)
 nfSemantics mode t@(Semantics syn (FieldAcc i n k conds)) (term:terms) = case nf WHNF term of
-    Apply (Semantics _ (DCon _ k' _)) args | arg:_ <- drop (k' + i) args -> nfStep mode $ apps arg (drop k terms)
+    Apply (Semantics _ (DCon _ _ k' _)) args | arg:_ <- drop (k' + i) args -> nfStep mode $ apps arg (drop k terms)
     term' ->
         let (params,args) = splitAt k terms
             fields = map (\j -> Apply (Semantics syn $ FieldAcc j n k []) (term:params)) [0 .. n - 1]
@@ -103,7 +103,7 @@ getCon :: Term Semantics a -> Maybe (Int, [Term Semantics a])
 getCon (Apply (Semantics _ (ICon ILeft )) terms) = Just (0, terms)
 getCon (Apply (Semantics _ (ICon IRight)) terms) = Just (1, terms)
 getCon (Apply (Semantics _ PCon         ) terms) = Just (0, terms)
-getCon (Apply (Semantics _ (DCon i k _ )) terms) = Just (i, drop k terms)
+getCon (Apply (Semantics _ (DCon _ i k _ )) terms) = Just (i, drop k terms)
 getCon _                                         = Nothing
 
 instantiatePat :: Eq a => [Term Int t] -> Term Semantics a -> [Term Semantics a] -> Maybe (Term Semantics a, [Term Semantics a])

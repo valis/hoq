@@ -17,7 +17,7 @@ import TypeChecking.Context as C
 import TypeChecking.Expressions.Utils
 import Normalization
 
-checkConditions :: Eq b => Ctx String f Void b -> Term Semantics b -> [(S.Posn, Clause b)] -> [Error]
+checkConditions :: Eq b => Ctx String f Void b => Term Semantics b => [(S.Posn, Clause b)] => [Error]
 checkConditions ctx func cs = maybeToList $ msum $
     map (\(pos, Clause p scope) -> fmap (conditionsErrorMsg pos ctx) $ checkPatterns func (map (\(_, c) -> c) cs) p scope) cs
 
@@ -58,7 +58,7 @@ findSuspiciousPairs cs (Cons pat@(PatVar var) pats) =
     anyICon con (_ : cs) = anyICon con cs
 findSuspiciousPairs cs (Cons pat pats) =
     (case pat of
-        PatDCon _ _ _ conds params args -> conds >>= \(ClauseInCtx ctx (Clause cond _)) ->
+        PatDCon _ _ _ _ conds params args -> conds >>= \(ClauseInCtx ctx (Clause cond _)) ->
             case instantiatePats ctx params cond of
                 Some cond' -> case unifyPatterns args cond' of
                     Nothing -> []
@@ -68,13 +68,13 @@ findSuspiciousPairs cs (Cons pat pats) =
     map (ext2 $ patsToTerms $ getArgs pat) (findSuspiciousPairs (mapTail pat cs) pats)
   where
     getArgs :: Pattern b a -> Patterns b a
-    getArgs (PatDCon _ _ _ _ _ pats) = pats
+    getArgs (PatDCon _ _ _ _ _ _ pats) = pats
     getArgs (PatPCon pat) = Cons pat P.Nil
     getArgs PatICon{} = P.Nil
     getArgs PatVar{} = error "getArgs"
     
     cs' = cs >>= \(Some (Clause ps _)) -> case ps of
-            Cons (PatDCon _ _ _ _ _ pats) _ -> [Some $ Clause pats $ error ""]
+            Cons (PatDCon _ _ _ _ _ _ pats) _ -> [Some $ Clause pats $ error ""]
             Cons (PatPCon pat) _ -> [Some $ Clause (Cons pat P.Nil) $ error ""]
             _ -> []
     
@@ -103,7 +103,7 @@ unifyPatterns pats1 P.Nil =
 unifyPatterns P.Nil pats2 =
     let (ctx,terms) = patsToTerms pats2
     in Just $ TermsInCtx ctx terms
-unifyPatterns (Cons (PatDCon _ i1 _ _ _ ps1) pats1) (Cons (PatDCon _ i2 _ _ _ ps2) pats2) | i1 == i2 =
+unifyPatterns (Cons (PatDCon _ dt1 i1 _ _ _ ps1) pats1) (Cons (PatDCon _ dt2 i2 _ _ _ ps2) pats2) | dt1 == dt2 && i1 == i2 =
     unifyPatterns (ps1 P.+++ pats1) (ps2 P.+++ pats2)
 unifyPatterns (Cons (PatPCon pat1) pats1) (Cons (PatPCon pat2) pats2) = unifyPatterns (Cons pat1 pats1) (Cons pat2 pats2)
 unifyPatterns (Cons (PatICon con1) pats1) (Cons (PatICon con2) pats2) | con1 == con2 = unifyPatterns pats1 pats2
@@ -121,18 +121,18 @@ unifyPatterns (Cons pat1 pats1) (Cons PatVar{} pats2) =
 unifyPatterns _ _ = Nothing
 
 patToSemantics :: Pattern b a -> Semantics
-patToSemantics (PatDCon v i _ cs ps _) = Semantics v $ DCon i (length ps) $
+patToSemantics (PatDCon v dt i _ cs ps _) = Semantics v $ DCon dt i (length ps) $
     map (\(ClauseInCtx ctx cl) -> (fst $ clauseToEval cl, closed $ abstractTerm ctx $ snd $ clauseToEval cl)) cs
 patToSemantics PatPCon{} = pathSem
 patToSemantics (PatICon con) = iConSem con
 patToSemantics PatVar{} = error "patToSemantics"
 
 patToCon :: Pattern b a -> Term Semantics b
-patToCon p@(PatDCon _ _ _ _ ps _) = Apply (patToSemantics p) ps
+patToCon p@(PatDCon _ _ _ _ _ ps _) = Apply (patToSemantics p) ps
 patToCon p = capply (patToSemantics p)
 
 patToTerm :: Pattern b a -> (Ctx String f b a, Term Semantics a)
-patToTerm pat@(PatDCon _ _ _ _ ps pats) =
+patToTerm pat@(PatDCon _ _ _ _ _ ps pats) =
     let (ctx,terms) = patsToTerms pats
     in (ctx, Apply (patToSemantics pat) $ map (fmap $ liftBasePats pats) ps ++ terms)
 patToTerm (PatPCon pat) =

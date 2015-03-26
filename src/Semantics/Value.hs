@@ -10,7 +10,7 @@ import Syntax.Term
 data Value t
     = Lam
     | Pi Sort Sort
-    | DCon Int Int (Eval t)
+    | DCon ID Int Int (Eval t)
     | PCon
     | ICon ICon
     | CCon
@@ -38,7 +38,7 @@ data Sort = TypeK Level | Set Level | Prop | Contr deriving Eq
 instance Eq (Value t) where
     Lam == Lam = True
     Pi{} == Pi{} = True
-    DCon i _ _ == DCon i' _ _ = i == i'
+    DCon dt i _ _ == DCon dt' i' _ _ = dt == dt' && i == i'
     PCon == PCon = True
     ICon c == ICon c' = c == c'
     CCon == CCon = True

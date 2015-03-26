@@ -43,7 +43,7 @@ isInj Lam = True
 isInj Pi{} = True
 isInj PCon = True
 isInj ICon{} = True
-isInj (DCon _ _ []) = True
+isInj (DCon _ _ _ []) = True
 isInj DCon{} = False
 isInj CCon = True
 isInj FunCall{} = False
@@ -84,7 +84,7 @@ cmpTerms (Apply (Semantics _ PCon) [Apply (Semantics _ Lam) [Lambda (Apply (Sema
 cmpTerms t (Apply (Semantics _ PCon) [Apply (Semantics _ Lam) [Lambda (Apply (Semantics _ At) [_, _, t', Var Bound []])]]) =
     flowerResult $ cmpTerms (fmap (sequenceA . Free) t) (fmap sequenceA t')
 cmpTerms (Apply (Semantics _ At) (_:_:ts)) (Apply (Semantics _ At) (_:_:ts')) = cmpTermsList ts ts'
-cmpTerms (Apply (Semantics _ (DCon i k _)) ts) (Apply (Semantics _ (DCon i' k' _)) ts') | i == i' =
+cmpTerms (Apply (Semantics _ (DCon dt i k _)) ts) (Apply (Semantics _ (DCon dt' i' k' _)) ts') | dt == dt' && i == i' =
     cmpTermsList (drop k ts) (drop k' ts')
 cmpTerms (Apply (Semantics _ Conds{}) (t:_)) t' = cmpTerms t t'
 cmpTerms t (Apply (Semantics _ Conds{}) (t':_)) = cmpTerms t t'

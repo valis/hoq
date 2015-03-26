@@ -45,7 +45,7 @@ typeCheckDataType p@(_, dt) params cons conds = do
                 when bf $ warn [Error Other $ emsgLC pos "Absurd patterns are not allowed in conditions" enull]
                 let ctx' = ctx C.+++ ctx1
                 (term, _) <- typeCheckCtx ctx' expr $ Just (nfType WHNF ty')
-                return $ Just (conName, (pos, P.Clause rtpats term), i, PatInCtx (Constructor i) (patternsToTermsVar rtpats) term)
+                return $ Just (conName, (pos, P.Clause rtpats term), i, PatInCtx (Constructor dtID i) (patternsToTermsVar rtpats) term)
             _ -> do
                 warn [notInScope pos "data constructor" (nameToString con)]
                 return Nothing
@@ -64,5 +64,5 @@ typeCheckDataType p@(_, dt) params cons conds = do
     forM_ cons'' $ \(con, i, _, conds2, conds3) ->
         let toEval (ClauseInCtx ctx' cl) = (fst $ clauseToEval cl, closed $ abstractTerm ctx' $ snd $ clauseToEval cl)
             vars = map return (ctxToVars ctx)
-            conTerm = Apply (Semantics (Name Prefix con) $ DCon i (length vars) $ map toEval conds3) vars
-        in warn $ checkConditions ctx conTerm conds2
+            conTerm = Apply (Semantics (Name Prefix con) $ DCon dtID i (length vars) $ map toEval conds3) vars
+        in warn $ [] -- checkConditions ctx conTerm conds2

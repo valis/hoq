@@ -75,3 +75,12 @@ data Test6 (k n : Nat) = Test6 (m : Nat) (Test6 k m) (Test6 m n)
 
 test11 : (k n : Nat) -> Test6 k n -> Nat -> Nat
 test11 k n (Test6 m f g) x = test11 k m f (test11 m n g x)
+
+data Test7 = base | loop I | ll I I
+  with
+    loop left = base
+    loop right = base
+    ll left _ = base
+    ll right _ = base
+    ll _ left = base
+    ll i right = loop i

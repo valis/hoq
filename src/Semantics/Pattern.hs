@@ -25,7 +25,7 @@ import Semantics.Value
 import qualified TypeChecking.Context as C
 
 data Pattern b a where
-    PatDCon :: Syntax -> Int -> Int -> [ClauseInCtx] -> [Term Semantics b] -> Patterns b a -> Pattern b a
+    PatDCon :: Syntax -> ID -> Int -> Int -> [ClauseInCtx] -> [Term Semantics b] -> Patterns b a -> Pattern b a
     PatPCon :: Pattern b a -> Pattern b a
     PatICon :: ICon -> Pattern b b
     PatVar  :: String -> Pattern b (Scoped b)
@@ -45,9 +45,9 @@ data Some f = forall a. Some (f a)
 
 clauseToClauseEq :: Eq b => Clause b -> ClauseEq b
 clauseToClauseEq (Clause Nil term) = ClauseEq Nil term
-clauseToClauseEq (Clause (Cons (PatDCon v i n cs params ps) pats) term) = case clauseToClauseEq $ Clause (ps +++ pats) term of
+clauseToClauseEq (Clause (Cons (PatDCon v dt i n cs params ps) pats) term) = case clauseToClauseEq $ Clause (ps +++ pats) term of
     ClauseEq pats' term' -> case patternsSplitAt pats' (patternsLength ps) of
-        Split pats1 pats2 -> ClauseEq (Cons (PatDCon v i n cs params pats1) pats2) term'
+        Split pats1 pats2 -> ClauseEq (Cons (PatDCon v dt i n cs params pats1) pats2) term'
 clauseToClauseEq (Clause (Cons (PatPCon pat) pats) term) = case clauseToClauseEq $ Clause (Cons pat pats) term of
     ClauseEq (Cons pat' pats') term' -> ClauseEq (Cons (PatPCon pat') pats') term'
     _ -> error "clauseToClauseEq"
@@ -58,9 +58,9 @@ clauseToClauseEq (Clause (Cons (PatVar var) pats) term) = case clauseToClauseEq 
 
 (>>>=) :: Patterns b a -> (b -> Term Semantics c) -> Some (Patterns c)
 Nil >>>= _ = Some Nil
-Cons (PatDCon v i n cs params ps) pats >>>= k = case (ps +++ pats) >>>= k of
+Cons (PatDCon v dt i n cs params ps) pats >>>= k = case (ps +++ pats) >>>= k of
     Some pats' -> case patternsSplitAt pats' (patternsLength ps) of
-        Split pats1 pats2 -> Some $ Cons (PatDCon v i n cs (map (>>= k) params) pats1) pats2
+        Split pats1 pats2 -> Some $ Cons (PatDCon v dt i n cs (map (>>= k) params) pats1) pats2
 Cons (PatPCon pat) pats >>>= k = case Cons pat pats >>>= k of
     Some (Cons pat' pats') -> Some $ Cons (PatPCon pat') pats'
     _ -> error "(>>>=): Patterns"
@@ -102,9 +102,9 @@ instantiatePats ctx terms pats = pats >>>= go ctx terms
 
 bindClause :: Clause b -> (b -> Term Semantics c) -> Clause c
 bindClause (Clause Nil term) k = Clause Nil (term >>= k)
-bindClause (Clause (Cons (PatDCon v i n cs params ps) pats) term) k = case bindClause (Clause (ps +++ pats) term) k of
+bindClause (Clause (Cons (PatDCon v dt i n cs params ps) pats) term) k = case bindClause (Clause (ps +++ pats) term) k of
     Clause pats' term' -> case patternsSplitAt pats' (patternsLength ps) of
-        Split pats1 pats2 -> Clause (Cons (PatDCon v i n cs (map (>>= k) params) pats1) pats2) term'
+        Split pats1 pats2 -> Clause (Cons (PatDCon v dt i n cs (map (>>= k) params) pats1) pats2) term'
 bindClause (Clause (Cons (PatPCon pat) pats) term) k = case bindClause (Clause (Cons pat pats) term) k of
     Clause (Cons pat' pats') term' -> Clause (Cons (PatPCon pat') pats') term'
     _ -> error "bindClause"
@@ -126,7 +126,7 @@ instantiateClause ctx terms cl = bindClause cl (go ctx terms)
     go _ _ _ = error "instantiatePats"
 
 patternToTerm :: Pattern b a -> Term Int String
-patternToTerm (PatDCon _ i _ _ _ ps) = Apply i (patternsToTerms ps)
+patternToTerm (PatDCon _ _ i _ _ _ ps) = Apply i (patternsToTerms ps)
 patternToTerm (PatPCon p) = Apply 0 [patternToTerm p]
 patternToTerm (PatICon ILeft) = capply 0
 patternToTerm (PatICon IRight) = capply 1
@@ -137,7 +137,7 @@ patternsToTerms Nil = []
 patternsToTerms (Cons p ps) = patternToTerm p : patternsToTerms ps
 
 patternToTermVar :: Pattern b a -> Term Int a
-patternToTermVar (PatDCon _ i _ _ _ ps) = Apply i (patternsToTermsVar ps)
+patternToTermVar (PatDCon _ _ i _ _ _ ps) = Apply i (patternsToTermsVar ps)
 patternToTermVar (PatPCon p) = Apply 0 [patternToTermVar p]
 patternToTermVar (PatICon ILeft) = capply 0
 patternToTermVar (PatICon IRight) = capply 1
@@ -153,7 +153,7 @@ getName (Name _ n) = n
 getName _ = error "getName"
 
 patternToTermSyntax :: Pattern b a -> Term Name String
-patternToTermSyntax (PatDCon syn i _ _ _ ps) = Apply (getName syn) (patternsToTermsSyntax ps)
+patternToTermSyntax (PatDCon syn _ i _ _ _ ps) = Apply (getName syn) (patternsToTermsSyntax ps)
 patternToTermSyntax (PatPCon p) = Apply (getName $ syntax pathSem) [patternToTermSyntax p]
 patternToTermSyntax (PatICon c) = capply $ getName $ syntax (iConSem c)
 patternToTermSyntax (PatVar v) = cvar v
@@ -170,13 +170,13 @@ abstractTermPats Nil t = t
 abstractTermPats (Cons p ps) t = abstractTermPat p (abstractTermPats ps t)
 
 abstractTermPat :: Pattern b a -> Term Semantics a -> Term Semantics b
-abstractTermPat (PatDCon _ _ _ _ _ ps) t = abstractTermPats ps t
+abstractTermPat (PatDCon _ _ _ _ _ _ ps) t = abstractTermPats ps t
 abstractTermPat (PatPCon p) t = abstractTermPat p t
 abstractTermPat PatICon{} t = t
 abstractTermPat PatVar{} t = Lambda t
 
 liftBasePat :: Pattern b a -> b -> a
-liftBasePat (PatDCon _ _ _ _ _ pats) = liftBasePats pats
+liftBasePat (PatDCon _ _ _ _ _ _ pats) = liftBasePats pats
 liftBasePat (PatPCon pat) = liftBasePat pat
 liftBasePat PatICon{} = id
 liftBasePat PatVar{} = Free
@@ -186,7 +186,7 @@ liftBasePats Nil = id
 liftBasePats (Cons pat pats) = liftBasePats pats . liftBasePat pat
 
 patternVars :: Pattern b a -> [String]
-patternVars (PatDCon _ _ _ _ _ pats) = patternsVars pats
+patternVars (PatDCon _ _ _ _ _ _ pats) = patternsVars pats
 patternVars (PatPCon pat) = patternVars pat
 patternVars PatICon{} = []
 patternVars (PatVar var) = [var]

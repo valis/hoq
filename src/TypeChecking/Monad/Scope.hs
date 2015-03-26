@@ -100,7 +100,7 @@ addConstructor con dt i e es ty = ScopeT $ modify (updScopeConstructor con dt i 
 updScopeConstructor :: Name -> (ID, Name) -> Int -> [ClauseInCtx] -> [[ClauseInCtx]] -> Closed (Type Semantics) -> ScopeState -> ScopeState
 updScopeConstructor con (dtID, dtName) i e es ty scope =
     let cs = map (\(ClauseInCtx ctx cl) -> (fst $ clauseToEval cl, closed $ abstractTerm ctx $ snd $ clauseToEval cl)) e
-    in scope { constructors = ((con, dtID), (dtName, Semantics (Name Prefix con) $ DCon i 0 cs, e, es, ty)) : constructors scope }
+    in scope { constructors = ((con, dtID), (dtName, Semantics (Name Prefix con) $ DCon dtID i 0 cs, e, es, ty)) : constructors scope }
 
 replaceConstructor :: Monad m => Name -> (ID, Name) -> Int -> [ClauseInCtx] -> [[ClauseInCtx]] -> Closed (Type Semantics) -> ScopeT m ()
 replaceConstructor con dt@(dtID, dtName) i e es ty = ScopeT $ modify $ \scope ->
@@ -112,8 +112,8 @@ getConstructor :: Monad m => Name -> Maybe (ID, [Term Semantics a])
     -> ScopeT m [(Name, Term Semantics a, [ClauseInCtx], [[ClauseInCtx]], Type Semantics a)]
 getConstructor con (Just (dt, params)) = ScopeT $ do
     scope <- get
-    return $ map (\(n, Semantics syn (DCon i _ e), cs, es, Closed (Type ty k)) ->
-        (n, Apply (Semantics (if null params then syn else Constr (length params) syn) $ DCon i (length params) e) params
+    return $ map (\(n, Semantics syn (DCon _ i _ e), cs, es, Closed (Type ty k)) ->
+        (n, Apply (Semantics (if null params then syn else Constr (length params) syn) $ DCon dt i (length params) e) params
         , cs, es, Type (apps ty params) k
         )) $ maybeToList $ lookup (con, dt) (constructors scope)
 getConstructor con Nothing = ScopeT $ do
