@@ -14,6 +14,7 @@ import Data.Void
 import Syntax.Term
 
 data PIdent = PIdent { getPos :: Posn, getName :: String }
+    deriving Show
 data Clause = Clause PName [Term PName Void] RawExpr
 type Import = [String]
 data Tele = VarsTele Explicit [PIdent] RawExpr | TypeTele Explicit RawExpr
@@ -24,7 +25,7 @@ data Infix = InfixL | InfixR | InfixNA deriving Eq
 data Fixity = Infix Infix Int | Prefix deriving Eq
 
 type Posn = (Int, Int)
-data Name = Ident String | Operator String deriving Eq
+data Name = Ident String | Operator String deriving (Eq, Show)
 type PName = (Posn, Name)
 
 data Def
@@ -46,8 +47,9 @@ data Syntax
     | Conds Int
     | Constr Int Syntax
     | FieldAcc Int PIdent
+    deriving Show
 
-data Explicit = Explicit | Implicit deriving Eq
+data Explicit = Explicit | Implicit deriving (Eq, Show)
 
 type RawExpr = Term (Posn, Syntax) Void
 

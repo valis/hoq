@@ -5,12 +5,14 @@ import Data.Void
 
 import Syntax
 import Syntax.ErrorDoc
+import Syntax.PrettyPrinter
 import Semantics
 import Semantics.Value
 import TypeChecking.Context
 import TypeChecking.Monad.Warn
 
 data Error = Error { errorType :: ErrorType, errorMsg :: EMsg (Term Syntax) }
+    deriving Show
 
 instance Eq Error where
     Error e _ == Error e' _ = e == e'
@@ -24,9 +26,10 @@ data ErrorType
     | TypeMismatch
     | Conditions
     | Other
-    deriving Eq
+    deriving (Eq, Show)
 
 data Argument = Argument Int Posn (Maybe Name) | NoArgument Int [Error]
+    deriving Show
 
 argumentIndex :: Argument -> Int
 argumentIndex (Argument k _ _) = k

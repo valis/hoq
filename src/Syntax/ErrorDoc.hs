@@ -11,6 +11,7 @@ module Syntax.ErrorDoc
 import qualified Text.PrettyPrint as P
 
 data EMsg f = EMsg (Maybe Int) (Maybe Int) String (EDoc f)
+    deriving Show
 data EDoc f = EDoc P.Doc | ENull | ETerm (f (EDoc f)) | EAbove (EDoc f) (EDoc f) | EBeside (EDoc f) Bool (EDoc f)
 
 class Functor f => Pretty1 f where

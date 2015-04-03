@@ -21,6 +21,7 @@ data Term p a
     = Var a [Term p a]
     | Apply p [Term p a]
     | Lambda (Term p (Scoped a))
+    deriving Show
 
 instance Functor  (Term p) where fmap = fmapDefault
 instance Foldable (Term p) where foldMap = foldMapDefault
@@ -63,6 +64,7 @@ apps (Var a as) ts = Var a (as ++ ts)
 newtype Closed f = Closed { open :: forall a. f a }
 
 data Scoped a = Free a | Bound
+    deriving Show
 
 instance Eq a => Eq (Scoped a) where
     Bound == Bound = True

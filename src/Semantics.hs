@@ -23,6 +23,7 @@ data Semantics = Semantics
     { syntax :: S.Syntax
     , value :: SValue
     }
+    deriving Show
 
 type SValue = Value (Closed (Term Semantics))
 type SEval = Eval (Closed (Term Semantics))
@@ -61,9 +62,10 @@ isInj FieldAcc{} = False
 
 cmpTerms :: Eq a => Term Semantics (Either k a) -> Term Semantics (Either n a)
     -> (Bool, ([(k, Term Semantics a)], [(n, Term Semantics a)]))
-cmpTerms (Lambda t) (Lambda t') = flowerResult $ cmpTerms (fmap sequenceA t) (fmap sequenceA t')
-cmpTerms (Lambda t) t' = cmpTerms (Lambda t) (Lambda $ apps (fmap Free t') [bvar])
-cmpTerms t (Lambda t') = cmpTerms (Lambda $ apps (fmap Free t) [bvar]) (Lambda t')
+cmpTerms (Var (Left k) []) t' = (True, (case sequenceA t' of { Left{} -> []; Right r -> [(k,r)] }, []))
+cmpTerms t (Var (Left k) []) = (True, ([], case sequenceA t of { Left{} -> []; Right r -> [(k,r)] }))
+cmpTerms (Var Left{} _) _ = (True, ([], []))
+cmpTerms _ (Var Left{} _) = (True, ([], []))
 cmpTerms (Apply (Semantics (S.Lam (_:vs)) Lam) [Lambda t]) (Apply (Semantics (S.Lam (_:vs')) Lam) [Lambda t']) =
     flowerResult $ cmpTerms (Apply (Semantics (S.Lam vs) Lam) [fmap sequenceA t]) (Apply (Semantics (S.Lam vs') Lam) [fmap sequenceA t'])
 cmpTerms (Apply (Semantics (S.Lam (_:vs)) Lam) [Lambda t]) t' =
@@ -73,10 +75,9 @@ cmpTerms t (Apply (Semantics (S.Lam (_:vs')) Lam) [Lambda t']) =
     flowerResult $ cmpTerms (apps (fmap (sequenceA . Free) t) [fmap Right bvar]) (Apply (Semantics (S.Lam vs') Lam) [fmap sequenceA t'])
 cmpTerms t (Apply (Semantics _ Lam) [t']) = cmpTerms t t'
 cmpTerms (Var (Right a) as) (Var (Right a') as') = if a == a' then cmpTermsList as as' else (False, ([],[]))
-cmpTerms (Var (Left k) []) t' = (True, (case sequenceA t' of { Left{} -> []; Right r -> [(k,r)] }, []))
-cmpTerms t (Var (Left k) []) = (True, ([], case sequenceA t of { Left{} -> []; Right r -> [(k,r)] }))
-cmpTerms (Var Left{} _) _ = (True, ([], []))
-cmpTerms _ (Var Left{} _) = (True, ([], []))
+cmpTerms (Lambda t) (Lambda t') = flowerResult $ cmpTerms (fmap sequenceA t) (fmap sequenceA t')
+cmpTerms (Lambda t) t' = cmpTerms (Lambda t) (Lambda $ apps (fmap Free t') [bvar])
+cmpTerms t (Lambda t') = cmpTerms (Lambda $ apps (fmap Free t) [bvar]) (Lambda t')
 cmpTerms t@(Apply (Semantics _ Pi{}) _) t'@(Apply (Semantics _ Pi{}) _) = first (== Just EQ) (pcmpTerms t t')
 cmpTerms (Apply (Semantics _ PCon) ts) (Apply (Semantics _ PCon) ts') = cmpTermsList ts ts'
 cmpTerms (Apply (Semantics _ PCon) [Apply (Semantics _ Lam) [Lambda (Apply (Semantics _ At) [_, _, t, Var Bound []])]]) t' =
@@ -102,7 +103,12 @@ cmpTerms _ _ = (False,([],[]))
 
 cmpTermsList :: Eq a => [Term Semantics (Either k a)] -> [Term Semantics (Either n a)]
     -> (Bool, ([(k, Term Semantics a)], [(n, Term Semantics a)]))
-cmpTermsList as as' = bimap and (bimap concat concat . unzip) $ unzip (zipWith cmpTerms as as')
+cmpTermsList [] [] = (True, ([], []))
+cmpTermsList (a:as) (a':as') =
+    let (r1, (la1, lb1)) = cmpTerms a a'
+        (r2, (la2, lb2)) = cmpTermsList as as'
+    in (r1 && r2, (la1 ++ la2, lb1 ++ lb2))
+cmpTermsList _ _ = (False, ([], []))
 
 flowerResult :: (b, ([(k, Term Semantics (Scoped a))], [(n, Term Semantics (Scoped a))]))
     -> (b, ([(k, Term Semantics a)], [(n, Term Semantics a)]))

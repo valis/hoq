@@ -27,7 +27,7 @@ data Value t
     | Conds Int (Eval t)
     | FieldAcc Int Int Int (Eval t)
 
-data ICon = ILeft | IRight deriving Eq
+data ICon = ILeft | IRight deriving (Eq, Show)
 
 type Eval t = [([Term Int String], t)]
 
@@ -60,6 +60,26 @@ instance Eq (Value t) where
     Conds{} == Conds{} = True
     FieldAcc i _ _ _ == FieldAcc i' _ _ _ = i == i'
     _ == _ = False
+
+instance Show (Value t) where
+    show Lam = "Lam"
+    show (Pi s1 s2) = "Pi " ++ show s1 ++ " " ++ show s2
+    show (DCon n k m _) = "DCon " ++ show n ++ " " ++ show k ++ " " ++ show m
+    show PCon = "PCon"
+    show (ICon c) = "ICon " ++ show c
+    show CCon = "CCon"
+    show (FunCall n _) = "FunCall " ++ show n
+    show (Universe s) = "Universe " ++ show s
+    show (DataType n k) = "DataType " ++ show n ++ " " ++ show k
+    show Interval = "Interval"
+    show (Path s) = "Path " ++ show s
+    show At = "At"
+    show Coe = "Coe"
+    show Iso = "Iso"
+    show Squeeze = "Squeeze"
+    show (Case ts) = "Case " ++ show ts
+    show (Conds n _) = "Conds " ++ show n
+    show (FieldAcc n k m _) = "FieldAcc " ++ show n ++ " " ++ show k ++ " " ++ show m
 
 instance Eq Level where
     l1 == l2 = level l1 == level l2
