@@ -20,11 +20,14 @@ inv _ a _ p = transport (\x -> x = a) p idp
 (*) : {A : Type} {a a' a'' : A} -> a = a' -> a' = a'' -> a = a''
 (*) _ a _ _ p q = transport (\x -> a = x) q p
 
+(<*) : {A : Type} {a a' a'' : A} -> a = a' -> a' = a'' -> a = a''
+(<*) _ _ _ a'' p q = transport (\x -> x = a'') (inv p) q
+
 inv-comp : {A : Type} {a a' : A} (p : a = a') -> inv p * p = idp
 inv-comp _ _ _ p = J (\_ q -> inv q * q = idp) idp p
 
-map : {A B : Type} (f : A -> B) -> {a a' : A} -> a = a' -> f a = f a'
-map _ _ f a _ p = transport (\x -> f a = f x) p idp
+pmap : {A B : Type} (f : A -> B) -> {a a' : A} -> a = a' -> f a = f a'
+pmap _ _ f a _ p = transport (\x -> f a = f x) p idp
 
 data QED = qed
 

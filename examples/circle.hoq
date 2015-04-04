@@ -49,7 +49,7 @@ assoc p q = J (\x s -> (p * q) * s = p * (q * s)) idp
 wind-succ-loop-neg : (x : Nat) -> wind (pred (negative x)) * path loop = wind (negative x)
 wind-succ-loop-neg x =
     assoc (wind (negative x)) (inv (path loop)) (path loop) *
-    map (\p -> wind (negative x) * p) (inv-comp (path loop))
+    pmap (\p -> wind (negative x) * p) (inv-comp (path loop))
 
 wind-succ-loop : (x : Z) -> wind (pred x) * path loop = wind x
 wind-succ-loop (positive zero) = wind-succ-loop-neg zero
@@ -79,7 +79,7 @@ coe-inv = J (\x s -> (y : code x) ->
 decode-encode-base : (z : Z) -> encode (wind z) = z
 decode-encode-base (positive zero) = idp
 decode-encode-base (positive (suc x)) =
-    coe-comp (wind (positive x)) (path loop) (positive zero) * map succ (decode-encode-base (positive x))
+    coe-comp (wind (positive x)) (path loop) (positive zero) * pmap succ (decode-encode-base (positive x))
 decode-encode-base (negative (suc x)) =
     
     encode (wind (negative (suc x)))
@@ -100,7 +100,7 @@ decode-encode-base (negative (suc x)) =
     
     pred (encode (wind (negative x)))
     
-  ==< map pred (decode-encode-base (negative x)) >==
+  ==< pmap pred (decode-encode-base (negative x)) >==
     
     pred (negative x)
     

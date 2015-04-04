@@ -89,6 +89,18 @@ cmpTerms (Apply (Semantics _ (DCon dt i k _)) ts) (Apply (Semantics _ (DCon dt' 
     cmpTermsList (drop k ts) (drop k' ts')
 cmpTerms (Apply (Semantics _ Conds{}) (t:_)) t' = cmpTerms t t'
 cmpTerms t (Apply (Semantics _ Conds{}) (t':_)) = cmpTerms t t'
+cmpTerms (Apply (Semantics _ (DCon _ 0 k _)) ts) t' =
+    let mres = zipWith (\i t -> case t of
+                                    Apply (Semantics _ (FieldAcc j _ fk _)) (r:rs) | i == j && null (drop fk rs) -> case cmpTerms r t' of
+                                        (True, r) -> Just r
+                                        _ -> Nothing
+                                    _ -> Nothing) [0..] (drop k ts)
+    in case sequenceA mres of
+        Nothing -> (False, ([], []))
+        Just res -> (True, bimap concat concat (unzip res))
+cmpTerms t t'@(Apply (Semantics _ DCon{}) _) =
+    let (b, (c, d)) = cmpTerms t' t
+    in (b, (d, c))
 cmpTerms (Apply (Semantics _ (FieldAcc i _ k _)) (t:ts)) (Apply (Semantics _ (FieldAcc i' _ k' _)) (t':ts')) | i == i' =
     cmpTermsList (t : drop k ts) (t' : drop k' ts')
 cmpTerms (Apply s ts) (Apply s' ts') = if s == s'
