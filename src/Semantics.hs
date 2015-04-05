@@ -62,11 +62,11 @@ isInj FieldAcc{} = False
 
 cmpTerms :: Eq a => Term Semantics (Either k a) -> Term Semantics (Either n a)
     -> (Bool, ([(k, Term Semantics a)], [(n, Term Semantics a)]))
-cmpTerms (Apply (Semantics (S.Lam []) _) [t]) t' = cmpTerms t t'
-cmpTerms t (Apply (Semantics (S.Lam []) _) [t']) = cmpTerms t t'
 cmpTerms (Lambda t) (Lambda t') = flowerResult $ cmpTerms (fmap sequenceA t) (fmap sequenceA t')
 cmpTerms (Lambda t) t' = cmpTerms (Lambda t) (Lambda $ apps (fmap Free t') [bvar])
 cmpTerms t (Lambda t') = cmpTerms (Lambda $ apps (fmap Free t) [bvar]) (Lambda t')
+cmpTerms (Apply (Semantics (S.Lam []) _) [t]) t' = cmpTerms t t'
+cmpTerms t (Apply (Semantics (S.Lam []) _) [t']) = cmpTerms t t'
 cmpTerms (Var (Left k) []) t' = (True, (case sequenceA t' of { Left{} -> []; Right r -> [(k,r)] }, []))
 cmpTerms t (Var (Left k) []) = (True, ([], case sequenceA t of { Left{} -> []; Right r -> [(k,r)] }))
 cmpTerms (Var Left{} _) _ = (True, ([], []))
@@ -89,6 +89,7 @@ cmpTerms (Apply (Semantics _ (DCon dt i k _)) ts) (Apply (Semantics _ (DCon dt' 
     cmpTermsList (drop k ts) (drop k' ts')
 cmpTerms (Apply (Semantics _ Conds{}) (t:_)) t' = cmpTerms t t'
 cmpTerms t (Apply (Semantics _ Conds{}) (t':_)) = cmpTerms t t'
+{-
 cmpTerms (Apply (Semantics _ (DCon _ 0 k _)) ts) t' =
     let mres = zipWith (\i t -> case t of
                                     Apply (Semantics _ (FieldAcc j _ fk _)) (r:rs) | i == j && null (drop fk rs) -> case cmpTerms r t' of
@@ -98,9 +99,10 @@ cmpTerms (Apply (Semantics _ (DCon _ 0 k _)) ts) t' =
     in case sequenceA mres of
         Nothing -> (False, ([], []))
         Just res -> (True, bimap concat concat (unzip res))
-cmpTerms t t'@(Apply (Semantics _ DCon{}) _) =
+cmpTerms t t'@(Apply (Semantics _ (DCon _ 0 _ _)) _) =
     let (b, (c, d)) = cmpTerms t' t
     in (b, (d, c))
+-}
 cmpTerms (Apply (Semantics _ (FieldAcc i _ k _)) (t:ts)) (Apply (Semantics _ (FieldAcc i' _ k' _)) (t':ts')) | i == i' =
     cmpTermsList (t : drop k ts) (t' : drop k' ts')
 cmpTerms (Apply s ts) (Apply s' ts') = if s == s'
