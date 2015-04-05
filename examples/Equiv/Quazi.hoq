@@ -1,0 +1,7 @@
+import hlevel
+
+record EquivData (A B : Type) (f : A -> B) where
+    constructor equivData
+    inverse : B -> A
+    inv-fun : (a : A) -> inverse (f a) = a
+    fun-inv : (b : B) -> f (inverse b) = b

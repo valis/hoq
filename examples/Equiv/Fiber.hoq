@@ -1,0 +1,17 @@
+import Fiber
+import hlevel
+
+isFiberEquiv : (A B : Type) (f : A -> B) -> Type
+isFiberEquiv A B f = (b : B) -> isContr (Fiber A f b)
+
+isFiberEquiv-isProp : (A B : Type) (f : A -> B) -> isProp (isFiberEquiv A B f)
+isFiberEquiv-isProp A B f x y = path (\i b -> isContr-isProp (Fiber A f b) (x b) (y b) @ i)
+
+isFiberEquiv-equivalence : (A B : Type) (f : A -> B) -> isFiberEquiv A B f -> A = B
+isFiberEquiv-equivalence A B f e = path
+  (iso A B
+    f
+    (\b -> e b .proj1.point)
+    (\a -> pmap (\x -> x.point) (e(f(a)).proj2(fiber a idp)))
+    (\b -> e b .proj1.bpath)
+  )

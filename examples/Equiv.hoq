@@ -1,0 +1,12 @@
+import hlevel
+import Equiv.CoherentFiber
+
+isEquiv : (A B : Type) (f : A -> B) -> Type
+isEquiv A B f = Trunc (EquivData A B f)
+
+isEquiv-isFiberEquiv : (A B : Type) (f : A -> B) -> isEquiv A B f -> isFiberEquiv A B f
+isEquiv-isFiberEquiv A B f (inc e) = EquivData-isFiberEquiv A B f e
+isEquiv-isFiberEquiv A B f (trunc x y i) = isFiberEquiv-isProp A B f (isEquiv-isFiberEquiv A B f x) (isEquiv-isFiberEquiv A B f y) @ i
+
+isEquiv-equivalence : (A B : Type) (f : A -> B) -> isEquiv A B f -> A = B
+isEquiv-equivalence A B f e = isFiberEquiv-equivalence A B f (isEquiv-isFiberEquiv A B f e)

@@ -1,0 +1,49 @@
+import Paths
+import Equiv.Quazi
+
+record isCoherentEquiv (A B : Type) (f : A -> B) where
+    constructor coherentEquiv
+    inverse : B -> A
+    inv-fun : (a : A) -> inverse (f a) = a
+    fun-inv : (b : B) -> f (inverse b) = b
+    coherence : (a : A) -> fun-inv (f a) = pmap f (inv-fun a)
+
+EquivData-coherence : (A B : Type) (f : A -> B) (e : EquivData A B f) (a : A)
+    -> pmap f (e.inv-fun (e.inverse (f a))) * (e.fun-inv (f a))
+     = e.fun-inv (f (e.inverse (f a))) * pmap f (e.inv-fun a)
+EquivData-coherence A B f e a =
+    pmap f (e.inv-fun (e.inverse (f a)))             * (e.fun-inv (f a))
+  ==< pmap (\s -> pmap f s * (e.fun-inv (f a)))
+           (homotopy-comm-lemma (\a -> e.inverse (f a)) (e.inv-fun) a) >==
+    pmap f (pmap (e.inverse) (pmap f (e.inv-fun a))) * (e.fun-inv (f a))
+  ==< homotopy-isNatural (\b -> f (e.inverse b)) (\b -> b) (e.fun-inv) (pmap f (e.inv-fun a)) >==
+    e.fun-inv (f (e.inverse (f a))) * pmap f (e.inv-fun a)
+  !qed
+
+EquivData-isCoherentEquiv : (A B : Type) (f : A -> B) -> EquivData A B f -> isCoherentEquiv A B f
+EquivData-isCoherentEquiv A B f e = coherentEquiv (e.inverse) (e.inv-fun)
+    (\b -> inv (e.fun-inv (f (e.inverse b))) * pmap f (e.inv-fun (e.inverse b)) * (e.fun-inv b))
+    (\a -> rotate (e.fun-inv (f (e.inverse (f a)))) (pmap f (e.inv-fun a)) (EquivData-coherence A B f e a))
+
+{-
+inverse-isUnique : {A B : Type} {f : A -> B} (x y : isCoherentEquiv A B f) (b : B) -> x.inverse b = y.inverse b
+inverse-isUnique A B f x y b = inv (y.inv-fun (x.inverse b)) * pmap (y.inverse) (x.fun-inv b)
+
+inv-fun-isUnique : {A B : Type} {f : A -> B} (x y : isCoherentEquiv A B f) (a : A)
+    -> coe (\j -> inverse-isUnique x y (f a) @ j = a) left (x.inv-fun a) right = y.inv-fun a
+inv-fun-isUnique A B f x y a =
+    coe (\j -> inverse-isUnique x y (f a) @ j = a) left (x.inv-fun a) right = y.inv-fun a
+  ==< coe-Path (inverse-isUnique x y (f a)) (x.inv-fun a) idp >==
+    (inv (inverse-isUnique x y (f a)) * (x.inv-fun a))
+  ==< _ >==
+    y.inv-fun a
+  !qed
+
+isCoherentEquiv-isProp : (A B : Type) (f : A -> B) -> isProp (isCoherentEquiv A B f)
+isCoherentEquiv-isProp A B f x y = path (\i -> coherentEquiv
+    (\b -> inverse-isUnique x y b @ i)
+    (\a -> path-over (inv-fun-isUnique x y a) @ i)
+    _
+    _
+    )
+-}

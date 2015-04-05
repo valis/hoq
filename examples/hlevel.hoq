@@ -30,7 +30,7 @@ contr-prop : (A : Type) -> isContr A -> isProp A
 contr-prop A ((,) c f) a a' = inv (f a) * f a'
 
 prop-h1 : (A : Type) -> isProp A -> of-hlevel (suc zero) A
-prop-h1 A f a a' = inv (f a a) * f a a', J (\x q -> inv (f a a) * f a x = q) (inv-comp (f a a))
+prop-h1 A f a a' = inv (f a a) * f a a', Jl (\x q -> inv (f a a) * f a x = q) (inv-concat (f a a))
 
 prop-set : (A : Type) -> isProp A -> isSet A
 prop-set A p a a' = contr-prop (a = a') (prop-h1 A p a a')
@@ -38,17 +38,19 @@ prop-set A p a a' = contr-prop (a = a') (prop-h1 A p a a')
 isProp-isProp : (A : Type) -> isProp (isProp A)
 isProp-isProp A f g = path (\i a a' -> prop-set A f a a' (f a a') (g a a') @ i)
 
-Sigma-eq : (A : Type) (B : A -> Type) (a a' : A) (b : B a) (b' : B a') (p : a = a')
-    -> transport B p b = b' -> Path (\_ -> Sigma A B) (a, b) (a', b')
-Sigma-eq A B a a' b b' p = J
-    (\a' p -> (b' : B a') -> transport B p b = b' -> Path (\_ -> Sigma A B) (a, b) (a', b'))
-    (\b' q -> path (\i -> a, q @ i)) p b'
+Sigma-ext : {A : Type} {B : A -> Type} (x y : Sigma A B) (p : x.proj1 = y.proj1) -> transport B p (x.proj2) = y.proj2 -> x = y
+Sigma-ext A B x y p q = path (\i -> p @ i, path-over q @ i)
 
 isContr-isProp : (A : Type) -> isProp (isContr A)
-isContr-isProp A ((,) a1 f1) ((,) a2 f2) = Sigma-eq A (\a -> (a' : A) -> a = a') a1 a2 f1 f2 (f1 a2)
-    (path (\i a' -> prop-set A (contr-prop A (a1, f1)) a2 a'
-        (transport (\a -> (a' : A) -> a = a') (f1 a2) f1 a') (f2 a') @ i))
+isContr-isProp A c1 c2 = Sigma-ext c1 c2 (c1.proj2 (c2.proj1))
+    (path (\i a' -> prop-set A (contr-prop A c1) (c2.proj1) a'
+        (transport (\a -> (a' : A) -> a = a') (c1.proj2 (c2.proj1)) (c1.proj2) a') (c2.proj2 a') @ i))
 
 of-hlevel-isProp : (n : Nat) (A : Type) -> isProp (of-hlevel n A)
 of-hlevel-isProp zero A = isContr-isProp A
 of-hlevel-isProp (suc n) A f g = path (\i a a' -> of-hlevel-isProp n (a = a') (f a a') (g a a') @ i)
+
+data Trunc (A : Type) = inc A | trunc (Trunc A) (Trunc A) I
+  with
+    trunc a b left = a
+    trunc a b right = b

@@ -44,12 +44,12 @@ encode : {x : Circle} -> base = x -> code x
 encode _ p = coe (\i -> code (p @ i)) left (positive zero) right
 
 assoc : (p q r : base = base) -> (p * q) * r = p * (q * r)
-assoc p q = J (\x s -> (p * q) * s = p * (q * s)) idp
+assoc p q = Jl (\x s -> (p * q) * s = p * (q * s)) idp
 
 wind-succ-loop-neg : (x : Nat) -> wind (pred (negative x)) * path loop = wind (negative x)
 wind-succ-loop-neg x =
     assoc (wind (negative x)) (inv (path loop)) (path loop) *
-    pmap (\p -> wind (negative x) * p) (inv-comp (path loop))
+    pmap (\p -> wind (negative x) * p) (inv-concat (path loop))
 
 wind-succ-loop : (x : Z) -> wind (pred x) * path loop = wind x
 wind-succ-loop (positive zero) = wind-succ-loop-neg zero
@@ -64,22 +64,22 @@ decode (loop i) =
     right @ i
 
 encode-decode : {x : Circle} (p : base = x) -> decode x (encode p) = p
-encode-decode _ = J (\x p -> decode x (encode p) = p) idp
+encode-decode _ = Jl (\x p -> decode x (encode p) = p) idp
 
-coe-comp : (p q : base = base) (z : Z) ->
+coe-concat : (p q : base = base) (z : Z) ->
     coe (\i -> code (p * q @ i)) left z right =
     coe (\i -> code (q @ i)) left (coe (\i -> code (p @ i)) left z right) right
-coe-comp p q z = J (\x s -> coe (\i -> code (p * s @ i)) left z right =
+coe-concat p q z = Jl (\x s -> coe (\i -> code (p * s @ i)) left z right =
     coe (\i -> code (s @ i)) left (coe (\i -> code (p @ i)) left z right) right) idp q
 
 coe-inv : (p : base = base) (z : Z) -> coe (\i -> code (inv p @ i)) left z right = coe (\i -> code (p @ i)) right z left
-coe-inv = J (\x s -> (y : code x) ->
+coe-inv = Jl (\x s -> (y : code x) ->
     coe (\i -> code (inv s @ i)) left y right = coe (\i -> code (s @ i)) right y left) (\_ -> idp)
 
 decode-encode-base : (z : Z) -> encode (wind z) = z
 decode-encode-base (positive zero) = idp
 decode-encode-base (positive (suc x)) =
-    coe-comp (wind (positive x)) (path loop) (positive zero) * pmap succ (decode-encode-base (positive x))
+    coe-concat (wind (positive x)) (path loop) (positive zero) * pmap succ (decode-encode-base (positive x))
 decode-encode-base (negative (suc x)) =
     
     encode (wind (negative (suc x)))
@@ -88,7 +88,7 @@ decode-encode-base (negative (suc x)) =
     
     coe (\i -> code (wind (negative x) * inv (path loop) @ i)) left (positive zero) right
     
-  ==< coe-comp (wind (negative x)) (inv (path loop)) (positive zero) >==
+  ==< coe-concat (wind (negative x)) (inv (path loop)) (positive zero) >==
     
     coe (\i -> code (inv (path loop) @ i)) left (coe (\i -> code (wind (negative x) @ i)) left (positive zero) right) right
     

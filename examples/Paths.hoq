@@ -1,3 +1,6 @@
+HPath : (A : Type) -> A -> A -> Type
+HPath A a a' = a = a'
+
 infixr 5 $
 ($) : {A B : Type} -> (A -> B) -> A -> B
 ($) _ _ f a = f a
@@ -11,23 +14,40 @@ transport _ B _ _ p x = coe (\i -> B (p @ i)) left x right
 psqueeze : {A : Type} {a a' : A} (p : a = a') (i : I) -> a = p @ i
 psqueeze _ _ _ p i = path (\j -> p @ squeeze i j)
 
-J : {A : Type} {a : A} (B : {a' : A} -> a = a' -> Type) -> B idp -> {a' : A} (p : a = a') -> B p
-J A a B b a' p = coe (\i -> B (psqueeze p i)) left b right
+Jl : {A : Type} {a : A} (B : {a' : A} -> a = a' -> Type) -> B idp -> {a' : A} (p : a = a') -> B p
+Jl A a B b a' p = coe (\i -> B (psqueeze p i)) left b right
 
 inv : {A : Type} {a a' : A} -> a = a' -> a' = a
 inv _ a _ p = transport (\x -> x = a) p idp
 
-(*) : {A : Type} {a a' a'' : A} -> a = a' -> a' = a'' -> a = a''
-(*) _ a _ _ p q = transport (\x -> a = x) q p
+inv-inv : {A : Type} {a a' : A} (p : a = a') -> inv (inv p) = p
+inv-inv _ _ _ = Jl (\_ p -> inv (inv p) = p) idp
 
+concat : {A : I -> Type} {a : A left} {a' a'' : A right} -> Path A a a' -> a' = a'' -> Path A a a''
+concat A a a' a'' p q = transport (Path A a) q p
+
+infixr 95 *
+(*) : {A : Type} {a a' a'' : A} -> a = a' -> a' = a'' -> a = a''
+(*) _ _ _ _ = concat
+
+infixr 95 <*
 (<*) : {A : Type} {a a' a'' : A} -> a = a' -> a' = a'' -> a = a''
 (<*) _ _ _ a'' p q = transport (\x -> x = a'') (inv p) q
 
-inv-comp : {A : Type} {a a' : A} (p : a = a') -> inv p * p = idp
-inv-comp _ _ _ p = J (\_ q -> inv q * q = idp) idp p
+inv-concat : {A : Type} {a a' : A} (p : a = a') -> inv p * p = idp
+inv-concat _ _ _ = Jl (\_ q -> inv q * q = idp) idp
+
+concat-inv : {A : Type} {a a' : A} (p : a = a') -> p * inv p = idp
+concat-inv _ _ _ = Jl (\_ q -> q * inv q = idp) idp
+
+concat-idp : {A : Type} {a a' : A} (p : a = a') -> idp * p = p
+concat-idp _ _ _ = Jl (\_ p -> idp * p = p) idp
+
+concat-assoc : {A : Type} {a1 a2 a3 a4 : A} (p : a1 = a2) (q : a2 = a3) (r : a3 = a4) -> (p * q) * r = p * (q * r)
+concat-assoc _ _ _ _ _ p q = Jl (\_ r -> (p * q) * r = p * (q * r)) idp
 
 pmap : {A B : Type} (f : A -> B) -> {a a' : A} -> a = a' -> f a = f a'
-pmap _ _ f a _ p = transport (\x -> f a = f x) p idp
+pmap _ _ f a _ p = path (\i -> f (p @ i))
 
 data QED = qed
 
@@ -42,3 +62,36 @@ infix 3 ==<
 infixr 2 >==
 (>==) : {A : Type} {a a' a'' : A} -> a = a' -> a' = a'' -> a = a''
 (>==) _ _ _ _ = (*)
+
+idp-over : (A : I -> Type) (a : A left) -> Path A a (coe A left a right)
+idp-over A a = path (coe A left a)
+
+path-over : {A : I -> Type} {a : A left} {a' : A right} -> coe A left a right = a' -> Path A a a'
+path-over A a a' p = path (\i -> concat (idp-over A a) p @ i)
+
+coe-Path : {A : Type} {a1 a2 a3 a4 : A} (p : a2 = a1) (q : a2 = a3) (r : a3 = a4)
+    -> coe (\i -> p @ i = r @ i) left q right = inv p * q * r
+coe-Path A a1 a2 a3 a4 p q r =
+    coe (\j -> coe (\i -> p @ i = r @ i) left q j = inv (psqueeze p j) >== q >== psqueeze r j) left
+        (inv (concat-idp q)) right
+
+rotate : {A : Type} {a a' a'' : A} (p : a' = a) {q : a' = a''} (r : a = a'') -> q = p * r -> inv p * q = r
+rotate _ _ _ _ p q r t =
+    inv p * q           ==< pmap (\s -> inv p * s) t >==
+    inv p * (p * r)     ==< inv (concat-assoc (inv p) p r) >==
+    (inv p * p) * r     ==< pmap (\s -> s * r) (inv-concat p) >==
+    idp * r             ==< concat-idp r >==
+    r                   !qed
+
+homotopy-isNatural : {A B : Type} (f g : A -> B) (h : (a : A) -> f a = g a) {a a' : A} (p : a = a')
+    -> pmap f p * h a' = h a * pmap g p
+homotopy-isNatural A B f g h a a' = Jl (\x q -> pmap f q * h x = h a * pmap g q) (concat-idp (h a))
+
+homotopy-comm-lemma : {A : Type} (f : A -> A) (h : (a : A) -> f a = a) (a : A) -> h (f a) = pmap f (h a)
+homotopy-comm-lemma A f h a =
+    h (f a)                             ==< pmap (\s -> h (f a) * s) (inv (concat-inv (h a))) >==
+    h (f a) * (h a * inv (h a))         ==< inv (concat-assoc (h (f a)) (h a) (inv (h a))) >==
+    (h (f a) * h a) * inv (h a)         ==< pmap (\s -> s * inv (h a)) (inv (homotopy-isNatural f (\a -> a) h (h a))) >==
+    (pmap f (h a) * h a) * inv (h a)    ==< concat-assoc (pmap f (h a)) (h a) (inv (h a)) >==
+    pmap f (h a) * (h a * inv (h a))    ==< pmap (\s -> pmap f (h a) * s) (concat-inv (h a)) >==
+    pmap f (h a)                        !qed

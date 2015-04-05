@@ -1,0 +1,10 @@
+import Paths
+
+record Fiber (A : Type) {B : Type} (f : A -> B) (b : B) where
+    constructor fiber
+    point : A
+    bpath : f point = b
+
+Fiber-ext : {A B : Type} {f : A -> B} {b : B} (x y : Fiber A f b) (p : x.point = y.point)
+    -> inv (pmap f p) * (x.bpath) = y.bpath -> x = y
+Fiber-ext _ _ f _ x y p q = path (\i -> fiber (p @ i) (path-over (coe-Path (pmap f p) (x.bpath) idp * q) @ i))

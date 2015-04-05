@@ -1,0 +1,13 @@
+import Equiv.Coherent
+import Equiv.Fiber
+
+isCoherentEquiv-isFiberEquiv : (A B : Type) (f : A -> B) -> isCoherentEquiv A B f -> isFiberEquiv A B f
+isCoherentEquiv-isFiberEquiv A B f e = \b -> (fiber (e.inverse b) (e.fun-inv b)),
+  (\p -> Fiber-ext (fiber (e.inverse b) (e.fun-inv b)) p
+    (inv (pmap (e.inverse) (p.bpath)) <* (e.inv-fun (p.point)))
+    (Jl (\x q -> inv (pmap f (inv (pmap (e.inverse) q) <* (e.inv-fun (p.point)))) * (e.fun-inv x) = q)
+        (rotate (pmap f (e.inv-fun (p.point))) idp (e.coherence (p.point))) (p.bpath))
+  )
+
+EquivData-isFiberEquiv : (A B : Type) (f : A -> B) -> EquivData A B f -> isFiberEquiv A B f
+EquivData-isFiberEquiv A B f e = isCoherentEquiv-isFiberEquiv A B f (EquivData-isCoherentEquiv A B f e)
