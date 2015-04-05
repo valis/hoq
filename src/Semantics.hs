@@ -62,6 +62,11 @@ isInj FieldAcc{} = False
 
 cmpTerms :: Eq a => Term Semantics (Either k a) -> Term Semantics (Either n a)
     -> (Bool, ([(k, Term Semantics a)], [(n, Term Semantics a)]))
+cmpTerms (Apply (Semantics (S.Lam []) _) [t]) t' = cmpTerms t t'
+cmpTerms t (Apply (Semantics (S.Lam []) _) [t']) = cmpTerms t t'
+cmpTerms (Lambda t) (Lambda t') = flowerResult $ cmpTerms (fmap sequenceA t) (fmap sequenceA t')
+cmpTerms (Lambda t) t' = cmpTerms (Lambda t) (Lambda $ apps (fmap Free t') [bvar])
+cmpTerms t (Lambda t') = cmpTerms (Lambda $ apps (fmap Free t) [bvar]) (Lambda t')
 cmpTerms (Var (Left k) []) t' = (True, (case sequenceA t' of { Left{} -> []; Right r -> [(k,r)] }, []))
 cmpTerms t (Var (Left k) []) = (True, ([], case sequenceA t of { Left{} -> []; Right r -> [(k,r)] }))
 cmpTerms (Var Left{} _) _ = (True, ([], []))
@@ -70,14 +75,9 @@ cmpTerms (Apply (Semantics (S.Lam (_:vs)) Lam) [Lambda t]) (Apply (Semantics (S.
     flowerResult $ cmpTerms (Apply (Semantics (S.Lam vs) Lam) [fmap sequenceA t]) (Apply (Semantics (S.Lam vs') Lam) [fmap sequenceA t'])
 cmpTerms (Apply (Semantics (S.Lam (_:vs)) Lam) [Lambda t]) t' =
     flowerResult $ cmpTerms (Apply (Semantics (S.Lam vs) Lam) [fmap sequenceA t]) (apps (fmap (sequenceA . Free) t') [fmap Right bvar])
-cmpTerms (Apply (Semantics _ Lam) [t]) t' = cmpTerms t t'
 cmpTerms t (Apply (Semantics (S.Lam (_:vs')) Lam) [Lambda t']) =
     flowerResult $ cmpTerms (apps (fmap (sequenceA . Free) t) [fmap Right bvar]) (Apply (Semantics (S.Lam vs') Lam) [fmap sequenceA t'])
-cmpTerms t (Apply (Semantics _ Lam) [t']) = cmpTerms t t'
 cmpTerms (Var (Right a) as) (Var (Right a') as') = if a == a' then cmpTermsList as as' else (False, ([],[]))
-cmpTerms (Lambda t) (Lambda t') = flowerResult $ cmpTerms (fmap sequenceA t) (fmap sequenceA t')
-cmpTerms (Lambda t) t' = cmpTerms (Lambda t) (Lambda $ apps (fmap Free t') [bvar])
-cmpTerms t (Lambda t') = cmpTerms (Lambda $ apps (fmap Free t) [bvar]) (Lambda t')
 cmpTerms t@(Apply (Semantics _ Pi{}) _) t'@(Apply (Semantics _ Pi{}) _) = first (== Just EQ) (pcmpTerms t t')
 cmpTerms (Apply (Semantics _ PCon) ts) (Apply (Semantics _ PCon) ts') = cmpTermsList ts ts'
 cmpTerms (Apply (Semantics _ PCon) [Apply (Semantics _ Lam) [Lambda (Apply (Semantics _ At) [_, _, t, Var Bound []])]]) t' =
